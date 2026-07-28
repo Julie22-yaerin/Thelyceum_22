@@ -113,14 +113,15 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
-// ── Server ───────────────────────────────────────────────────────────────────
+// ── Express app (API routes only) ───────────────────────────────────────────
+// Shared between the standalone Node server (startServer, below — used by
+// `npm start` on Render/Railway/Fly/etc, and by the local MCP WebSocket) and
+// the Vercel serverless entry point at api/index.ts. Static file serving and
+// the SPA catch-all are NOT registered here — on Vercel those are handled by
+// the platform (see vercel.json); the standalone server adds them itself.
 
-async function startServer() {
+export function createApiApp() {
   const app = express();
-  const server = createServer(app);
-
-  // Attach MCP WebSocket endpoint on the same HTTP server
-  attachMcpWebSocket(server);
 
   // ── POST /api/webhooks/lemonsqueezy — must read the RAW body for HMAC
   // verification, so this is registered before the global express.json()
@@ -223,6 +224,22 @@ async function startServer() {
     });
   });
 
+  return app;
+}
+
+// ── Standalone Node server ──────────────────────────────────────────────────
+// Used by `npm start` (Render/Railway/Fly/etc — anything that runs a
+// persistent Node process). Adds static file serving, the SPA catch-all, and
+// the MCP WebSocket endpoint on top of the shared API app. NOT used on
+// Vercel — see api/index.ts and vercel.json for that path instead.
+
+async function startServer() {
+  const app = createApiApp();
+  const server = createServer(app);
+
+  // Attach MCP WebSocket endpoint on the same HTTP server
+  attachMcpWebSocket(server);
+
   // ── Static files ──────────────────────────────────────────────────────
   const staticPath =
     process.env.NODE_ENV === "production"
@@ -248,4 +265,9 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+// Only auto-start the standalone server when this file is run directly
+// (`node dist/index.js`) — not when imported as a module by api/index.ts.
+const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  startServer().catch(console.error);
+}
