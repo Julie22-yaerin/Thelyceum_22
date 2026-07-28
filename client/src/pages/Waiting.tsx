@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, Copy, Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCalEmbed } from "@/hooks/useCalEmbed";
+import { CredentialUsage } from "@/components/CredentialUsage";
 
 /*
  * The Lyceum — Waiting page
@@ -65,8 +66,8 @@ export default function Waiting() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-6">
-      <div className="max-w-md w-full text-center">
+    <div className="min-h-screen bg-white flex items-center justify-center px-6 py-16">
+      <div className="max-w-lg w-full text-center">
         {!ref ? (
           <p className="text-muted-foreground text-sm">
             Missing order reference. Please use the link from your checkout confirmation.
@@ -111,7 +112,7 @@ export default function Waiting() {
               </button>
             </div>
 
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2.5 mb-8">
               <Button
                 size="lg"
                 data-cal-link={CAL_LINK}
@@ -134,6 +135,8 @@ export default function Waiting() {
                 </a>
               )}
             </div>
+
+            {order.licenseKey && <CredentialUsage licenseKey={order.licenseKey} />}
           </>
         )}
       </div>

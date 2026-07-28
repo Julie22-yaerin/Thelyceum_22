@@ -3,71 +3,17 @@ import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
-import { MODEL_ROUTES, type Domain } from "../client/src/lib/modelConfig";
+import { DOMAINS, type Domain } from "../client/src/lib/modelConfig.js";
 import { attachMcpWebSocket } from "./mcp/lyceum-mcp-server.js";
+import { KEY_MAP, proxyToOpenRouter, type ProxyRequestBody } from "./lib/openrouter.js";
+import { authenticateLicenseKey, type AuthedRequest } from "./lib/auth.js";
+import { provisionAccount } from "./db/accounts.js";
+import { getTask, listTasks } from "./db/tasks.js";
+import { InsufficientCreditsError, runTask } from "./lib/runTask.js";
+import { handleMcpRequest } from "./mcp/http-server.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// ── Server-side key resolution ───────────────────────────────────────────────
-// These read from process.env directly — NEVER shipped to the browser.
-// Prefer the non-VITE_ keys (pure server-side), fall back to VITE_ (legacy).
-
-const KEY_MAP: Record<Domain, string> = {
-  LAW:   process.env.OPENROUTER_KEY_LAW   || process.env.VITE_OPENROUTER_KEY_LAW   || "",
-  FINANCE: process.env.OPENROUTER_KEY_FINANCE || process.env.VITE_OPENROUTER_KEY_FINANCE || "",
-  TECH:  process.env.OPENROUTER_KEY_TECH  || process.env.VITE_OPENROUTER_KEY_TECH  || "",
-  MUSE:  process.env.OPENROUTER_KEY_MUSE  || process.env.VITE_OPENROUTER_KEY_MUSE  || "",
-};
-
-const OPENROUTER_BASE = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
-
-// ── OpenRouter Proxy ─────────────────────────────────────────────────────────
-
-interface ProxyRequestBody {
-  domain: Domain;
-  messages: { role: string; content: string }[];
-  temperature?: number;
-  maxTokens?: number;
-}
-
-async function proxyToOpenRouter(body: ProxyRequestBody): Promise<unknown> {
-  const { domain, messages, temperature, maxTokens } = body;
-
-  const apiKey = KEY_MAP[domain];
-  if (!apiKey) {
-    throw new Error(`No API key configured for domain "${domain}"`);
-  }
-
-  const route = MODEL_ROUTES[domain];
-  if (!route) {
-    throw new Error(`Unknown domain "${domain}"`);
-  }
-
-  const response = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://lyceum.internal",
-      "X-Title": "The Lyceum",
-    },
-    body: JSON.stringify({
-      model: route.model,
-      messages,
-      temperature: temperature ?? 0.7,
-      max_tokens: maxTokens ?? 4096,
-      stream: false,
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "unknown");
-    throw new Error(`OpenRouter (${domain}) returned ${response.status}: ${text}`);
-  }
-
-  return response.json();
-}
 
 // ── Lemon Squeezy payment tracking ──────────────────────────────────────────
 // In-memory order store, keyed by the `ref` we attach to each checkout link.
@@ -129,7 +75,7 @@ export function createApiApp(): express.Express {
   app.post(
     "/api/webhooks/lemonsqueezy",
     express.raw({ type: "application/json", limit: "1mb" }),
-    (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response) => {
       const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET || "";
       const signature = req.header("X-Signature");
       const rawBody = req.body as Buffer;
@@ -152,16 +98,33 @@ export function createApiApp(): express.Express {
       const existing = ref ? orders.get(ref) : undefined;
 
       if (ref && eventName === "license_key_created") {
+        const licenseKey: string | undefined = payload?.data?.attributes?.key;
+        const product: string | undefined = payload?.data?.attributes?.product_name;
+        const email: string | undefined = payload?.data?.attributes?.user_email ?? existing?.email;
+        const name: string | undefined = customData?.name ?? existing?.name;
+        const organization: string | undefined = customData?.organization ?? existing?.organization;
+
         orders.set(ref, {
           ...existing,
           status: "paid",
-          licenseKey: payload?.data?.attributes?.key,
-          product: payload?.data?.attributes?.product_name,
-          email: payload?.data?.attributes?.user_email ?? existing?.email,
-          name: customData?.name ?? existing?.name,
-          organization: customData?.organization ?? existing?.organization,
+          licenseKey,
+          product,
+          email,
+          name,
+          organization,
           paidAt: Date.now(),
         });
+
+        // Provision the API/MCP account so the license key works as a
+        // credential immediately — best-effort: a Firestore hiccup here
+        // shouldn't fail the webhook (Lemon Squeezy will retry otherwise).
+        if (licenseKey) {
+          try {
+            await provisionAccount({ licenseKey, email, name, organization, product });
+          } catch (err) {
+            console.error("[Lyceum] Failed to provision account for", licenseKey, err);
+          }
+        }
       } else if (ref && eventName === "order_created") {
         orders.set(ref, {
           ...existing,
@@ -219,10 +182,63 @@ export function createApiApp(): express.Express {
       keysConfigured: Object.entries(KEY_MAP)
         .filter(([, v]) => !!v)
         .map(([k]) => k),
-      mcpEndpoint: "/mcp",
+      mcpEndpoint: "/api/mcp",
+      apiEndpoint: "/api/v1/chat",
       timestamp: Date.now(),
     });
   });
+
+  // ── V1 public API + MCP — both channels share one credential: the Lemon
+  // Squeezy license key, sent as `Authorization: Bearer <license key>`. ──
+
+  app.get("/api/v1/account", authenticateLicenseKey, (req: AuthedRequest, res: express.Response) => {
+    const account = req.lyceumAccount!;
+    res.json({
+      product: account.product,
+      organization: account.organization,
+      creditsRemaining: account.creditsRemaining,
+      creditsTotal: account.creditsTotal,
+    });
+  });
+
+  app.post("/api/v1/chat", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const { domain, prompt } = (req.body ?? {}) as { domain?: string; prompt?: string };
+    if (!domain || !prompt) {
+      return res.status(400).json({ error: "Both 'domain' and 'prompt' are required" });
+    }
+    if (!(DOMAINS as readonly string[]).includes(domain)) {
+      return res.status(400).json({ error: `domain must be one of: ${DOMAINS.join(", ")}` });
+    }
+    try {
+      const result = await runTask({
+        licenseKey: req.lyceumAccount!.licenseKey,
+        domain: domain as Domain,
+        prompt,
+        source: "api",
+      });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof InsufficientCreditsError) {
+        return res.status(402).json({ error: err.message, remaining: err.remaining });
+      }
+      res.status(502).json({ error: err instanceof Error ? err.message : "Task failed" });
+    }
+  });
+
+  app.get("/api/v1/tasks", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const limit = Number(req.query.limit) || 20;
+    const tasks = await listTasks(req.lyceumAccount!.licenseKey, limit);
+    res.json({ tasks });
+  });
+
+  app.get("/api/v1/tasks/:id", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const task = await getTask(req.params.id, req.lyceumAccount!.licenseKey);
+    if (!task) return res.status(404).json({ error: "Task not found" });
+    res.json({ task });
+  });
+
+  // ── MCP — Streamable HTTP, stateless (see server/mcp/http-server.ts) ───
+  app.all("/api/mcp", authenticateLicenseKey, handleMcpRequest);
 
   return app;
 }

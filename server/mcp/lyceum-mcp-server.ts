@@ -1,9 +1,16 @@
 /**
- * Lyceum MCP Server
+ * Lyceum MCP Server — LEGACY, local-dev only.
  *
- * Self-contained implementation of the Model Context Protocol (MCP).
- * Exposes Lyceum's AI workforce as standard MCP tools, resources, and prompts
- * via WebSocket using JSON-RPC 2.0 message format.
+ * Hand-rolled WebSocket JSON-RPC implementation operating on mock in-memory
+ * agent data (resets every restart, no auth, no real LLM calls). Only wired
+ * up under the standalone Node server (server/index.ts's startServer(), used
+ * by `npm start` — NOT the Vercel deploy) because WebSocket doesn't work in
+ * serverless functions.
+ *
+ * The real, production MCP server is server/mcp/http-server.ts — Streamable
+ * HTTP via the official @modelcontextprotocol/sdk, backed by Firestore, and
+ * reachable at POST /api/mcp on every deploy target including Vercel. Use
+ * that one; this file is kept for local canvas-demo exploration only.
  */
 
 import { WebSocketServer } from "ws";
