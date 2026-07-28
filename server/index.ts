@@ -120,7 +120,7 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 // the SPA catch-all are NOT registered here — on Vercel those are handled by
 // the platform (see vercel.json); the standalone server adds them itself.
 
-export function createApiApp() {
+export function createApiApp(): express.Express {
   const app = express();
 
   // ── POST /api/webhooks/lemonsqueezy — must read the RAW body for HMAC
@@ -129,7 +129,7 @@ export function createApiApp() {
   app.post(
     "/api/webhooks/lemonsqueezy",
     express.raw({ type: "application/json", limit: "1mb" }),
-    (req, res) => {
+    (req: express.Request, res: express.Response) => {
       const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET || "";
       const signature = req.header("X-Signature");
       const rawBody = req.body as Buffer;
@@ -177,20 +177,20 @@ export function createApiApp() {
   );
 
   // ── GET /api/orders/:ref — polled by the waiting page ──────────────────
-  app.get("/api/orders/:ref", (req, res) => {
+  app.get("/api/orders/:ref", (req: express.Request, res: express.Response) => {
     const order = orders.get(req.params.ref);
     res.json(order ?? { status: "pending" });
   });
 
   // ── GET /api/beta-slots — public live counter for the landing page ─────
-  app.get("/api/beta-slots", (_req, res) => {
+  app.get("/api/beta-slots", (_req: express.Request, res: express.Response) => {
     const paidCount = Array.from(orders.values()).filter((o) => o.status === "paid").length;
     const claimed = Math.min(BETA_SLOT_BASELINE + paidCount, BETA_SLOT_CAP);
     res.json({ claimed, cap: BETA_SLOT_CAP });
   });
 
   // ── GET /api/admin/orders — customers, orgs, license keys (token-gated) ─
-  app.get("/api/admin/orders", requireAdmin, (_req, res) => {
+  app.get("/api/admin/orders", requireAdmin, (_req: express.Request, res: express.Response) => {
     const list = Array.from(orders.entries())
       .map(([ref, order]) => ({ ref, ...order }))
       .sort((a, b) => (b.paidAt ?? 0) - (a.paidAt ?? 0));
@@ -201,7 +201,7 @@ export function createApiApp() {
   app.use(express.json({ limit: "1mb" }));
 
   // ── POST /api/chat — Server-side OpenRouter proxy ─────────────────────
-  app.post("/api/chat", async (req, res) => {
+  app.post("/api/chat", async (req: express.Request, res: express.Response) => {
     try {
       const result = await proxyToOpenRouter(req.body as ProxyRequestBody);
       res.json(result);
@@ -212,7 +212,7 @@ export function createApiApp() {
   });
 
   // ── GET /api/health — Server health check ─────────────────────────────
-  app.get("/api/health", (_req, res) => {
+  app.get("/api/health", (_req: express.Request, res: express.Response) => {
     res.json({
       status: "ok",
       domains: Object.keys(KEY_MAP),
@@ -249,7 +249,7 @@ async function startServer() {
   app.use(express.static(staticPath));
 
   // Handle client-side routing - serve index.html for all non-API routes
-  app.get("*", (_req, res) => {
+  app.get("*", (_req: express.Request, res: express.Response) => {
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
