@@ -9,6 +9,7 @@ import WorkforceCanvasPage from "./pages/WorkforceCanvasPage";
 import ThankYou from "./pages/ThankYou";
 import Waiting from "./pages/Waiting";
 import Admin from "./pages/Admin";
+import Notes from "./pages/Notes";
 
 
 function Router() {
@@ -19,6 +20,7 @@ function Router() {
       <Route path={"/thank-you"} component={ThankYou} />
       <Route path={"/waiting"} component={Waiting} />
       <Route path={"/admin"} component={Admin} />
+      <Route path={"/notes"} component={Notes} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

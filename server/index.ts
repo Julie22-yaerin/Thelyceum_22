@@ -4,16 +4,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { DOMAINS, type Domain } from "../client/src/lib/modelConfig.js";
-import { attachMcpWebSocket } from "./mcp/lyceum-mcp-server.js";
 import { KEY_MAP, proxyToOpenRouter, type ProxyRequestBody } from "./lib/openrouter.js";
 import { authenticateLicenseKey, type AuthedRequest } from "./lib/auth.js";
 import { provisionAccount } from "./db/accounts.js";
 import { getTask, listTasks } from "./db/tasks.js";
 import { InsufficientCreditsError, runTask } from "./lib/runTask.js";
 import { handleMcpRequest } from "./mcp/http-server.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { getSupabase } from "./lib/supabase.js";
 
 // ── Lemon Squeezy payment tracking ──────────────────────────────────────────
 // In-memory order store, keyed by the `ref` we attach to each checkout link.
@@ -61,10 +58,10 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 
 // ── Express app (API routes only) ───────────────────────────────────────────
 // Shared between the standalone Node server (startServer, below — used by
-// `npm start` on Render/Railway/Fly/etc, and by the local MCP WebSocket) and
-// the Vercel serverless entry point at api/index.ts. Static file serving and
-// the SPA catch-all are NOT registered here — on Vercel those are handled by
-// the platform (see vercel.json); the standalone server adds them itself.
+// `npm start` on Render/Railway/Fly/etc) and the Vercel serverless entry
+// point at server/vercel-entry.ts. Static file serving and the SPA
+// catch-all are NOT registered here — on Vercel those are handled by the
+// platform (see vercel.json); the standalone server adds them itself.
 
 export function createApiApp(): express.Express {
   const app = express();
@@ -188,6 +185,18 @@ export function createApiApp(): express.Express {
     });
   });
 
+  // ── GET /api/notes — Supabase smoke test (see client/src/pages/Notes.tsx) ─
+  app.get("/api/notes", async (_req: express.Request, res: express.Response) => {
+    try {
+      const supabase = getSupabase();
+      const { data, error } = await supabase.from("notes").select();
+      if (error) return res.status(502).json({ error: error.message });
+      res.json({ notes: data });
+    } catch (err) {
+      res.status(503).json({ error: err instanceof Error ? err.message : "Supabase not configured" });
+    }
+  });
+
   // ── V1 public API + MCP — both channels share one credential: the Lemon
   // Squeezy license key, sent as `Authorization: Bearer <license key>`. ──
 
@@ -245,16 +254,22 @@ export function createApiApp(): express.Express {
 
 // ── Standalone Node server ──────────────────────────────────────────────────
 // Used by `npm start` (Render/Railway/Fly/etc — anything that runs a
-// persistent Node process). Adds static file serving, the SPA catch-all, and
-// the MCP WebSocket endpoint on top of the shared API app. NOT used on
-// Vercel — see api/index.ts and vercel.json for that path instead.
+// persistent Node process). Adds static file serving and the SPA catch-all
+// on top of the shared API app. NOT used on Vercel — see server/vercel-entry.ts
+// and vercel.json for that path instead. (The legacy MCP-over-WebSocket
+// endpoint that used to be attached here has been removed — server/mcp/http-server.ts,
+// reachable at POST /api/mcp on every deploy target, replaces it.)
 
 async function startServer() {
   const app = createApiApp();
   const server = createServer(app);
 
-  // Attach MCP WebSocket endpoint on the same HTTP server
-  attachMcpWebSocket(server);
+  // Computed lazily, here only — importers that just want createApiApp()
+  // (api/index.ts, tests) never touch import.meta.url this way, which
+  // matters because bundling it into a CJS/ESM Vercel function otherwise
+  // ties the whole module's evaluation to import.meta.url being valid.
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
 
   // ── Static files ──────────────────────────────────────────────────────
   const staticPath =
@@ -274,15 +289,14 @@ async function startServer() {
   server.listen(port, () => {
     const configured = Object.entries(KEY_MAP).filter(([, v]) => !!v).length;
     console.log(`[Lyceum] Server running on http://localhost:${port}/`);
-    console.log(`[Lyceum] MCP WebSocket endpoint: ws://localhost:${port}/mcp`);
+    console.log(`[Lyceum] MCP endpoint: POST http://localhost:${port}/api/mcp`);
     console.log(`[Lyceum] API proxy: POST http://localhost:${port}/api/chat`);
     console.log(`[Lyceum] API keys configured: ${configured}/3 domains`);
-    console.log(`[Lyceum] MCP tools available: lyceum_agents_list, lyceum_agent_get_status, lyceum_agent_recharge, lyceum_pipeline_run, lyceum_comment_add, lyceum_suggestions_get, lyceum_suggestion_inject, lyceum_execution_logs`);
   });
 }
 
 // Only auto-start the standalone server when this file is run directly
-// (`node dist/index.js`) — not when imported as a module by api/index.ts.
+// (`node dist/index.js`) — not when imported as a module by server/vercel-entry.ts.
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   startServer().catch(console.error);

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, Zap, Shield, Users, Brain, ChevronRight, Clock, Radio, FileCheck } from "lucide-react";
-import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import WaitlistModal from "@/components/WaitlistModal";
 import AnimatedCounter from "@/components/AnimatedCounter";
@@ -110,12 +109,6 @@ export default function Home() {
               Pricing
             </a>
           </div>
-          <Link
-            href="/canvas"
-            className="hidden sm:inline-flex items-center justify-center gap-2 h-8 rounded-md px-4 text-sm font-medium bg-[#0f0f13] text-white hover:bg-[#1a1a24] transition-colors"
-          >
-            Launch Canvas
-          </Link>
           <Button
             size="sm"
             onClick={() => setWaitlistOpen(true)}
