@@ -89,15 +89,12 @@ export default function Home() {
         {/* Navigation */}
         <nav className="bg-warm-white/80 backdrop-blur-xl border-b border-border">
         <div className="container flex items-center justify-between h-16">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center">
             <img
-              src="/manus-storage/logo_42e45f76.png"
+              src="/lyceum-logo.png"
               alt="The Lyceum"
-              className="w-7 h-7"
+              className="h-6 w-auto object-contain"
             />
-            <span className="font-display font-semibold text-foreground text-lg tracking-tight">
-              The Lyceum
-            </span>
           </div>
           <div className="hidden sm:flex items-center gap-8">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -427,9 +424,9 @@ export default function Home() {
         <div className="container flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <img
-              src="/manus-storage/logo_42e45f76.png"
+              src="/favicon.png"
               alt="The Lyceum"
-              className="w-5 h-5"
+              className="w-5 h-5 object-contain"
             />
             <span className="text-sm text-muted-foreground">
               The Lyceum — AI Workforce Management
