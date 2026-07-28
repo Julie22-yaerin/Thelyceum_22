@@ -1,0 +1,15 @@
+Screenshot Review Notes:
+1. Page looks clean and well-structured
+2. Hero section has the right layout with headline, subtext, and CTAs
+3. Features section shows 4 features in 2x2 grid - good
+4. Metrics section shows before/after comparison - looks good
+5. The "1h" in the After column should show "1.2h" but the counter rounds to 1
+6. Pricing/CTA section at bottom looks clean
+7. Footer is minimal and correct
+8. Navigation bar is fixed and has logo + links + CTA
+9. The teal accent color (#0d9488) is working well
+10. Overall the page is clean, minimal, and professional
+11. The images are showing (logo is visible in nav and footer)
+12. The decorative geometric SVG elements in the hero are subtle and nice
+13. The waitlist modal needs to be tested
+14. Mobile view should be checked
