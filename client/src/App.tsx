@@ -3,12 +3,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
-import CompanySetupDialog from "./components/CompanySetupDialog";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import WorkforceCanvasPage from "./pages/WorkforceCanvasPage";
 import ThankYou from "./pages/ThankYou";
 import Waiting from "./pages/Waiting";
+import Admin from "./pages/Admin";
 
 
 function Router() {
@@ -18,6 +18,7 @@ function Router() {
       <Route path={"/canvas"} component={WorkforceCanvasPage} />
       <Route path={"/thank-you"} component={ThankYou} />
       <Route path={"/waiting"} component={Waiting} />
+      <Route path={"/admin"} component={Admin} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
@@ -40,8 +41,6 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router />
-          {/* Company setup modal — shown when no company exists */}
-          <CompanySetupDialog />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

@@ -79,10 +79,18 @@ interface OrderRecord {
   licenseKey?: string;
   product?: string;
   email?: string;
+  name?: string;
+  organization?: string;
   paidAt?: number;
 }
 
 const orders = new Map<string, OrderRecord>();
+
+// Manually-tracked slots claimed before this counter existed (e.g. earlier
+// manual pre-orders) — the live counter starts here and counts up with real
+// paid orders, capped at BETA_SLOT_CAP.
+const BETA_SLOT_BASELINE = Number(process.env.BETA_SLOT_BASELINE ?? 84);
+const BETA_SLOT_CAP = Number(process.env.BETA_SLOT_CAP ?? 100);
 
 function verifyLemonSignature(rawBody: Buffer, signatureHeader: string | undefined, secret: string): boolean {
   if (!signatureHeader || !secret) return false;
@@ -90,6 +98,19 @@ function verifyLemonSignature(rawBody: Buffer, signatureHeader: string | undefin
   const expected = Buffer.from(digest, "utf8");
   const actual = Buffer.from(signatureHeader, "utf8");
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const configured = process.env.ADMIN_TOKEN || "";
+  const provided = req.header("x-admin-token") || "";
+  const expected = Buffer.from(configured, "utf8");
+  const actual = Buffer.from(provided, "utf8");
+  const valid =
+    configured.length > 0 && expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  if (!valid) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  next();
 }
 
 // ── Server ───────────────────────────────────────────────────────────────────
@@ -126,20 +147,27 @@ async function startServer() {
       const eventName: string | undefined = payload?.meta?.event_name;
       const ref: string | undefined = payload?.meta?.custom_data?.ref;
 
+      const customData = payload?.meta?.custom_data ?? {};
+      const existing = ref ? orders.get(ref) : undefined;
+
       if (ref && eventName === "license_key_created") {
         orders.set(ref, {
+          ...existing,
           status: "paid",
           licenseKey: payload?.data?.attributes?.key,
           product: payload?.data?.attributes?.product_name,
-          email: payload?.data?.attributes?.user_email,
+          email: payload?.data?.attributes?.user_email ?? existing?.email,
+          name: customData?.name ?? existing?.name,
+          organization: customData?.organization ?? existing?.organization,
           paidAt: Date.now(),
         });
       } else if (ref && eventName === "order_created") {
-        const existing = orders.get(ref);
         orders.set(ref, {
           ...existing,
           status: existing?.status === "paid" ? "paid" : "pending",
           email: payload?.data?.attributes?.user_email ?? existing?.email,
+          name: customData?.name ?? existing?.name,
+          organization: customData?.organization ?? existing?.organization,
         });
       }
 
@@ -151,6 +179,21 @@ async function startServer() {
   app.get("/api/orders/:ref", (req, res) => {
     const order = orders.get(req.params.ref);
     res.json(order ?? { status: "pending" });
+  });
+
+  // ── GET /api/beta-slots — public live counter for the landing page ─────
+  app.get("/api/beta-slots", (_req, res) => {
+    const paidCount = Array.from(orders.values()).filter((o) => o.status === "paid").length;
+    const claimed = Math.min(BETA_SLOT_BASELINE + paidCount, BETA_SLOT_CAP);
+    res.json({ claimed, cap: BETA_SLOT_CAP });
+  });
+
+  // ── GET /api/admin/orders — customers, orgs, license keys (token-gated) ─
+  app.get("/api/admin/orders", requireAdmin, (_req, res) => {
+    const list = Array.from(orders.entries())
+      .map(([ref, order]) => ({ ref, ...order }))
+      .sort((a, b) => (b.paidAt ?? 0) - (a.paidAt ?? 0));
+    res.json({ orders: list });
   });
 
   // ── Middleware ─────────────────────────────────────────────────────────

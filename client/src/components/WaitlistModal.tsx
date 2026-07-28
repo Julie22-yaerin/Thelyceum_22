@@ -28,6 +28,8 @@ const steps = [
 
 interface FormData {
   email: string;
+  name: string;
+  organization: string;
   teamSize: string;
   aiCount: string;
   challenges: string;
@@ -38,6 +40,8 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     email: "",
+    name: "",
+    organization: "",
     teamSize: "",
     aiCount: "",
     challenges: "",
@@ -53,6 +57,13 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
     const url = new URL(base);
     url.searchParams.set("checkout[custom][ref]", checkoutRef);
     if (formData.email) url.searchParams.set("checkout[email]", formData.email);
+    if (formData.name) {
+      url.searchParams.set("checkout[name]", formData.name);
+      url.searchParams.set("checkout[custom][name]", formData.name);
+    }
+    if (formData.organization) {
+      url.searchParams.set("checkout[custom][organization]", formData.organization);
+    }
     url.searchParams.set(
       "checkout[redirect_url]",
       `${window.location.origin}/thank-you?ref=${checkoutRef}`
@@ -97,14 +108,27 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
 
   const reset = () => {
     setCurrentStep(0);
-    setFormData({ email: "", teamSize: "", aiCount: "", challenges: "", budget: "" });
+    setFormData({
+      email: "",
+      name: "",
+      organization: "",
+      teamSize: "",
+      aiCount: "",
+      challenges: "",
+      budget: "",
+    });
     setSubmitted(false);
     onClose();
   };
 
   const canProceed = () => {
     switch (currentStep) {
-      case 0: return formData.email.length > 3 && formData.email.includes("@");
+      case 0:
+        return (
+          formData.email.length > 3 &&
+          formData.email.includes("@") &&
+          formData.name.trim().length > 0
+        );
       case 1: return formData.teamSize.length > 0;
       case 2: return formData.aiCount.length > 0;
       case 3: return formData.challenges.length > 0;
@@ -318,16 +342,38 @@ function renderStep(
   switch (step) {
     case 0:
       return (
-        <div>
-          <label className={labelClass}>Business Email</label>
-          <input
-            type="email"
-            value={data.email}
-            onChange={(e) => updateField("email", e.target.value)}
-            placeholder="you@company.com"
-            className={inputClass}
-            autoFocus
-          />
+        <div className="space-y-6">
+          <div>
+            <label className={labelClass}>Business Email</label>
+            <input
+              type="email"
+              value={data.email}
+              onChange={(e) => updateField("email", e.target.value)}
+              placeholder="you@company.com"
+              className={inputClass}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className={labelClass}>What should we call you?</label>
+            <input
+              type="text"
+              value={data.name}
+              onChange={(e) => updateField("name", e.target.value)}
+              placeholder="e.g. Alex Chen"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Organization</label>
+            <input
+              type="text"
+              value={data.organization}
+              onChange={(e) => updateField("organization", e.target.value)}
+              placeholder="e.g. Acme Inc. (optional)"
+              className={inputClass}
+            />
+          </div>
         </div>
       );
     case 1:

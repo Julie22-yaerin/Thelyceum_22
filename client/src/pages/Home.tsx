@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Zap, Shield, Users, Brain, ChevronRight } from "lucide-react";
+import { ArrowRight, Zap, Shield, Users, Brain, ChevronRight, Clock, Radio, FileCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import WaitlistModal from "@/components/WaitlistModal";
 import AnimatedCounter from "@/components/AnimatedCounter";
 import AIWorkflowSimulation from "@/components/AIWorkflowSimulation";
+import BetaSlotCounter from "@/components/BetaSlotCounter";
 
 /*
  * The Lyceum — Landing Page
@@ -69,8 +70,24 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-warm-white">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-40 bg-warm-white/80 backdrop-blur-xl border-b border-border">
+      {/* Fixed top stack: urgency banner + nav */}
+      <div className="fixed top-0 left-0 right-0 z-50">
+        {/* Urgency Banner */}
+        <div className="bg-[#0f0f13] text-white text-center py-2 px-4">
+          <p className="text-xs sm:text-[13px] font-medium">
+            Beta Batch 1 is closing —{" "}
+            <button
+              onClick={() => setWaitlistOpen(true)}
+              className="underline underline-offset-2 decoration-teal-400 text-teal-300 hover:text-teal-200 transition-colors"
+            >
+              reserve your slot before the cap hits
+            </button>
+            .
+          </p>
+        </div>
+
+        {/* Navigation */}
+        <nav className="bg-warm-white/80 backdrop-blur-xl border-b border-border">
         <div className="container flex items-center justify-between h-16">
           <div className="flex items-center gap-2.5">
             <img
@@ -110,10 +127,11 @@ export default function Home() {
             Join Waitlist
           </Button>
         </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 sm:pt-40 sm:pb-32 relative overflow-hidden">
+      <section className="pt-40 pb-20 sm:pt-48 sm:pb-32 relative overflow-hidden">
         {/* Decorative geometric elements */}
         <div className="absolute top-20 right-8 sm:right-16 w-64 h-64 sm:w-96 sm:h-96 opacity-[0.04]">
           <svg viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -139,24 +157,29 @@ export default function Home() {
             className="max-w-3xl"
           >
             <p className="text-sm font-medium text-teal uppercase tracking-widest mb-6">
-              AI Workforce Management
+              Adaptive Audit Engine — Capped Beta
             </p>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground leading-[1.08] tracking-tight mb-6">
-              Stop managing tools.
+              Stop auditing agent output by hand.
               <br />
-              <span className="text-teal">Start leading a team.</span>
+              <span className="text-teal">Start trusting what ships.</span>
             </h1>
-            <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl mb-10">
-              The Lyceum is where AI becomes personnel — collaborating, communicating,
-              and making decisions that are audited before execution.
+            <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl mb-4">
+              Founders, COOs, and Lead Engineers lose 15+ hours a week fixing bad agent
+              output and combing through logs. The Adaptive Audit Engine reviews every
+              decision in real time — under 1000ms — so nothing reaches production unchecked.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4">
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-xl mb-10">
+              That latency guarantee is a hard infrastructure limit, not a promise —
+              which is why Beta access is capped to a fixed number of teams.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 mb-10">
               <Button
                 size="lg"
                 onClick={() => setWaitlistOpen(true)}
                 className="bg-teal hover:bg-teal-dark text-white px-8 h-12 text-base"
               >
-                Join the Waitlist
+                Reserve My Slot
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Button
@@ -169,6 +192,7 @@ export default function Home() {
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
+            <BetaSlotCounter />
           </motion.div>
         </div>
       </section>
@@ -336,30 +360,64 @@ export default function Home() {
         <div className="h-px bg-border" />
       </div>
 
-      {/* Pricing teaser */}
+      {/* Value Pitch + Deposit CTA */}
       <section id="pricing" className="py-24 sm:py-32">
         <div className="container">
-          <motion.div {...fadeInUp} className="text-center max-w-2xl mx-auto">
+          <motion.div {...fadeInUp} className="text-center max-w-2xl mx-auto mb-14">
             <p className="text-sm font-medium text-teal uppercase tracking-widest mb-4">
-              Early Access
+              Secure Your Slot
             </p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-foreground leading-tight mb-4">
-              Every decision, audited.
-              <br />
-              Every AI, accountable.
+              One deposit. 60+ hours back, every month.
             </h2>
-            <p className="text-muted-foreground leading-relaxed mb-10 max-w-lg mx-auto">
-              We're onboarding teams in phases. Join the waitlist to secure your spot
-              and get early access pricing.
+            <p className="text-muted-foreground leading-relaxed max-w-lg mx-auto">
+              Teams that lock in a Beta slot today get guaranteed access to a system
+              built to eliminate manual log review — teams report getting back
+              60+ hours of audit time per month once the Engine is live on their stack.
             </p>
-            <Button
-              size="lg"
-              onClick={() => setWaitlistOpen(true)}
-              className="bg-teal hover:bg-teal-dark text-white px-8 h-12 text-base"
-            >
-              Join the Waitlist
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
+          </motion.div>
+
+          <motion.div {...fadeInUp} className="max-w-md mx-auto">
+            <div className="rounded-2xl border-2 border-teal/20 bg-teal/[0.02] p-8 sm:p-10">
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="font-display text-lg font-semibold text-foreground">
+                  Priority Access Deposit
+                </span>
+              </div>
+              <p className="font-display text-4xl font-bold text-foreground mb-6">
+                $22
+                <span className="text-sm font-normal text-muted-foreground ml-1">
+                  one-time
+                </span>
+              </p>
+
+              <ul className="space-y-3 text-left mb-8">
+                {[
+                  { icon: Clock, text: "Guaranteed onboarding within 48 hours of launch" },
+                  { icon: Radio, text: "Priority server routing on the Adaptive Audit Engine" },
+                  { icon: FileCheck, text: "One custom audit rule, built for your workflow" },
+                ].map((perk, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-teal/10 flex items-center justify-center shrink-0 mt-0.5">
+                      <perk.icon className="w-3.5 h-3.5 text-teal" />
+                    </div>
+                    <span className="text-sm text-foreground leading-relaxed">{perk.text}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Button
+                size="lg"
+                onClick={() => setWaitlistOpen(true)}
+                className="w-full bg-teal hover:bg-teal-dark text-white h-12 text-base"
+              >
+                Reserve My Slot — $22 Deposit
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+              <p className="text-[11px] text-muted-foreground text-center mt-4 leading-relaxed">
+                Deposit applied toward your plan at launch.
+              </p>
+            </div>
           </motion.div>
         </div>
       </section>
