@@ -6,6 +6,7 @@ import WaitlistModal from "@/components/WaitlistModal";
 import AnimatedCounter from "@/components/AnimatedCounter";
 import AIWorkflowSimulation from "@/components/AIWorkflowSimulation";
 import BetaSlotCounter from "@/components/BetaSlotCounter";
+import { LicenseKeyEntry } from "@/components/LicenseKeyEntry";
 
 /*
  * The Lyceum — Landing Page
@@ -66,6 +67,7 @@ const metricsAfter = [
 
 export default function Home() {
   const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const [licenseKeyOpen, setLicenseKeyOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-warm-white">
@@ -109,13 +111,21 @@ export default function Home() {
               Pricing
             </a>
           </div>
-          <Button
-            size="sm"
-            onClick={() => setWaitlistOpen(true)}
-            className="bg-teal hover:bg-teal-dark text-white text-sm px-5"
-          >
-            Reserve Your Slot
-          </Button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setLicenseKeyOpen(true)}
+              className="hidden sm:inline text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Have a license key?
+            </button>
+            <Button
+              size="sm"
+              onClick={() => setWaitlistOpen(true)}
+              className="bg-teal hover:bg-teal-dark text-white text-sm px-5"
+            >
+              Reserve Your Slot
+            </Button>
+          </div>
         </div>
         </nav>
       </div>
@@ -433,6 +443,9 @@ export default function Home() {
 
       {/* Pre-order Modal — mandatory checkout, no free waitlist path */}
       <WaitlistModal open={waitlistOpen} onClose={() => setWaitlistOpen(false)} />
+
+      {/* Returning-customer license key entry → /waiting?key=... */}
+      <LicenseKeyEntry open={licenseKeyOpen} onClose={() => setLicenseKeyOpen(false)} />
     </div>
   );
 }

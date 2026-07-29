@@ -6,9 +6,12 @@ import { CredentialUsage } from "@/components/CredentialUsage";
 
 /*
  * The Lyceum — Waiting page
- * Polls /api/orders/:ref (populated by the Lemon Squeezy webhook in
- * server/index.ts) until the license key is ready, then reveals it plus a
- * booking link and Slack invite.
+ * Two ways in:
+ *   ?ref=<checkout ref>  — fresh checkout flow, polls /api/orders/:ref
+ *     (populated by the Lemon Squeezy webhook in server/index.ts) until
+ *     the license key is ready.
+ *   ?key=<license key>   — returning customer re-entering their key from
+ *     the landing page, verified once against GET /api/v1/account.
  */
 
 const CAL_LINK = import.meta.env.VITE_CAL_LINK || "nhu-y-pham-aliana-afiwbr/thelyceum.site";
@@ -16,18 +19,34 @@ const CAL_NAMESPACE = import.meta.env.VITE_CAL_NAMESPACE || "thelyceum.site";
 const SLACK_INVITE_URL = import.meta.env.VITE_SLACK_INVITE_URL || "";
 
 interface OrderStatus {
-  status: "pending" | "paid";
+  status: "pending" | "paid" | "invalid";
   licenseKey?: string;
   product?: string;
 }
 
 export default function Waiting() {
   useCalEmbed();
-  const ref = new URLSearchParams(window.location.search).get("ref") ?? "";
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get("ref") ?? "";
+  const key = params.get("key") ?? "";
   const [order, setOrder] = useState<OrderStatus>({ status: "pending" });
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    if (key) {
+      fetch("/api/v1/account", { headers: { Authorization: `Bearer ${key}` } })
+        .then(async (res) => {
+          if (!res.ok) {
+            setOrder({ status: "invalid" });
+            return;
+          }
+          const data = await res.json();
+          setOrder({ status: "paid", licenseKey: key, product: data.product });
+        })
+        .catch(() => setOrder({ status: "invalid" }));
+      return;
+    }
+
     if (!ref) return;
 
     let cancelled = false;
@@ -56,7 +75,7 @@ export default function Waiting() {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref]);
+  }, [ref, key]);
 
   const copyKey = async () => {
     if (!order.licenseKey) return;
@@ -68,9 +87,14 @@ export default function Waiting() {
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-6 py-16">
       <div className="max-w-lg w-full text-center">
-        {!ref ? (
+        {!ref && !key ? (
           <p className="text-muted-foreground text-sm">
-            Missing order reference. Please use the link from your checkout confirmation.
+            Missing order reference. Please use the link from your checkout confirmation, or
+            enter your license key from the homepage.
+          </p>
+        ) : order.status === "invalid" ? (
+          <p className="text-muted-foreground text-sm">
+            That license key wasn't found. Double-check it and try again from the homepage.
           </p>
         ) : order.status === "pending" ? (
           <>
