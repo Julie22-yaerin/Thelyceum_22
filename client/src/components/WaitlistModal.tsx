@@ -102,7 +102,22 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    try {
+      // Save to waitlist in Firestore — best-effort only, don't block on error
+      await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ref: checkoutRef,
+          name: formData.name,
+          email: formData.email,
+          organization: formData.organization,
+        }),
+      });
+    } catch {
+      // Network error or server not configured — still continue
+    }
     setSubmitted(true);
   };
 

@@ -16,7 +16,7 @@ const CAL_NAMESPACE = import.meta.env.VITE_CAL_NAMESPACE || "thelyceum.site";
 const SLACK_INVITE_URL = import.meta.env.VITE_SLACK_INVITE_URL || "";
 
 interface OrderStatus {
-  status: "pending" | "paid";
+  status: "pending" | "paid" | "waitlist";
   licenseKey?: string;
   product?: string;
 }
@@ -72,6 +72,18 @@ export default function Waiting() {
           <p className="text-muted-foreground text-sm">
             Missing order reference. Please use the link from your checkout confirmation.
           </p>
+        ) : order.status === "waitlist" ? (
+          <>
+            <div className="w-14 h-14 mx-auto mb-5 rounded-full bg-teal/10 flex items-center justify-center">
+              <Check className="w-7 h-7 text-teal" />
+            </div>
+            <h1 className="font-display text-xl font-semibold text-foreground mb-2">
+              You're on the list.
+            </h1>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Thanks for joining our waitlist! We'll notify you when your access is ready.
+            </p>
+          </>
         ) : order.status === "pending" ? (
           <>
             <Loader2 className="w-8 h-8 mx-auto mb-5 text-teal animate-spin" />

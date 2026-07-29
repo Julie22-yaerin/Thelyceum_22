@@ -11,6 +11,7 @@ import { getTask, listTasks } from "./db/tasks.js";
 import { InsufficientCreditsError, runTask } from "./lib/runTask.js";
 import { handleMcpRequest } from "./mcp/http-server.js";
 import { getSupabase } from "./lib/supabase.js";
+import { addToWaitlist, getWaitlistEntry, listWaitlist } from "./db/waitlist.js";
 
 // ── Lemon Squeezy payment tracking ──────────────────────────────────────────
 // In-memory order store, keyed by the `ref` we attach to each checkout link.
@@ -136,10 +137,45 @@ export function createApiApp(): express.Express {
     }
   );
 
+  // ── POST /api/waitlist — save early-stage waitlist entry ────────────────
+  app.post("/api/waitlist", async (req: express.Request, res: express.Response) => {
+    const { ref, name, email, organization } = (req.body ?? {}) as {
+      ref?: string;
+      name?: string;
+      email?: string;
+      organization?: string;
+    };
+    if (!ref || !name || !email) {
+      return res.status(400).json({ error: "ref, name, and email are required" });
+    }
+    try {
+      const entry = await addToWaitlist({ ref, name, email, organization: organization || "" });
+      res.json(entry);
+    } catch (err) {
+      res.status(503).json({ error: err instanceof Error ? err.message : "Failed to save waitlist entry" });
+    }
+  });
+
   // ── GET /api/orders/:ref — polled by the waiting page ──────────────────
-  app.get("/api/orders/:ref", (req: express.Request, res: express.Response) => {
+  app.get("/api/orders/:ref", async (req: express.Request, res: express.Response) => {
     const order = orders.get(req.params.ref);
-    res.json(order ?? { status: "pending" });
+    if (order) {
+      res.json(order);
+      return;
+    }
+
+    // Check if ref is in waitlist (Firestore)
+    try {
+      const waitlistEntry = await getWaitlistEntry(req.params.ref);
+      if (waitlistEntry) {
+        res.json({ status: "waitlist" });
+        return;
+      }
+    } catch {
+      // Firestore not configured — fall through
+    }
+
+    res.json({ status: "pending" });
   });
 
   // ── GET /api/beta-slots — public live counter for the landing page ─────
@@ -150,11 +186,25 @@ export function createApiApp(): express.Express {
   });
 
   // ── GET /api/admin/orders — customers, orgs, license keys (token-gated) ─
-  app.get("/api/admin/orders", requireAdmin, (_req: express.Request, res: express.Response) => {
-    const list = Array.from(orders.entries())
-      .map(([ref, order]) => ({ ref, ...order }))
+  app.get("/api/admin/orders", requireAdmin, async (_req: express.Request, res: express.Response) => {
+    const paidOrders = Array.from(orders.entries())
+      .map(([ref, order]) => ({ ref, ...order, source: "payment" as const }))
       .sort((a, b) => (b.paidAt ?? 0) - (a.paidAt ?? 0));
-    res.json({ orders: list });
+
+    let waitlistEntries: Array<{ ref: string; name: string; email: string; organization: string; createdAt: number; source: "waitlist"; status: "waitlist" }> = [];
+    try {
+      const entries = await listWaitlist(1000);
+      waitlistEntries = entries.map((e) => ({ ...e, source: "waitlist" as const, status: "waitlist" as const }));
+    } catch {
+      // Firestore not configured — just return paid orders
+    }
+
+    const all = [...paidOrders, ...waitlistEntries].sort((a, b) => {
+      const aTime = a.source === "payment" ? (a.paidAt ?? 0) : (a as any).createdAt ?? 0;
+      const bTime = b.source === "payment" ? (b.paidAt ?? 0) : (b as any).createdAt ?? 0;
+      return bTime - aTime;
+    });
+    res.json({ orders: all });
   });
 
   // ── Middleware ─────────────────────────────────────────────────────────
