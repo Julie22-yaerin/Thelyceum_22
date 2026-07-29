@@ -1,27 +1,20 @@
+import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useCalEmbed } from "@/hooks/useCalEmbed";
+import { Check, Loader2 } from "lucide-react";
 
 /*
  * The Lyceum — Thank You page
  * Shown after a successful Lemon Squeezy checkout (via checkout[redirect_url]).
- * Offers a Cal.com booking widget; visitors can also skip straight to the
- * waiting page where their license key will appear once the webhook lands.
+ * No waiting room — straight to the live beta workspace.
  */
-
-const CAL_LINK = import.meta.env.VITE_CAL_LINK || "nhu-y-pham-aliana-afiwbr/thelyceum.site";
-const CAL_NAMESPACE = import.meta.env.VITE_CAL_NAMESPACE || "thelyceum.site";
 
 export default function ThankYou() {
   const [, navigate] = useLocation();
-  useCalEmbed();
 
-  const ref = new URLSearchParams(window.location.search).get("ref") ?? "";
-
-  const goToWaiting = () => {
-    navigate(`/waiting${ref ? `?ref=${ref}` : ""}`);
-  };
+  useEffect(() => {
+    const timer = setTimeout(() => navigate("/onboarding"), 3000);
+    return () => clearTimeout(timer);
+  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-6">
@@ -33,25 +26,19 @@ export default function ThankYou() {
           Thank you for your trust.
         </h1>
         <p className="text-muted-foreground text-sm leading-relaxed mb-8">
-          Your pre-order is confirmed. Grab 15 minutes with our founder to walk through
-          your setup, or continue to your license key.
+          Your pre-order is confirmed. Taking you to the live beta workspace...
         </p>
 
-        <Button
-          size="lg"
-          data-cal-link={CAL_LINK}
-          data-cal-namespace={CAL_NAMESPACE}
-          data-cal-config='{"layout":"month_view","useSlotsViewOnSmallScreen":"true"}'
-          className="w-full bg-teal hover:bg-teal-dark text-white mb-3"
-        >
-          Book a call with the founder
-        </Button>
+        <div className="flex items-center justify-center gap-2 mb-6 text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-xs">Redirecting to workspace...</span>
+        </div>
 
         <button
-          onClick={goToWaiting}
+          onClick={() => navigate("/onboarding")}
           className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
         >
-          Skip — take me to my license key
+          Enter workspace now
         </button>
       </div>
     </div>

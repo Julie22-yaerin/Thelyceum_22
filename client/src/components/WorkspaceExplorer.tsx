@@ -12,7 +12,7 @@
  *   - Search within workspace
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -409,9 +409,12 @@ export default function WorkspaceExplorer() {
   };
 
   // ── All root folders for sidebar — read from full store (not navigation-filtered) ─
-  const allRootFolders = useWorkspaceStore(
-    (s) => s.folders.filter((f) => f.parentId === null)
-  );
+  // Selects the raw array (stable reference) and filters in useMemo — an
+  // inline `.filter()` inside the selector itself returns a new array every
+  // call, which defeats Zustand's reference-equality check and causes an
+  // infinite render loop ("Maximum update depth exceeded").
+  const allFolders = useWorkspaceStore((s) => s.folders);
+  const allRootFolders = useMemo(() => allFolders.filter((f) => f.parentId === null), [allFolders]);
 
   if (!workspacePanelOpen) return null;
 

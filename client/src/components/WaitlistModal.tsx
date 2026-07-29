@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
  * Pre-order is mandatory — there is no "just join, pay later" path. The
  * final step requires picking VIP or Basic and completing Lemon Squeezy
  * checkout; there's no free/no-payment exit.
- *   VIP ($122)  — earliest access + VIP privileges
- *   Basic ($22) — early access
+ *   VIP ($222) — earliest access + VIP privileges
+ *   Basic ($52) — early access
  */
 
 const LEMON_LINKS = {
@@ -211,10 +211,11 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                         <Crown className="w-7 h-7 text-teal" />
                       </div>
                       <h3 className="font-display text-xl font-semibold text-foreground mb-1.5">
-                        Reserve your spot
+                        Enter the Live Beta
                       </h3>
                       <p className="text-muted-foreground text-sm leading-relaxed max-w-sm mx-auto">
-                        A pre-order deposit is required to lock in your beta slot — pick a tier to continue.
+                        Immediate access to the live beta workspace. Witness daily improvements
+                        and help shape the product as it evolves — pick a tier below.
                       </p>
                     </div>
 
@@ -241,10 +242,10 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                           <span className="font-display font-semibold text-sm text-foreground">VIP</span>
                         </div>
                         <p className="text-2xl font-display font-bold text-foreground mb-1">
-                          $122
+                          $222
                         </p>
                         <p className="text-[10px] text-muted-foreground leading-relaxed mb-3">
-                          Earliest access + VIP privileges
+                          Immediate live beta access · Witness daily improvements · VIP privileges
                         </p>
                         <a
                           href={buildCheckoutUrl(LEMON_LINKS.VIP)}
@@ -262,10 +263,10 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                           <span className="font-display font-semibold text-sm text-foreground">Basic</span>
                         </div>
                         <p className="text-2xl font-display font-bold text-foreground mb-1">
-                          $22
+                          $52
                         </p>
                         <p className="text-[10px] text-muted-foreground leading-relaxed mb-3">
-                          Early access
+                          Immediate live beta access · Witness daily improvements
                         </p>
                         <a
                           href={buildCheckoutUrl(LEMON_LINKS.BASIC)}
@@ -279,6 +280,15 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
 
                     <p className="text-[9px] text-muted-foreground leading-relaxed max-w-sm mx-auto">
                       Secure checkout via Lemon Squeezy. A pre-order deposit is required to reserve your beta slot.
+                      By continuing you agree to our{" "}
+                      <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
+                        Terms
+                      </a>{" "}
+                      and{" "}
+                      <a href="/refund-policy" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
+                        Refund Policy
+                      </a>
+                      .
                     </p>
                   </motion.div>
                 )}

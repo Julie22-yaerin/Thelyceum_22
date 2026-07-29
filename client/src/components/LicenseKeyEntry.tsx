@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { X, KeyRound, ArrowRight, Loader2 } from "lucide-react";
+import { useSessionStore } from "@/store/useSessionStore";
 
 /*
- * Returning-customer entry point on the landing page — enter a license key
- * to jump straight back into the waiting room (/waiting?key=...) instead of
- * re-doing checkout. Verifies against GET /api/v1/account before
- * navigating so a typo shows an inline error instead of a dead page.
+ * License key entry on the landing page — enter a license key to jump
+ * straight into the live beta workspace. No waiting room.
  */
 
 export function LicenseKeyEntry({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [, navigate] = useLocation();
+  const setLicenseKey = useSessionStore((s) => s.setLicenseKey);
+  const loadServerSessions = useSessionStore((s) => s.loadServerSessions);
   const [key, setKey] = useState("");
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
@@ -33,7 +34,11 @@ export function LicenseKeyEntry({ open, onClose }: { open: boolean; onClose: () 
         setChecking(false);
         return;
       }
-      navigate(`/waiting?key=${encodeURIComponent(trimmed)}`);
+      // Store the license key for server-session sync
+      setLicenseKey(trimmed);
+      // Attempt to load any existing server-side sessions
+      loadServerSessions();
+      navigate("/onboarding");
     } catch {
       setError("Couldn't verify that key right now. Try again in a moment.");
       setChecking(false);
@@ -59,7 +64,7 @@ export function LicenseKeyEntry({ open, onClose }: { open: boolean; onClose: () 
           Enter your license key
         </h3>
         <p className="text-muted-foreground text-sm leading-relaxed mb-5">
-          Already pre-ordered? Enter your license key to go back to your waiting room.
+          Already pre-ordered? Enter your license key to go straight to the live beta.
         </p>
 
         <form onSubmit={submit}>
@@ -81,7 +86,7 @@ export function LicenseKeyEntry({ open, onClose }: { open: boolean; onClose: () 
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
-                Go to waiting room
+                Enter Live Beta
                 <ArrowRight className="w-4 h-4 ml-1.5" />
               </>
             )}

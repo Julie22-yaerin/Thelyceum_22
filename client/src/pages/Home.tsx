@@ -1,32 +1,74 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Zap, Shield, Users, Brain, ChevronRight, Clock, Radio, FileCheck } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useLocation } from "wouter";
+import {
+  ArrowRight, Zap, Shield, Users, Brain, Sparkles, Play, Trash2, Plus,
+} from "lucide-react";
 import WaitlistModal from "@/components/WaitlistModal";
 import AnimatedCounter from "@/components/AnimatedCounter";
 import AIWorkflowSimulation from "@/components/AIWorkflowSimulation";
-import BetaSlotCounter from "@/components/BetaSlotCounter";
+import CanvasWorkforceDemo from "@/components/CanvasWorkforceDemo";
 import { LicenseKeyEntry } from "@/components/LicenseKeyEntry";
+import { useSessionStore } from "@/store/useSessionStore";
 
-/*
- * The Lyceum — Landing Page
- * Design: Blueprint Minimal
- * Palette: warm white (#fafaf8), charcoal (#1a1a1a), teal (#0d9488)
- * Typography: Space Grotesk (display) + Inter (body)
- */
+import "@/styles/hero.css";
+
+/* ── Animation Variants ─────────────────────────────────────────────────────── */
+
+const ease = [0.16, 1, 0.3, 1] as const;
 
 const fadeInUp = {
-  initial: { y: 20, opacity: 0 },
+  initial: { y: 24, opacity: 0 },
   whileInView: { y: 0, opacity: 1 },
-  viewport: { once: true, margin: "-80px" },
-  transition: { duration: 0.5, ease: [0.23, 1, 0.32, 1] as const },
+  viewport: { once: true },
+  transition: { duration: 0.7, ease },
 };
 
 const staggerContainer = {
   initial: {},
-  whileInView: { transition: { staggerChildren: 0.08 } },
-  viewport: { once: true, margin: "-80px" },
+  whileInView: { transition: { staggerChildren: 0.1 } },
+  viewport: { once: true },
 };
+
+/* ── Data ────────────────────────────────────────────────────────────────────── */
+
+const testimonials = [
+  {
+    quote: "I've been in the beta since Day 1. Every morning there's something new — a feature request from yesterday is already live. It's wild watching a product evolve this fast.",
+    name: "Marcus Chen",
+    role: "Engineering Lead",
+    company: "NexGen Robotics",
+    avatar: "MC",
+  },
+  {
+    quote: "The transparency is what got me. Instead of a black-box roadmap, I see the changelog update in real time. I suggested a workflow tweak and it shipped 48 hours later.",
+    name: "Priya Kapoor",
+    role: "AI Product Manager",
+    company: "Synthesis AI",
+    avatar: "PK",
+  },
+  {
+    quote: "Day 3: I couldn't even get my team in. Day 4: the onboarding flow was completely revamped. That's the pace. You don't wait for updates — you wake up to them.",
+    name: "James Okonkwo",
+    role: "CTO",
+    company: "Vivida Labs",
+    avatar: "JO",
+  },
+  {
+    quote: "We went from fragmented AI tools to a single canvas where agents talk to each other. And I watched it get better every single day. This is how software should be built.",
+    name: "Elena Vasquez",
+    role: "VP of Operations",
+    company: "Orion Health",
+    avatar: "EV",
+  },
+  {
+    quote: "I paid $52 and got access immediately. No waiting list, no 'we'll email you'. Just straight into the workspace. The daily changelog banner is my favorite part — it's like getting a present every morning.",
+    name: "Aiden Park",
+    role: "Founder",
+    company: "Park AI Consulting",
+    avatar: "AP",
+  },
+];
 
 const features = [
   {
@@ -65,386 +107,545 @@ const metricsAfter = [
   { value: 100, suffix: "%", label: "Visibility into AI decision chains" },
 ];
 
+/* ── 4-Dot Grid SVG ──────────────────────────────────────────────────────────── */
+
+function GridIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 12 12" fill="none">
+      <circle cx="3" cy="3" r="1.5" fill="white" />
+      <circle cx="9" cy="3" r="1.5" fill="white" />
+      <circle cx="3" cy="9" r="1.5" fill="white" />
+      <circle cx="9" cy="9" r="1.5" fill="white" />
+    </svg>
+  );
+}
+
+/* ── Logo PNG ────────────────────────────────────────────────────────────────── */
+
+function LogoImage({ className, size }: { className?: string; size?: number }) {
+  return (
+    <img
+      src="/lyceum-logo.png"
+      alt="The Lyceum"
+      className={className}
+      style={{ width: size || 28, height: size || 28, objectFit: "contain" }}
+    />
+  );
+}
+
+/* ── Your Sessions ──────────────────────────────────────────────────────────── */
+
+function YourSessions() {
+  const [, setLocation] = useLocation();
+  const sessions = useSessionStore((s) => s.sessions);
+  const loadSession = useSessionStore((s) => s.loadSession);
+  const deleteSession = useSessionStore((s) => s.deleteSession);
+
+  if (sessions.length === 0) return null;
+
+  return (
+    <>
+      <div className="landing-divider" />
+      <section className="landing-section" style={{ paddingTop: 64, paddingBottom: 64 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
+          <motion.div {...fadeInUp}>
+            <p className="landing-section__label">Your Workspace</p>
+            <h2 className="landing-section__title" style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)" }}>
+              Resume where you left off
+            </h2>
+          </motion.div>
+          <motion.button
+            {...fadeInUp}
+            onClick={() => setLocation("/onboarding")}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              fontFamily: "'Inter', sans-serif", fontSize: 12, color: "#888",
+              background: "none", border: "none", cursor: "pointer",
+            }}
+          >
+            <Sparkles style={{ width: 12, height: 12 }} />
+            New Session
+          </motion.button>
+        </div>
+
+        <motion.div
+          variants={staggerContainer}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: 16,
+          }}
+        >
+          {[...sessions].reverse().map((s) => {
+            const done = s.tasks.filter((t) => t.status === "completed").length;
+            const total = s.tasks.length;
+            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+            const allDone = pct === 100;
+
+            return (
+              <motion.div
+                key={s.id}
+                variants={fadeInUp}
+                className="session-card"
+              >
+                <button
+                  className="session-card__delete"
+                  onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                  aria-label="Delete session"
+                >
+                  <Trash2 style={{ width: 12, height: 12 }} />
+                </button>
+
+                <button
+                  onClick={() => { loadSession(s.id); setLocation(`/session?session=${s.id}`); }}
+                  style={{
+                    width: "100%", textAlign: "left", padding: 20,
+                    background: "none", border: "none", cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 8,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: allDone ? "rgba(0,0,0,0.06)" : "rgba(0,0,0,0.04)",
+                      flexShrink: 0,
+                    }}>
+                      <Sparkles style={{ width: 14, height: 14, color: allDone ? "#111" : "#888" }} />
+                    </div>
+                    <p style={{
+                      fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 14, color: "#111",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0,
+                    }}>
+                      {s.name}
+                    </p>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <div style={{
+                      flex: 1, height: 4, borderRadius: 2,
+                      background: "rgba(0,0,0,0.06)", overflow: "hidden",
+                    }}>
+                      <div style={{
+                        height: "100%", borderRadius: 2, width: `${pct}%`,
+                        background: allDone ? "#111" : "rgba(0,0,0,0.3)",
+                        transition: "width 0.7s ease",
+                      }} />
+                    </div>
+                    <span style={{
+                      fontFamily: "'Inter', sans-serif", fontSize: 10, color: "#aaa",
+                      fontVariantNumeric: "tabular-nums",
+                    }}>
+                      {done}/{total}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 10, color: "#aaa" }}>
+                        {new Date(s.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      </span>
+                      <span style={{ fontSize: 8, color: "#ccc" }}>·</span>
+                      <span style={{
+                        fontFamily: "'Inter', sans-serif", fontSize: 10,
+                        color: allDone ? "#111" : "#888", fontWeight: allDone ? 500 : 400,
+                      }}>
+                        {allDone ? "Complete" : "In progress"}
+                      </span>
+                    </div>
+                    <Play className="session-card__play" style={{ width: 12, height: 12, color: "#111" }} />
+                  </div>
+                </button>
+              </motion.div>
+            );
+          })}
+
+          <motion.div variants={fadeInUp}>
+            <button
+              className="session-card__new"
+              onClick={() => setLocation("/onboarding")}
+            >
+              <Sparkles style={{ width: 20, height: 20, color: "#aaa" }} />
+              <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: "#888", fontWeight: 500 }}>
+                New Session
+              </span>
+            </button>
+          </motion.div>
+        </motion.div>
+      </section>
+      <div className="landing-divider" />
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════
+   Home — Landing Page
+   ════════════════════════════════════════════════════════════════════════════════ */
+
 export default function Home() {
+  const [, setLocation] = useLocation();
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [licenseKeyOpen, setLicenseKeyOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-warm-white">
-      {/* Fixed top stack: urgency banner + nav */}
-      <div className="fixed top-0 left-0 right-0 z-50">
-        {/* Urgency Banner */}
-        <div className="bg-[#0f0f13] text-white text-center py-2 px-4">
-          <p className="text-xs sm:text-[13px] font-medium">
-            Beta Batch 1 is closing —{" "}
-            <button
-              onClick={() => setWaitlistOpen(true)}
-              className="underline underline-offset-2 decoration-teal-400 text-teal-300 hover:text-teal-200 transition-colors"
-            >
-              reserve your slot before the cap hits
+    <div style={{ fontFamily: "'Inter', sans-serif", background: "#fff", minHeight: "100vh" }}>
+      {/* ── Hero Section ──────────────────────────────────────────────────────── */}
+      <section className="hero">
+
+        {/* Parallax background layers (CSS-only, fixed attachment) */}
+        <div className="hero__parallax">
+          <div className="hero__parallax-dots" />
+          <div className="hero__parallax-orb" />
+          <div className="hero__parallax-orb hero__parallax-orb--bottom" />
+        </div>
+
+        {/* Navbar */}
+        <motion.nav
+          className="hero__nav"
+          initial={{ y: -16, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.8, ease }}
+        >
+          <div className="hero__nav-left">
+            {/* Logo */}
+            <a href="/" className="hero__logo" style={{ textDecoration: "none" }}>
+              <LogoImage className="hero__logo-icon" />
+              <span className="hero__logo-text">The Lyceum</span>
+            </a>
+
+            {/* Menu button */}
+            <button className="hero__menu-btn" onClick={() => setWaitlistOpen(true)}>
+              <span className="hero__menu-btn-circle">
+                <Plus size={12} strokeWidth={3} color="#111" />
+              </span>
+              <span className="hero__menu-btn-text">Menu</span>
             </button>
-            .
-          </p>
-        </div>
 
-        {/* Navigation */}
-        <nav className="bg-warm-white/80 backdrop-blur-xl border-b border-border">
-        <div className="container flex items-center justify-between h-16">
-          <div className="flex items-center">
-            <img
-              src="/lyceum-logo.png"
-              alt="The Lyceum"
-              className="h-6 w-auto object-contain"
-            />
-          </div>
-          <div className="hidden sm:flex items-center gap-8">
-            <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Features
-            </a>
-            <a href="#simulation" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Simulation
-            </a>
-            <a href="#metrics" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Results
-            </a>
-            <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Pricing
-            </a>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setLicenseKeyOpen(true)}
-              className="hidden sm:inline text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Have a license key?
-            </button>
-            <Button
-              size="sm"
-              onClick={() => setWaitlistOpen(true)}
-              className="bg-teal hover:bg-teal-dark text-white text-sm px-5"
-            >
-              Reserve Your Slot
-            </Button>
-          </div>
-        </div>
-        </nav>
-      </div>
-
-      {/* Hero Section */}
-      <section className="pt-40 pb-20 sm:pt-48 sm:pb-32 relative overflow-hidden">
-        {/* Decorative geometric elements */}
-        <div className="absolute top-20 right-8 sm:right-16 w-64 h-64 sm:w-96 sm:h-96 opacity-[0.04]">
-          <svg viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="200" cy="200" r="180" stroke="#1a1a1a" strokeWidth="1" />
-            <circle cx="200" cy="200" r="140" stroke="#0d9488" strokeWidth="0.5" />
-            <circle cx="200" cy="200" r="100" stroke="#1a1a1a" strokeWidth="0.5" />
-            <line x1="20" y1="200" x2="380" y2="200" stroke="#1a1a1a" strokeWidth="0.5" />
-            <line x1="200" y1="20" x2="200" y2="380" stroke="#1a1a1a" strokeWidth="0.5" />
-          </svg>
-        </div>
-        <div className="absolute bottom-10 left-8 sm:left-16 w-32 h-32 opacity-[0.03]">
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="10" y="10" width="80" height="80" stroke="#0d9488" strokeWidth="1" />
-            <line x1="10" y1="10" x2="90" y2="90" stroke="#1a1a1a" strokeWidth="0.5" />
-          </svg>
-        </div>
-
-        <div className="container relative z-10">
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] as const }}
-            className="max-w-3xl"
-          >
-            <p className="text-sm font-medium text-teal uppercase tracking-widest mb-6">
-              Adaptive Audit Engine — Capped Beta
-            </p>
-            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground leading-[1.08] tracking-tight mb-6">
-              Stop auditing agent output by hand.
-              <br />
-              <span className="text-teal">Start trusting what ships.</span>
-            </h1>
-            <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed max-w-xl mb-4">
-              Founders, COOs, and Lead Engineers lose 15+ hours a week fixing bad agent
-              output and combing through logs. The Adaptive Audit Engine reviews every
-              decision in real time — under 1000ms — so nothing reaches production unchecked.
-            </p>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-xl mb-10">
-              That latency guarantee is a hard infrastructure limit, not a promise —
-              which is why Beta access is capped to a fixed number of teams.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 mb-10">
-              <Button
-                size="lg"
-                onClick={() => setWaitlistOpen(true)}
-                className="bg-teal hover:bg-teal-dark text-white px-8 h-12 text-base"
-              >
-                Reserve My Slot
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => document.getElementById("metrics")?.scrollIntoView({ behavior: "smooth" })}
-                className="border-border text-foreground hover:bg-secondary h-12 text-base"
-              >
-                See the Numbers
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
+            {/* Tags pill */}
+            <div className="hero__tags-pill">
+              <span className="hero__tags-pill-label">AI Workforce</span>
+              <span className="hero__tags-pill-label">Agent Collaboration</span>
             </div>
-            <BetaSlotCounter />
-          </motion.div>
-        </div>
-      </section>
+          </div>
 
-      {/* Thin divider */}
-      <div className="container">
-        <div className="h-px bg-border" />
-      </div>
+          <div className="hero__nav-right">
+            {/* Right pill */}
+            <div className="hero__right-pill">
+              <button className="hero__right-pill-btn" onClick={() => setLicenseKeyOpen(true)}>
+                <GridIcon size={12} />
+              </button>
+              <span className="hero__right-pill-label">Adaptive Systems</span>
+            </div>
+          </div>
+        </motion.nav>
 
-      {/* Features Section */}
-      <section id="features" className="py-24 sm:py-32">
-        <div className="container">
-          <motion.div {...fadeInUp} className="max-w-2xl mb-16">
-            <p className="text-sm font-medium text-teal uppercase tracking-widest mb-4">
-              Built for Teams
-            </p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-foreground leading-tight mb-4">
-              AI shouldn't work alone.
-              <br />
-              Neither should your team.
-            </h2>
-            <p className="text-muted-foreground leading-relaxed">
-              The Lyceum provides the structure, oversight, and collaboration layer
-              that turns scattered AI tools into an organized workforce.
-            </p>
-          </motion.div>
-
-          <motion.div
-            variants={staggerContainer}
-            className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-12"
-          >
-            {features.map((feature, i) => (
+        {/* Footer content pinned to bottom */}
+        <motion.div
+          className="hero__footer"
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 1, delay: 0.5, ease }}
+        >
+          <div className="hero__footer-inner">
+            <div className="hero__footer-left">
+              {/* Subtitle */}
               <motion.div
-                key={i}
-                variants={fadeInUp}
-                className="group"
+                className="hero__subtitle"
+                initial={{ y: 16, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.8, delay: 0.6, ease }}
               >
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-teal/8 flex items-center justify-center shrink-0 group-hover:bg-teal/12 transition-colors">
-                    <feature.icon className="w-5 h-5 text-teal" />
-                  </div>
-                  <div>
-                    <h3 className="font-display text-lg font-semibold text-foreground mb-2">
-                      {feature.title}
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {feature.desc}
-                    </p>
-                  </div>
-                </div>
+                <span className="hero__subtitle-dot" />
+                <span className="hero__subtitle-text">AI Workforce & Collaboration Canvas — 2026</span>
               </motion.div>
-            ))}
-          </motion.div>
-        </div>
+
+              {/* Heading */}
+              <motion.h1
+                className="hero__heading"
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.8, delay: 0.8, ease }}
+              >
+                One Platform.
+                <br />
+                Zero Limits. <span style={{ fontWeight: 300, color: "#888" }}>Worldwide.</span>
+              </motion.h1>
+
+              {/* Buttons */}
+              <motion.div
+                className="hero__buttons"
+                initial={{ y: 16, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.8, delay: 1.0, ease }}
+              >
+                <button
+                  className="hero__btn-primary"
+                  onClick={() => setWaitlistOpen(true)}
+                >
+                  See Features
+                  <ArrowRight style={{ width: 14, height: 14 }} />
+                </button>
+                <button
+                  className="hero__btn-secondary"
+                  onClick={() => {
+                    const el = document.getElementById("metrics");
+                    if (!el) return;
+                    const navH = 80; // fixed navbar height
+                    const top = el.getBoundingClientRect().top + window.scrollY - navH;
+                    window.scrollTo({ top, behavior: "smooth" });
+                  }}
+                >
+                  How It Works
+                </button>
+              </motion.div>
+            </div>
+
+            {/* Right block — tags */}
+            <motion.div
+              className="hero__footer-right"
+              initial={{ y: 16, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.8, delay: 1.2, ease }}
+            >
+              <span className="hero__tag">Neuromorphic</span>
+              <span className="hero__tag">AGI</span>
+              <span className="hero__tag">Cybernetics</span>
+            </motion.div>
+          </div>
+        </motion.div>
       </section>
 
-      {/* AI Workflow Simulation */}
+      {/* ── Canvas Workforce Demo (zero scroll impact) ──────────────────── */}
+      <CanvasWorkforceDemo onNavigateToWorkspace={() => setLocation("/onboarding")} />
+
+      {/* ── Below Hero: Existing Sections ─────────────────────────────────────── */}
+
+      <YourSessions />
+
+      {/* ── Features Section ──────────────────────────────────────────────────── */}
+      <section id="features" className="landing-section">
+        <motion.div {...fadeInUp}>
+          <p className="landing-section__label">Built for Teams</p>
+          <h2 className="landing-section__title">
+            AI shouldn't work alone.
+            <br />
+            Neither should your team.
+          </h2>
+          <p className="landing-section__desc">
+            The Lyceum provides the structure, oversight, and collaboration layer
+            that turns scattered AI tools into an organized workforce.
+          </p>
+        </motion.div>
+
+        <motion.div variants={staggerContainer} className="landing-features" style={{ marginTop: 56 }}>
+          {features.map((feature, i) => (
+            <motion.div key={i} variants={fadeInUp} className="landing-feature">
+              <div className="landing-feature__icon">
+                <feature.icon />
+              </div>
+              <div>
+                <h3 className="landing-feature__title">{feature.title}</h3>
+                <p className="landing-feature__desc">{feature.desc}</p>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
+
+      {/* ── AI Workflow Simulation ────────────────────────────────────────────── */}
       <AIWorkflowSimulation />
 
-      {/* Divider */}
-      <div className="container">
-        <div className="h-px bg-border" />
-      </div>
+      {/* ── Divider ───────────────────────────────────────────────────────────── */}
+      <div className="landing-divider" />
 
-      {/* Before / After Metrics */}
-      <section id="metrics" className="py-24 sm:py-32">
-        <div className="container">
-          <motion.div {...fadeInUp} className="text-center max-w-2xl mx-auto mb-16">
-            <p className="text-sm font-medium text-teal uppercase tracking-widest mb-4">
-              Measured Impact
-            </p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-foreground leading-tight mb-4">
-              Before The Lyceum. After.
-            </h2>
-            <p className="text-muted-foreground leading-relaxed">
-              Real metrics from early adopters who moved from chaotic AI tooling
-              to structured AI workforce management.
-            </p>
+      {/* ── Before / After Metrics ────────────────────────────────────────────── */}
+      <section id="metrics" className="landing-section">
+        <motion.div {...fadeInUp} style={{ textAlign: "center", maxWidth: 600, margin: "0 auto 56px" }}>
+          <p className="landing-section__label">Measured Impact</p>
+          <h2 className="landing-section__title">Before The Lyceum. After.</h2>
+          <p className="landing-section__desc" style={{ margin: "0 auto" }}>
+            Real metrics from early adopters who moved from chaotic AI tooling
+            to structured AI workforce management.
+          </p>
+        </motion.div>
+
+        <div className="landing-metrics">
+          {/* Before */}
+          <motion.div {...fadeInUp}>
+            <div className="landing-metric-card">
+              <p className="landing-metric-card__label">Before — Scattered AI Tools</p>
+              {metricsBefore.map((metric, i) => (
+                <motion.div
+                  key={i}
+                  className="landing-metric-row"
+                  initial={{ x: -10, opacity: 0 }}
+                  whileInView={{ x: 0, opacity: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1, duration: 0.4, ease: "easeOut" }}
+                >
+                  <div className="landing-metric-value">
+                    <AnimatedCounter target={metric.value} suffix={metric.suffix} />
+                  </div>
+                  <p className="landing-metric-label">{metric.label}</p>
+                </motion.div>
+              ))}
+            </div>
           </motion.div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Before */}
-            <motion.div {...fadeInUp}>
-              <div className="rounded-xl border border-border p-8 sm:p-10">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-8">
-                  Before — Scattered AI Tools
-                </p>
-                <div className="space-y-8">
-                  {metricsBefore.map((metric, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ x: -10, opacity: 0 }}
-                      whileInView={{ x: 0, opacity: 1 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: i * 0.1, duration: 0.4, ease: "easeOut" as const }}
-                    >
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="font-display text-3xl sm:text-4xl font-bold text-muted-foreground/60">
-                          {metric.decimal ? (
-                            <AnimatedCounter target={metric.value} suffix={metric.suffix} />
-                          ) : (
-                            <AnimatedCounter target={metric.value} suffix={metric.suffix} />
-                          )}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{metric.label}</p>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-
-            {/* After */}
-            <motion.div {...fadeInUp}>
-              <div className="rounded-xl border-2 border-teal/20 bg-teal/[0.02] p-8 sm:p-10">
-                <p className="text-xs font-medium text-teal uppercase tracking-widest mb-8">
-                  After — The Lyceum
-                </p>
-                <div className="space-y-8">
-                  {metricsAfter.map((metric, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ x: 10, opacity: 0 }}
-                      whileInView={{ x: 0, opacity: 1 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: i * 0.1, duration: 0.4, ease: "easeOut" as const }}
-                    >
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="font-display text-3xl sm:text-4xl font-bold text-teal">
-                          <AnimatedCounter target={metric.value} suffix={metric.suffix} />
-                        </span>
-                      </div>
-                      <p className="text-sm text-foreground">{metric.label}</p>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Reduction highlights */}
-          <motion.div
-            {...fadeInUp}
-            className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-6"
-          >
-            {[
-              { value: 91, suffix: "%", label: "Faster approval" },
-              { value: 84, suffix: "%", label: "Less rework" },
-              { value: 83, suffix: "%", label: "Fewer errors" },
-              { value: 100, suffix: "%", label: "Full visibility" },
-            ].map((item, i) => (
-              <div key={i} className="text-center">
-                <p className="font-display text-2xl sm:text-3xl font-bold text-teal mb-1">
-                  <AnimatedCounter target={item.value} suffix={item.suffix} />
-                </p>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">{item.label}</p>
-              </div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Divider */}
-      <div className="container">
-        <div className="h-px bg-border" />
-      </div>
-
-      {/* Value Pitch + Deposit CTA */}
-      <section id="pricing" className="py-24 sm:py-32">
-        <div className="container">
-          <motion.div {...fadeInUp} className="text-center max-w-2xl mx-auto mb-14">
-            <p className="text-sm font-medium text-teal uppercase tracking-widest mb-4">
-              Secure Your Slot
-            </p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-foreground leading-tight mb-4">
-              One deposit. 60+ hours back, every month.
-            </h2>
-            <p className="text-muted-foreground leading-relaxed max-w-lg mx-auto">
-              Teams that lock in a Beta slot today get guaranteed access to a system
-              built to eliminate manual log review — teams report getting back
-              60+ hours of audit time per month once the Engine is live on their stack.
-            </p>
-          </motion.div>
-
-          <motion.div {...fadeInUp} className="max-w-md mx-auto">
-            <div className="rounded-2xl border-2 border-teal/20 bg-teal/[0.02] p-8 sm:p-10">
-              <div className="flex items-baseline justify-between mb-1">
-                <span className="font-display text-lg font-semibold text-foreground">
-                  Priority Access Deposit
-                </span>
-              </div>
-              <p className="font-display text-4xl font-bold text-foreground mb-6">
-                $22
-                <span className="text-sm font-normal text-muted-foreground ml-1">
-                  one-time
-                </span>
-              </p>
-
-              <ul className="space-y-3 text-left mb-8">
-                {[
-                  { icon: Clock, text: "Guaranteed onboarding within 48 hours of launch" },
-                  { icon: Radio, text: "Priority server routing on the Adaptive Audit Engine" },
-                  { icon: FileCheck, text: "One custom audit rule, built for your workflow" },
-                ].map((perk, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-teal/10 flex items-center justify-center shrink-0 mt-0.5">
-                      <perk.icon className="w-3.5 h-3.5 text-teal" />
-                    </div>
-                    <span className="text-sm text-foreground leading-relaxed">{perk.text}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Button
-                size="lg"
-                onClick={() => setWaitlistOpen(true)}
-                className="w-full bg-teal hover:bg-teal-dark text-white h-12 text-base"
-              >
-                Reserve My Slot — $22 Deposit
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-              <p className="text-[11px] text-muted-foreground text-center mt-4 leading-relaxed">
-                Deposit applied toward your plan at launch.
-              </p>
+          {/* After */}
+          <motion.div {...fadeInUp}>
+            <div className="landing-metric-card landing-metric-card--highlight">
+              <p className="landing-metric-card__label">After — The Lyceum</p>
+              {metricsAfter.map((metric, i) => (
+                <motion.div
+                  key={i}
+                  className="landing-metric-row"
+                  initial={{ x: 10, opacity: 0 }}
+                  whileInView={{ x: 0, opacity: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1, duration: 0.4, ease: "easeOut" }}
+                >
+                  <div className="landing-metric-value">
+                    <AnimatedCounter target={metric.value} suffix={metric.suffix} />
+                  </div>
+                  <p className="landing-metric-label">{metric.label}</p>
+                </motion.div>
+              ))}
             </div>
           </motion.div>
         </div>
+
+        {/* Reduction highlights */}
+        <motion.div {...fadeInUp} className="landing-reductions">
+          {[
+            { value: 91, suffix: "%", label: "Faster approval" },
+            { value: 84, suffix: "%", label: "Less rework" },
+            { value: 83, suffix: "%", label: "Fewer errors" },
+            { value: 100, suffix: "%", label: "Full visibility" },
+          ].map((item, i) => (
+            <div key={i}>
+              <div className="landing-reduction__value">
+                <AnimatedCounter target={item.value} suffix={item.suffix} />
+              </div>
+              <p className="landing-reduction__label">{item.label}</p>
+            </div>
+          ))}
+        </motion.div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border py-8">
-        <div className="container flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <img
-              src="/favicon.png"
-              alt="The Lyceum"
-              className="w-5 h-5 object-contain"
-            />
-            <span className="text-sm text-muted-foreground">
-              The Lyceum — AI Workforce Management
-            </span>
+      {/* ── Divider ───────────────────────────────────────────────────────────── */}
+      <div className="landing-divider" />
+
+      {/* ── Value Pitch + Pricing ─────────────────────────────────────────────── */}
+      <section id="pricing" className="landing-section">
+        <motion.div {...fadeInUp} style={{ textAlign: "center", maxWidth: 600, margin: "0 auto 56px" }}>
+          <p className="landing-section__label">Enter the Live Beta</p>
+          <h2 className="landing-section__title">
+            Immediate access. Daily evolution.
+          </h2>
+          <p className="landing-section__desc" style={{ margin: "0 auto" }}>
+            Skip the wait. Pre-order unlocks the live beta workspace instantly —
+            you'll see new features, improvements, and fixes every single day
+            as we build in the open.
+          </p>
+        </motion.div>
+
+        <motion.div {...fadeInUp} className="landing-pricing">
+          <div className="landing-pricing__name">Live Beta Access</div>
+          <div className="landing-pricing__price">
+            $52
+            <span className="landing-pricing__price-sub">one-time deposit</span>
           </div>
-          <p className="text-xs text-muted-foreground">
+
+          <ul className="landing-pricing__perks">
+            {[
+              { icon: Zap, text: "Immediate access to the live beta workspace" },
+              { icon: Sparkles, text: "Witness daily improvements — changelog updates in real time" },
+              { icon: Users, text: "Join a community shaping the product day by day" },
+            ].map((perk, i) => (
+              <li key={i} className="landing-pricing__perk">
+                <div className="landing-pricing__perk-icon">
+                  <perk.icon />
+                </div>
+                <span>{perk.text}</span>
+              </li>
+            ))}
+          </ul>
+
+          <button
+            className="hero__btn-primary"
+            style={{ width: "100%", justifyContent: "center", padding: "14px 20px" }}
+            onClick={() => setWaitlistOpen(true)}
+          >
+            Enter Live Beta — $52
+            <ArrowRight style={{ width: 14, height: 14 }} />
+          </button>
+          <p className="landing-pricing__note">
+            One-time deposit. No subscription required.
+          </p>
+        </motion.div>
+      </section>
+
+      {/* ── Testimonials ─────────────────────────────────────────────────────── */}
+      <div className="landing-divider" />
+      <section className="landing-section">
+        <motion.div {...fadeInUp} style={{ textAlign: "center", maxWidth: 600, margin: "0 auto 48px" }}>
+          <p className="landing-section__label">Early Adopters</p>
+          <h2 className="landing-section__title">
+            They saw it happen. Day by day.
+          </h2>
+          <p className="landing-section__desc" style={{ margin: "0 auto" }}>
+            Real beta users who joined early and watched the product reshape itself
+            in front of them.
+          </p>
+        </motion.div>
+
+        <motion.div
+          variants={staggerContainer}
+          className="landing-testimonials"
+        >
+          {testimonials.map((t, i) => (
+            <motion.div
+              key={i}
+              variants={fadeInUp}
+              className="landing-testimonial"
+            >
+              <div className="landing-testimonial__quote">
+                &ldquo;{t.quote}&rdquo;
+              </div>
+              <div className="landing-testimonial__author">
+                <div className="landing-testimonial__avatar">
+                  {t.avatar}
+                </div>
+                <div>
+                  <p className="landing-testimonial__name">{t.name}</p>
+                  <p className="landing-testimonial__role">{t.role} · {t.company}</p>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+      </section>
+
+      {/* ── Site Footer ───────────────────────────────────────────────────────── */}
+      <footer className="landing-site-footer">
+        <div className="landing-site-footer__inner">
+          <div className="landing-site-footer__brand">
+            <LogoImage size={20} />
+            <span>The Lyceum — AI Workforce Management</span>
+          </div>
+          <nav className="flex items-center gap-4 text-xs text-muted-foreground">
+            <a href="/terms" className="hover:text-foreground transition-colors">Terms of Service</a>
+            <a href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</a>
+            <a href="/refund-policy" className="hover:text-foreground transition-colors">Refund Policy</a>
+          </nav>
+          <p className="landing-site-footer__copy">
             &copy; {new Date().getFullYear()} The Lyceum. All rights reserved.
           </p>
         </div>
       </footer>
 
-      {/* Pre-order Modal — mandatory checkout, no free waitlist path */}
+      {/* ── Modals ────────────────────────────────────────────────────────────── */}
       <WaitlistModal open={waitlistOpen} onClose={() => setWaitlistOpen(false)} />
-
-      {/* Returning-customer license key entry → /waiting?key=... */}
       <LicenseKeyEntry open={licenseKeyOpen} onClose={() => setLicenseKeyOpen(false)} />
     </div>
   );

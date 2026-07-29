@@ -23,7 +23,7 @@ import { z } from "zod";
 import { DOMAINS, type Domain } from "../../client/src/lib/modelConfig.js";
 import type { Account } from "../db/accounts.js";
 import { getTask, listTasks } from "../db/tasks.js";
-import { InsufficientCreditsError, runTask, TASK_COST } from "../lib/runTask.js";
+import { InsufficientCreditsError, MaxAttemptsError, NeedsHumanApprovalError, RetryableError, runTask, TASK_COST, type RunTaskResult } from "../lib/runTask.js";
 import type { AuthedRequest } from "../lib/auth.js";
 
 function buildServer(account: Account): McpServer {
@@ -65,38 +65,46 @@ function buildServer(account: Account): McpServer {
       },
     },
     async ({ domain, prompt }: { domain: string; prompt: string }) => {
-      try {
-        const result = await runTask({
-          licenseKey: account.licenseKey,
-          domain: domain as Domain,
-          prompt,
-          source: "mcp",
-        });
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${result.result}\n\n[task ${result.taskId} · ${result.creditsCost} credits used · ${result.creditsRemaining} remaining]`,
-            },
-          ],
-        };
-      } catch (err) {
-        if (err instanceof InsufficientCreditsError) {
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text" as const,
-                text: `Insufficient credits: ${err.remaining} remaining, ${err.requested} needed for this task.`,
-              },
-            ],
-          };
+      // ── Auto-retry loop (up to 2 attempts) ────────────────────────────
+      let lastResult: RunTaskResult | null = null;
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await runTask({
+            licenseKey: account.licenseKey,
+            domain: domain as Domain,
+            prompt,
+            source: "mcp",
+            existingTaskId: lastResult?.taskId,
+          });
+          lastResult = result;
+          break; // success — exit loop
+        } catch (err) {
+          if (err instanceof RetryableError) {
+            // Auto-retry allowed — loop will retry
+            continue;
+          }
+          // Non-retryable error — handle below
+          return handleTaskError(err);
         }
+      }
+
+      // Loop exhausted without success (RetryableError kept throwing)
+      if (!lastResult) {
         return {
           isError: true,
-          content: [{ type: "text" as const, text: err instanceof Error ? err.message : "Task failed" }],
+          content: [{ type: "text" as const, text: "Task failed after 2 attempts. Please try again later." }],
         };
       }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `${lastResult.result}\n\n[task ${lastResult.taskId} · ${lastResult.creditsCost} credits used · ${lastResult.creditsRemaining} remaining]`,
+          },
+        ],
+      };
     }
   );
 
@@ -158,6 +166,47 @@ function buildServer(account: Account): McpServer {
   );
 
   return server;
+}
+
+/** Shared error-to-MCP-response mapper used by the assign_task handler. */
+function handleTaskError(err: unknown): { isError: true; content: { type: "text"; text: string }[] } {
+  if (err instanceof InsufficientCreditsError) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: `Insufficient credits: ${err.remaining} remaining, ${err.requested} needed for this task.`,
+        },
+      ],
+    };
+  }
+  if (err instanceof NeedsHumanApprovalError) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: `⚠️ Human approval required\n\n${err.approvalRequest.errorContext}\n\nRequest: ${err.approvalRequest.requestedAction}\nSubmit retry approval via the Lyceum workspace.\n\n[task ${err.taskId}]`,
+        },
+      ],
+    };
+  }
+  if (err instanceof MaxAttemptsError) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: `⛔ Max attempts exhausted (${err.maxAttempts}).\n\nLast error: ${err.lastError}\n\n[task ${err.taskId}]`,
+        },
+      ],
+    };
+  }
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text: err instanceof Error ? err.message : "Task failed" }],
+  };
 }
 
 export async function handleMcpRequest(req: AuthedRequest, res: express.Response): Promise<void> {

@@ -10,7 +10,7 @@
  *   Tech    → Gemini Flash 3.5 (fast iteration, code generation, debugging)
  */
 
-export const DOMAINS = ["LAW", "FINANCE", "TECH", "MUSE"] as const;
+export const DOMAINS = ["LAW", "FINANCE", "TECH", "MUSE", "KIMI"] as const;
 export type Domain = (typeof DOMAINS)[number];
 
 export interface ModelRoute {
@@ -54,6 +54,12 @@ export const MODEL_ROUTES: Record<Domain, ModelRoute> = {
     provider: "Meta — Muse Spark 1.1",
     rationale: "Document structure analysis, section extraction, and content group classification",
   },
+  KIMI: {
+    label: "Kimi",
+    model: "moonshot/kimi-3",
+    provider: "Moonshot — KIMI 3",
+    rationale: "Advanced workflow generation, task decomposition, and optimization for AI-human collaboration pipelines",
+  },
 };
 
 /**
@@ -66,6 +72,7 @@ export function getApiKeyForDomain(domain: Domain): string {
     FINANCE: import.meta.env.VITE_OPENROUTER_KEY_FINANCE,
     TECH: import.meta.env.VITE_OPENROUTER_KEY_TECH,
     MUSE: import.meta.env.VITE_OPENROUTER_KEY_MUSE,
+    KIMI: import.meta.env.VITE_OPENROUTER_KEY_KIMI,
   };
 
   const key = envMap[domain];

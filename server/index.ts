@@ -4,10 +4,11 @@ import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { DOMAINS, type Domain } from "../client/src/lib/modelConfig.js";
-import { KEY_MAP, proxyToOpenRouter, type ProxyRequestBody } from "./lib/openrouter.js";
+import { KEY_MAP, MODEL_ROUTES, proxyToOpenRouter, proxyStreamToOpenRouter, type ProxyRequestBody } from "./lib/openrouter.js";
 import { authenticateLicenseKey, type AuthedRequest } from "./lib/auth.js";
 import { provisionAccount } from "./db/accounts.js";
 import { getTask, listTasks } from "./db/tasks.js";
+import type { TaskSessionData } from "./db/sessionTypes.js";
 import { InsufficientCreditsError, runTask } from "./lib/runTask.js";
 import { handleMcpRequest } from "./mcp/http-server.js";
 import { getSupabase } from "./lib/supabase.js";
@@ -160,7 +161,7 @@ export function createApiApp(): express.Express {
   // ── Middleware ─────────────────────────────────────────────────────────
   app.use(express.json({ limit: "1mb" }));
 
-  // ── POST /api/chat — Server-side OpenRouter proxy ─────────────────────
+  // ── POST /api/chat — Server-side OpenRouter proxy (non-streaming) ────
   app.post("/api/chat", async (req: express.Request, res: express.Response) => {
     try {
       const result = await proxyToOpenRouter(req.body as ProxyRequestBody);
@@ -168,6 +169,165 @@ export function createApiApp(): express.Express {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Internal server error";
       res.status(502).json({ error: message });
+    }
+  });
+
+  // ── POST /api/chat/stream — Streaming OpenRouter proxy (SSE) ──────────
+  app.post("/api/chat/stream", async (req: express.Request, res: express.Response) => {
+    const { domain, messages, temperature, maxTokens } = (req.body ?? {}) as {
+      domain?: string;
+      messages?: { role: string; content: string }[];
+      temperature?: number;
+      maxTokens?: number;
+    };
+
+    if (!domain || !messages) {
+      return res.status(400).json({ error: "Both 'domain' and 'messages' are required" });
+    }
+
+    const apiKey = KEY_MAP[domain as keyof typeof KEY_MAP];
+    if (!apiKey) {
+      return res.status(502).json({ error: `No API key configured for domain "${domain}"` });
+    }
+
+    const route = MODEL_ROUTES[domain as keyof typeof MODEL_ROUTES];
+    if (!route) {
+      return res.status(400).json({ error: `Unknown domain "${domain}"` });
+    }
+
+    try {
+      await proxyStreamToOpenRouter({
+        domain: domain as any,
+        messages,
+        temperature,
+        maxTokens,
+        onHeaders: (headers) => {
+          // Forward SSE headers
+          res.writeHead(headers.status || 200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+            "X-Accel-Buffering": "no",
+          });
+        },
+        onChunk: (chunk: string) => {
+          res.write(chunk);
+        },
+        onDone: () => {
+          res.write("data: [DONE]\n\n");
+          res.end();
+        },
+        onError: (err: Error) => {
+          // If headers already sent, write error as SSE
+          if (res.headersSent) {
+            res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+            res.write("data: [DONE]\n\n");
+            res.end();
+          } else {
+            res.status(502).json({ error: err.message });
+          }
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Internal server error";
+      if (!res.headersSent) {
+        res.status(502).json({ error: message });
+      } else {
+        res.end();
+      }
+    }
+  });
+
+  // ── Session API ──────────────────────────────────────────────────────
+  // All session routes require a valid license key (or admin token).
+  // The client sends `Authorization: Bearer <license key>`.
+
+  app.post("/api/sessions", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    try {
+      const { name, tasks } = (req.body ?? {}) as { name?: string; tasks?: any[] };
+      if (!name || !tasks) {
+        return res.status(400).json({ error: "Both 'name' and 'tasks' are required" });
+      }
+      const { createSession } = await import("./db/sessions.js");
+      const session = await createSession({
+        licenseKey: req.lyceumAccount!.licenseKey,
+        name,
+        tasks,
+      });
+      res.status(201).json({ session });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : "Failed to create session" });
+    }
+  });
+
+  app.get("/api/sessions", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    try {
+      const { listSessions } = await import("./db/sessions.js");
+      const sessions = await listSessions(req.lyceumAccount!.licenseKey);
+      res.json({ sessions });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : "Failed to list sessions" });
+    }
+  });
+
+  app.get("/api/sessions/:id", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    try {
+      const { getSession } = await import("./db/sessions.js");
+      const session = await getSession(req.params.id, req.lyceumAccount!.licenseKey);
+      if (!session) return res.status(404).json({ error: "Session not found" });
+      res.json({ session });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : "Failed to get session" });
+    }
+  });
+
+  app.put("/api/sessions/:id", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    try {
+      const { updateSessionTasks, updateSessionMeta, getSession } = await import("./db/sessions.js");
+      const body = req.body ?? {};
+      const licenseKey = req.lyceumAccount!.licenseKey;
+
+      const hasTasks = Array.isArray(body.tasks);
+      const hasMeta = body.active !== undefined || body.activeTaskId !== undefined || body.name !== undefined;
+      const hasAuditLog = body.autoAnswerAuditLog !== undefined;
+
+      if (!hasTasks && !hasMeta && !hasAuditLog) {
+        return res.status(400).json({ error: "No updatable fields provided" });
+      }
+
+      if (hasTasks) {
+        const session = await updateSessionTasks(req.params.id, licenseKey, body.tasks);
+        if (!session) return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (hasMeta || hasAuditLog) {
+        const metaToSave: Partial<Pick<TaskSessionData, "activeTaskId" | "active" | "name" | "autoAnswerAuditLog">> = {};
+        if (body.active !== undefined) metaToSave.active = body.active;
+        if (body.activeTaskId !== undefined) metaToSave.activeTaskId = body.activeTaskId;
+        if (body.name !== undefined) metaToSave.name = body.name;
+        if (hasAuditLog) metaToSave.autoAnswerAuditLog = (body as any).autoAnswerAuditLog;
+
+        const session = await updateSessionMeta(req.params.id, licenseKey, metaToSave);
+        if (!session) return res.status(404).json({ error: "Session not found" });
+        return res.json({ session });
+      }
+
+      // Fetch the updated session to return (tasks were saved above, no meta changes)
+      const finalSession = await getSession(req.params.id, licenseKey);
+      res.json({ session: finalSession });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : "Failed to update session" });
+    }
+  });
+
+  app.delete("/api/sessions/:id", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    try {
+      const { deleteSession } = await import("./db/sessions.js");
+      const deleted = await deleteSession(req.params.id, req.lyceumAccount!.licenseKey);
+      if (!deleted) return res.status(404).json({ error: "Session not found" });
+      res.json({ deleted: true });
+    } catch (err) {
+      res.status(502).json({ error: err instanceof Error ? err.message : "Failed to delete session" });
     }
   });
 

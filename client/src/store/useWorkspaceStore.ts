@@ -36,6 +36,16 @@ export interface WorkspaceMember {
   avatar: string;
   role: MemberRole;
   joinedAt: number;
+  /** Personal title/headline set during onboarding, e.g. "Growth Lead" */
+  title?: string;
+  /** Role IDs (from useWorkforceStore.workRoles) this member has claimed as their responsibility */
+  claimedRoleIds?: string[];
+  /**
+   * Has this member completed the name/title/responsibilities onboarding step?
+   * True once submitted — independent of whether their role claims are still
+   * awaiting teammate approval (see workCards with kind "role_claim").
+   */
+  onboarded?: boolean;
 }
 
 export interface Workspace {
@@ -144,6 +154,8 @@ interface WorkspaceStore {
   showInviteDialog: boolean;
   showCreateFolder: boolean;
   workspacePanelOpen: boolean;
+  /** Member ID currently completing first-login onboarding (name/title/responsibilities), or null */
+  pendingOnboardingMemberId: string | null;
 
   // Document analysis (Muse)
   analyses: Record<string, DocAnalysis>;
@@ -157,12 +169,16 @@ interface WorkspaceStore {
   taskSpecs: TaskSpec[];
 
   // Actions
-  createCompany: (name: string, ownerName: string) => void;
+  /** Returns the new founder member's ID so the onboarding wizard can attach a role to them immediately. */
+  createCompany: (name: string, ownerName: string) => string;
   setActiveCompany: (companyId: string) => void;
 
-  inviteMember: (name: string, email: string, role: MemberRole) => void;
+  /** Returns the new member's ID — the caller opens the onboarding wizard for them right after. */
+  inviteMember: (name: string, email: string, role: MemberRole) => string;
   removeMember: (memberId: string) => void;
   updateMemberRole: (memberId: string, role: MemberRole) => void;
+  completeMemberOnboarding: (memberId: string, title: string, claimedRoleIds: string[]) => void;
+  setPendingOnboardingMemberId: (memberId: string | null) => void;
 
   setActiveWorkspace: (workspaceId: string) => void;
   setShowCompanySetup: (show: boolean) => void;
@@ -243,6 +259,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   showInviteDialog: false,
   showCreateFolder: false,
   workspacePanelOpen: true,
+  pendingOnboardingMemberId: null,
   analyses: {},
   selectedGroupId: null,
   selectedDocumentId: null,
@@ -254,7 +271,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   createCompany: (name, ownerName) => {
     const companyId = `company-${Date.now()}`;
-    const memberId = `member-${Date.now()}-1`;
+    // Fixed, not Date.now()-based: WorkCardDetail's "current viewer" is
+    // hardcoded to this ID (there's no real multi-user login in this
+    // single-browser demo) — the founder must have this exact ID or they'll
+    // never see the reviewer/approve UI for teammates' role claims.
+    const memberId = "member-owner";
     const workspaceId = `workspace-${Date.now()}`;
 
     const company: Company = {
@@ -273,6 +294,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       avatar: "",
       role: "owner",
       joinedAt: Date.now(),
+      onboarded: false,
     };
 
     const workspace: Workspace = {
@@ -308,8 +330,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       documents: defaultDocs,
       activeCompanyId: companyId,
       activeWorkspaceId: workspaceId,
-      showCompanySetup: false,
+      // showCompanySetup stays true — the onboarding wizard has more steps
+      // (title, responsibilities) after the company name step, and closes
+      // itself via setShowCompanySetup(false) once fully complete.
     });
+
+    return memberId;
   },
 
   setActiveCompany: (companyId) => {
@@ -320,7 +346,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   inviteMember: (name, email, role) => {
     const { activeCompanyId, companies, members, workspaces } = get();
-    if (!activeCompanyId) return;
+    if (!activeCompanyId) return "";
 
     const memberId = `member-${Date.now()}-${members.length + 1}`;
     const workspaceId = `workspace-${Date.now()}-${members.length + 1}`;
@@ -333,6 +359,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       avatar: "",
       role,
       joinedAt: Date.now(),
+      onboarded: false,
     };
 
     const workspace: Workspace = {
@@ -346,8 +373,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({
       members: [...members, newMember],
       workspaces: [...workspaces, workspace],
+      // Simulate "handing the device" to the newly invited person so they
+      // can complete their own onboarding (name tag/title/responsibilities)
+      // right away — this is a single-browser demo, there's no separate login.
+      pendingOnboardingMemberId: memberId,
       // Don't close the dialog — let the UI show a confirmation first
     });
+
+    return memberId;
   },
 
   removeMember: (memberId) => {
@@ -365,6 +398,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       ),
     });
   },
+
+  completeMemberOnboarding: (memberId, title, claimedRoleIds) => {
+    set({
+      members: get().members.map((m) =>
+        m.id === memberId ? { ...m, title, claimedRoleIds, onboarded: true } : m
+      ),
+      pendingOnboardingMemberId: null,
+    });
+  },
+
+  setPendingOnboardingMemberId: (memberId) => set({ pendingOnboardingMemberId: memberId }),
 
   // ── Workspace Actions ──────────────────────────────────────────────────
 

@@ -10,6 +10,10 @@ export interface AuthedRequest extends express.Request {
  * Squeezy license key issued at checkout, sent as `Authorization: Bearer
  * <license key>`. There's no separate account/login system — the license
  * key IS the identity.
+ *
+ * The ADMIN_TOKEN environment variable also works as a universal license
+ * key — entering it on the landing page grants immediate access to the
+ * waiting room and beta workspace without going through Lemon Squeezy.
  */
 export async function authenticateLicenseKey(
   req: AuthedRequest,
@@ -22,6 +26,22 @@ export async function authenticateLicenseKey(
 
   if (!licenseKey) {
     res.status(401).json({ error: "Missing Authorization: Bearer <license key> header" });
+    return;
+  }
+
+  // ── Admin token as universal license key ───────────────────────────────
+  // If ADMIN_TOKEN is set in .env, using it as a bearer token grants
+  // immediate access to all beta features without a Firestore account.
+  const adminToken = process.env.ADMIN_TOKEN;
+  if (adminToken && licenseKey === adminToken) {
+    req.lyceumAccount = {
+      licenseKey: adminToken,
+      product: "Admin (Beta)",
+      creditsTotal: 999_999,
+      creditsRemaining: 999_999,
+      createdAt: Date.now(),
+    };
+    next();
     return;
   }
 

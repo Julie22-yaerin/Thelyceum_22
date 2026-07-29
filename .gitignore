@@ -114,3 +114,5 @@ client/public/__manus__/version.json
 
 # Local desktop-app data (unrelated to this project's source)
 .freebuff/
+.vercel
+.env*

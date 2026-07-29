@@ -1,5 +1,16 @@
 import { type Edge, type Node } from "@xyflow/react";
 import { create } from "zustand";
+import type {
+  WorkRole,
+  WorkCard,
+  WorkCardRevision,
+  ApprovalEntry,
+  NegotiationMessage,
+  Responsibility,
+  WorkCardStatus,
+  WorkCardSection,
+} from "@/lib/workCollaborationTypes";
+import { BUILT_IN_ROLES, ROLE_DESCRIPTIONS, ROLE_DOMAIN_MAP } from "@/lib/workCollaborationTypes";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -417,6 +428,34 @@ interface WorkforceStore {
   checkBudgetThresholds: () => void;
   /** Budget cap per domain (monthly) */
   setBudgetCap: (domain: Domain, cap: number) => void;
+
+  // ── Work Collaboration Actions ────────────────────────────────────────
+  workRoles: WorkRole[];
+  workCards: WorkCard[];
+  responsibilities: Responsibility[];
+  showWorkCardBoard: boolean;
+  showWorkCardDetail: string | null; // card ID or null
+  showWorkflowSetup: boolean;
+  showResponsibilityPanel: boolean;
+  selectedWorkCardId: string | null;
+
+  setShowWorkCardBoard: (show: boolean) => void;
+  setShowWorkCardDetail: (cardId: string | null) => void;
+  setShowWorkflowSetup: (show: boolean) => void;
+  setShowResponsibilityPanel: (show: boolean) => void;
+
+  initWorkRoles: () => void;
+  addCustomRole: (role: WorkRole) => void;
+
+  createWorkCard: (card: Omit<WorkCard, "id" | "createdAt" | "updatedAt" | "status">) => void;
+  updateWorkCardStatus: (cardId: string, status: WorkCardStatus) => void;
+  addRevision: (cardId: string, revision: Omit<WorkCardRevision, "id" | "number" | "createdAt">) => void;
+  submitForApproval: (cardId: string, reviewerIds: string[]) => void;
+  approveCard: (cardId: string, reviewerId: string, reviewerName: string, reviewerAvatar: string) => void;
+  rejectCard: (cardId: string, reviewerId: string, reviewerName: string, reviewerAvatar: string, reason: string, suggestedChanges: string[]) => void;
+  addNegotiationMessage: (cardId: string, message: Omit<NegotiationMessage, "id" | "timestamp">) => void;
+  setResponsibility: (memberId: string, memberName: string, memberAvatar: string, roleId: string, roleName: string, isPrimary: boolean) => void;
+  removeResponsibility: (memberId: string, roleId: string) => void;
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -475,6 +514,16 @@ export const useWorkforceStore = create<WorkforceStore>((set, get) => ({
   lyceumPanelOpen: true,
   inspectorDrawerOpen: false,
   alertsPanelOpen: false,
+
+  // Work Collaboration
+  workRoles: [],
+  workCards: [],
+  responsibilities: [],
+  showWorkCardBoard: false,
+  showWorkCardDetail: null,
+  showWorkflowSetup: false,
+  showResponsibilityPanel: false,
+  selectedWorkCardId: null,
 
   // ── Actions ────────────────────────────────────────────────────────────
 
@@ -795,5 +844,224 @@ export const useWorkforceStore = create<WorkforceStore>((set, get) => ({
   getTotalTokenBurn: () => {
     const { nodes } = get();
     return nodes.reduce((sum, n) => sum + (n.data.wallet.budgetLimit - n.data.wallet.balance), 0);
+  },
+
+  // ── Work Collaboration Actions ─────────────────────────────────────────
+
+  setShowWorkCardBoard: (show) => set({ showWorkCardBoard: show }),
+  setShowWorkCardDetail: (cardId) => set({ showWorkCardDetail: cardId, selectedWorkCardId: cardId }),
+  setShowWorkflowSetup: (show) => set({ showWorkflowSetup: show }),
+  setShowResponsibilityPanel: (show) => set({ showResponsibilityPanel: show }),
+
+  initWorkRoles: () => {
+    const roles: WorkRole[] = BUILT_IN_ROLES.map((role) => ({
+      id: `role-${role}`,
+      name: role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      builtIn: true,
+      icon: role,
+      description: ROLE_DESCRIPTIONS[role] || "",
+      managesDomain: ROLE_DOMAIN_MAP[role] || null,
+      managedAgentIds: [],
+    }));
+    set({ workRoles: roles });
+  },
+
+  addCustomRole: (role) => {
+    set({ workRoles: [...get().workRoles, role] });
+  },
+
+  createWorkCard: (cardData) => {
+    const card: WorkCard = {
+      ...cardData,
+      id: `wcard-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      status: "draft",
+    };
+    set({ workCards: [card, ...get().workCards] });
+  },
+
+  updateWorkCardStatus: (cardId, status) => {
+    set({
+      workCards: get().workCards.map((c) =>
+        c.id === cardId ? { ...c, status, updatedAt: Date.now() } : c
+      ),
+    });
+  },
+
+  addRevision: (cardId, revisionData) => {
+    const cards = get().workCards;
+    const card = cards.find((c) => c.id === cardId);
+    if (!card) return;
+
+    const latestNumber = card.revisions.length > 0 ? card.revisions[0].number : 0;
+    const newRevision: WorkCardRevision = {
+      ...revisionData,
+      id: `rev-${cardId}-${latestNumber + 1}`,
+      number: latestNumber + 1,
+      createdAt: Date.now(),
+    };
+
+    set({
+      workCards: cards.map((c) =>
+        c.id === cardId
+          ? {
+              ...c,
+              revisions: [newRevision, ...c.revisions],
+              activeRevisionIndex: 0,
+              status: "draft",
+              approvals: c.approvals.map((a) => ({ ...a, decision: "pending" as const })),
+              updatedAt: Date.now(),
+            }
+          : c
+      ),
+    });
+  },
+
+  submitForApproval: (cardId, reviewerIds) => {
+    const { workCards } = get();
+
+    const newApprovals: ApprovalEntry[] = reviewerIds.map((id) => ({
+      reviewerId: id,
+      reviewerName: id, // Will be resolved by UI component
+      reviewerAvatar: "",
+      decision: "pending" as const,
+    }));
+
+    set({
+      workCards: workCards.map((c) =>
+        c.id === cardId
+          ? {
+              ...c,
+              status: "pending",
+              reviewerIds,
+              approvals: newApprovals,
+              updatedAt: Date.now(),
+            }
+          : c
+      ),
+    });
+  },
+
+  approveCard: (cardId, reviewerId, reviewerName, reviewerAvatar) => {
+    const cardBefore = get().workCards.find((c) => c.id === cardId);
+    const willBeFullyApproved =
+      !!cardBefore &&
+      cardBefore.approvals.every((a) => (a.reviewerId === reviewerId ? true : a.decision === "approved"));
+
+    set({
+      workCards: get().workCards.map((c) =>
+        c.id === cardId
+          ? {
+              ...c,
+              approvals: c.approvals.map((a) =>
+                a.reviewerId === reviewerId
+                  ? { ...a, decision: "approved" as const, decidedAt: Date.now() }
+                  : a
+              ),
+              status: willBeFullyApproved ? "approved" : c.status,
+              updatedAt: Date.now(),
+            }
+          : c
+      ),
+    });
+
+    // Role-claim cards: once fully approved, materialize the responsibility
+    // — the claimant becomes head (primary) of that role's department.
+    if (cardBefore?.kind === "role_claim" && willBeFullyApproved) {
+      get().setResponsibility(
+        cardBefore.creatorId,
+        cardBefore.creatorName,
+        cardBefore.creatorAvatar,
+        cardBefore.roleId,
+        cardBefore.roleName,
+        true
+      );
+    }
+
+    get().addAlert({
+      severity: "info",
+      title: cardBefore?.kind === "role_claim" ? "Role Approved" : "Work Card Approved",
+      message: `${reviewerName} approved ${cardBefore?.kind === "role_claim" ? "the role claim" : "work card"} for ${cardBefore?.roleName || "unknown"}`,
+    });
+  },
+
+  rejectCard: (cardId, reviewerId, reviewerName, reviewerAvatar, reason, suggestedChanges) => {
+    set({
+      workCards: get().workCards.map((c) =>
+        c.id === cardId
+          ? {
+              ...c,
+              approvals: c.approvals.map((a) =>
+                a.reviewerId === reviewerId
+                  ? {
+                      ...a,
+                      decision: "rejected" as const,
+                      reason,
+                      suggestedChanges,
+                      decidedAt: Date.now(),
+                    }
+                  : a
+              ),
+              status: "rejected",
+              updatedAt: Date.now(),
+            }
+          : c
+      ),
+    });
+
+    get().addAlert({
+      severity: "warning",
+      title: "Work Card Rejected",
+      message: `${reviewerName} rejected work card: ${reason}`,
+    });
+  },
+
+  addNegotiationMessage: (cardId, message) => {
+    const newMsg: NegotiationMessage = {
+      ...message,
+      id: `msg-${cardId}-${Date.now()}`,
+      timestamp: Date.now(),
+    };
+    set({
+      workCards: get().workCards.map((c) =>
+        c.id === cardId
+          ? { ...c, chat: [...c.chat, newMsg], updatedAt: Date.now() }
+          : c
+      ),
+    });
+  },
+
+  setResponsibility: (memberId, memberName, memberAvatar, roleId, roleName, isPrimary) => {
+    const existing = get().responsibilities.findIndex(
+      (r) => r.memberId === memberId && r.roleId === roleId
+    );
+
+    if (existing >= 0) {
+      set({
+        responsibilities: get().responsibilities.map((r, i) =>
+          i === existing ? { ...r, isPrimary } : r
+        ),
+      });
+    } else {
+      const resp: Responsibility = {
+        memberId,
+        memberName,
+        memberAvatar,
+        roleId,
+        roleName,
+        managedDomain: ROLE_DOMAIN_MAP[roleId.replace("role-", "")] || null,
+        isPrimary,
+      };
+      set({ responsibilities: [...get().responsibilities, resp] });
+    }
+  },
+
+  removeResponsibility: (memberId, roleId) => {
+    set({
+      responsibilities: get().responsibilities.filter(
+        (r) => !(r.memberId === memberId && r.roleId === roleId)
+      ),
+    });
   },
 }));

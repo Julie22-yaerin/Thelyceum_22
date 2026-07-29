@@ -227,7 +227,7 @@ export default defineConfig({
     // Proxy /api/* calls to the Express server (handles OpenRouter proxy, health, etc.)
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        target: `http://localhost:${process.env.API_PORT || 3001}`,
         changeOrigin: true,
       },
     },

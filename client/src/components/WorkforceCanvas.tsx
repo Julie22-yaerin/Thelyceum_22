@@ -20,6 +20,9 @@ import {
   Play,
   Terminal,
   Users,
+  Briefcase,
+  ClipboardList,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import AgentNode from "@/components/AgentNode";
@@ -31,6 +34,10 @@ import { useWorkforceStore, type AgentData } from "@/store/useWorkforceStore";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import WorkspaceExplorer from "@/components/WorkspaceExplorer";
 import { useMCPClient, type MCPConnectionStatus } from "@/hooks/useMCPClient";
+import WorkCardBoard from "@/components/WorkCardBoard";
+import WorkCardDetail from "@/components/WorkCardDetail";
+import WorkflowSetupModal from "@/components/WorkflowSetupModal";
+import ResponsibilityPanel from "@/components/ResponsibilityPanel";
 
 const nodeTypes = { agentNode: AgentNode };
 
@@ -146,8 +153,19 @@ function CommandBar({
   collapsed: boolean;
   onToggleCollapse: () => void;
 }) {
-  const { runA2APipeline, a2aPipelineRunning, getTotalTokenBurn, multiplayerUsers, lyceumPanelOpen, setLyceumPanelOpen } =
-    useWorkforceStore();
+  const {
+    runA2APipeline,
+    a2aPipelineRunning,
+    getTotalTokenBurn,
+    multiplayerUsers,
+    lyceumPanelOpen,
+    setLyceumPanelOpen,
+    showWorkCardBoard,
+    setShowWorkCardBoard,
+    setShowWorkflowSetup,
+    showResponsibilityPanel,
+    setShowResponsibilityPanel,
+  } = useWorkforceStore();
   const mcp = useMCPClient();
   const [mcpConnected, setMcpConnected] = useState(false);
   const [mcpStatus, setMcpStatus] = useState<MCPConnectionStatus>("disconnected");
@@ -236,21 +254,49 @@ function CommandBar({
             </div>
           </div>
 
-          {/* Right: Lyceum toggle */}
+          {/* Right: Collaboration toggles */}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
               className={cn(
-                "h-7 text-[10px] px-2",
+                "h-7 text-[10px] px-1.5",
+                showWorkCardBoard
+                  ? "text-indigo-300 bg-indigo-500/10"
+                  : "text-muted-foreground hover:text-white"
+              )}
+              onClick={() => setShowWorkCardBoard(!showWorkCardBoard)}
+              title="Work Cards (H2H Collaboration)"
+            >
+              <ClipboardList className={cn("w-3 h-3", showWorkCardBoard && "text-indigo-400")} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-7 text-[10px] px-1.5",
+                showResponsibilityPanel
+                  ? "text-amber-300 bg-amber-500/10"
+                  : "text-muted-foreground hover:text-white"
+              )}
+              onClick={() => setShowResponsibilityPanel(!showResponsibilityPanel)}
+              title="Role Responsibilities"
+            >
+              <Briefcase className={cn("w-3 h-3", showResponsibilityPanel && "text-amber-400")} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-7 text-[10px] px-1.5",
                 lyceumPanelOpen
                   ? "text-teal-300 bg-teal-500/10"
                   : "text-muted-foreground hover:text-white"
               )}
               onClick={() => setLyceumPanelOpen(!lyceumPanelOpen)}
+              title="Lyceum AI Panel"
             >
-              <FlaskConical className="w-3 h-3 mr-1" />
-              Lyceum
+              <FlaskConical className={cn("w-3 h-3", lyceumPanelOpen && "text-teal-400")} />
             </Button>
             <WorkspaceToggleButton />
           </div>
@@ -357,7 +403,13 @@ function CanvasContent() {
 // ── Main Export ──────────────────────────────────────────────────────────────
 
 export default function WorkforceCanvas() {
-  const { lyceumPanelOpen } = useWorkforceStore();
+  const {
+    lyceumPanelOpen,
+    showWorkCardBoard,
+    showWorkCardDetail,
+    showResponsibilityPanel,
+    showWorkflowSetup,
+  } = useWorkforceStore();
   const { workspacePanelOpen } = useWorkspaceStore();
 
   return (
@@ -374,22 +426,43 @@ export default function WorkforceCanvas() {
         </div>
 
         {/* Main canvas area */}
-        <div className={cn("flex-1 relative overflow-hidden", lyceumPanelOpen ? "mr-[320px]" : "mr-0")}>
+        <div className={cn(
+          "flex-1 relative overflow-hidden",
+          lyceumPanelOpen ? "mr-[320px]" : "mr-0",
+          (showWorkCardBoard || showResponsibilityPanel) ? "mr-[360px]" : ""
+        )}>
           <CanvasContent />
         </div>
 
-        {/* Lyceum Panel - collapsible right sidebar */}
-        <div
-          className={cn(
-            "absolute right-0 top-0 h-full w-[320px] z-20 border-l border-white/10 bg-[#0f0f13]/95 backdrop-blur-xl transition-transform duration-300",
-            lyceumPanelOpen ? "translate-x-0" : "translate-x-full"
-          )}
-        >
-          <LyceumPanel />
-        </div>
+        {/* Right side panels stack */}
+        {showWorkCardBoard && !showWorkCardDetail && (
+          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-white/10 bg-[#0a0a0e]/95 backdrop-blur-xl">
+            <WorkCardBoard />
+          </div>
+        )}
+        {showWorkCardDetail && (
+          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-white/10 bg-[#0a0a0e]/95 backdrop-blur-xl">
+            <WorkCardDetail />
+          </div>
+        )}
+        {showResponsibilityPanel && !showWorkCardBoard && !showWorkCardDetail && (
+          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-white/10 bg-[#0a0a0e]/95 backdrop-blur-xl">
+            <ResponsibilityPanel />
+          </div>
+        )}
+
+        {/* Lyceum Panel - only when no other right panels are open */}
+        {lyceumPanelOpen && !showWorkCardBoard && !showWorkCardDetail && !showResponsibilityPanel && (
+          <div className="absolute right-0 top-0 h-full w-[320px] z-20 border-l border-white/10 bg-[#0f0f13]/95 backdrop-blur-xl">
+            <LyceumPanel />
+          </div>
+        )}
 
         {/* Node Inspector Drawer */}
         <NodeInspectorDrawer />
+
+        {/* AI Workflow Generator modal */}
+        {showWorkflowSetup && <WorkflowSetupModal />}
       </div>
     </ReactFlowProvider>
   );
