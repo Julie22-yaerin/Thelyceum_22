@@ -415,22 +415,6 @@ function getSupabase() {
   return client;
 }
 
-// server/db/waitlist.ts
-var collection3 = () => getDb().collection("waitlist");
-async function addToWaitlist(params) {
-  const entry = { ...params, createdAt: Date.now() };
-  await collection3().doc(params.ref).set(entry);
-  return entry;
-}
-async function getWaitlistEntry(ref) {
-  const snap = await collection3().doc(ref).get();
-  return snap.exists ? snap.data() : null;
-}
-async function listWaitlist(limit = 50) {
-  const snap = await collection3().orderBy("createdAt", "desc").limit(limit).get();
-  return snap.docs.map((d) => d.data());
-}
-
 // server/index.ts
 var orders = /* @__PURE__ */ new Map();
 var BETA_SLOT_BASELINE = Number(process.env.BETA_SLOT_BASELINE ?? 84);
@@ -510,53 +494,18 @@ function createApiApp() {
       res.json({ received: true });
     }
   );
-  app2.post("/api/waitlist", async (req, res) => {
-    const { ref, name, email, organization } = req.body ?? {};
-    if (!ref || !name || !email) {
-      return res.status(400).json({ error: "ref, name, and email are required" });
-    }
-    try {
-      const entry = await addToWaitlist({ ref, name, email, organization: organization || "" });
-      res.json(entry);
-    } catch (err) {
-      res.status(503).json({ error: err instanceof Error ? err.message : "Failed to save waitlist entry" });
-    }
-  });
-  app2.get("/api/orders/:ref", async (req, res) => {
+  app2.get("/api/orders/:ref", (req, res) => {
     const order = orders.get(req.params.ref);
-    if (order) {
-      res.json(order);
-      return;
-    }
-    try {
-      const waitlistEntry = await getWaitlistEntry(req.params.ref);
-      if (waitlistEntry) {
-        res.json({ status: "waitlist" });
-        return;
-      }
-    } catch {
-    }
-    res.json({ status: "pending" });
+    res.json(order ?? { status: "pending" });
   });
   app2.get("/api/beta-slots", (_req, res) => {
     const paidCount = Array.from(orders.values()).filter((o) => o.status === "paid").length;
     const claimed = Math.min(BETA_SLOT_BASELINE + paidCount, BETA_SLOT_CAP);
     res.json({ claimed, cap: BETA_SLOT_CAP });
   });
-  app2.get("/api/admin/orders", requireAdmin, async (_req, res) => {
-    const paidOrders = Array.from(orders.entries()).map(([ref, order]) => ({ ref, ...order, source: "payment" })).sort((a, b) => (b.paidAt ?? 0) - (a.paidAt ?? 0));
-    let waitlistEntries = [];
-    try {
-      const entries = await listWaitlist(1e3);
-      waitlistEntries = entries.map((e) => ({ ...e, source: "waitlist", status: "waitlist" }));
-    } catch {
-    }
-    const all = [...paidOrders, ...waitlistEntries].sort((a, b) => {
-      const aTime = a.source === "payment" ? a.paidAt ?? 0 : a.createdAt ?? 0;
-      const bTime = b.source === "payment" ? b.paidAt ?? 0 : b.createdAt ?? 0;
-      return bTime - aTime;
-    });
-    res.json({ orders: all });
+  app2.get("/api/admin/orders", requireAdmin, (_req, res) => {
+    const list = Array.from(orders.entries()).map(([ref, order]) => ({ ref, ...order })).sort((a, b) => (b.paidAt ?? 0) - (a.paidAt ?? 0));
+    res.json({ orders: list });
   });
   app2.use(express.json({ limit: "1mb" }));
   app2.post("/api/chat", async (req, res) => {

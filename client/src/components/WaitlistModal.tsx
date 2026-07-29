@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ArrowRight, ArrowLeft, Check, Crown, Zap, ArrowUpRight } from "lucide-react";
+import { X, ArrowRight, ArrowLeft, Crown, Zap, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /*
- * The Lyceum — Waitlist Modal
+ * The Lyceum — Pre-order Modal
  * Design: Blueprint Minimal — warm white, charcoal, teal accent
- * Multi-step form: Email → Team Size → AI Count → Challenges → Budget → Done
+ * Multi-step form: Email → Team Size → AI Count → Challenges → Budget → Pick a tier
  *
- * After submission, user sees pre-order pricing tiers via Lemon Squeezy:
+ * Pre-order is mandatory — there is no "just join, pay later" path. The
+ * final step requires picking VIP or Basic and completing Lemon Squeezy
+ * checkout; there's no free/no-payment exit.
  *   VIP ($122)  — earliest access + VIP privileges
  *   Basic ($22) — early access
  */
@@ -47,7 +49,7 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
     challenges: "",
     budget: "",
   });
-  const [submitted, setSubmitted] = useState(false);
+  const [pickingTier, setPickingTier] = useState(false);
   const lemonScriptLoaded = useRef(false);
   // Unique ref per checkout attempt — the Lemon Squeezy webhook (server/index.ts)
   // stores paid status under this key so the /thank-you → /waiting flow can look it up.
@@ -102,23 +104,8 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
     }
   };
 
-  const handleSubmit = async () => {
-    try {
-      // Save to waitlist in Firestore — best-effort only, don't block on error
-      await fetch("/api/waitlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ref: checkoutRef,
-          name: formData.name,
-          email: formData.email,
-          organization: formData.organization,
-        }),
-      });
-    } catch {
-      // Network error or server not configured — still continue
-    }
-    setSubmitted(true);
+  const handleSubmit = () => {
+    setPickingTier(true);
   };
 
   const reset = () => {
@@ -132,7 +119,7 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
       challenges: "",
       budget: "",
     });
-    setSubmitted(false);
+    setPickingTier(false);
     onClose();
   };
 
@@ -200,7 +187,7 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
             {/* Content */}
             <div className="px-6 py-8 min-h-[280px]">
               <AnimatePresence mode="wait">
-                {!submitted ? (
+                {!pickingTier ? (
                   <motion.div
                     key={currentStep}
                     initial={{ x: 30, opacity: 0 }}
@@ -212,22 +199,22 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                   </motion.div>
                 ) : (
                   <motion.div
-                    key="success"
+                    key="tier-picker"
                     initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: 0.4, ease: [0.23, 1, 0.32, 1] }}
                     className="text-center"
                   >
-                    {/* Confirmation */}
+                    {/* Header */}
                     <div className="pb-6 pt-4">
                       <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-teal/10 flex items-center justify-center">
-                        <Check className="w-7 h-7 text-teal" />
+                        <Crown className="w-7 h-7 text-teal" />
                       </div>
                       <h3 className="font-display text-xl font-semibold text-foreground mb-1.5">
-                        You're on the list.
+                        Reserve your spot
                       </h3>
                       <p className="text-muted-foreground text-sm leading-relaxed max-w-sm mx-auto">
-                        Secure your spot with a pre-order deposit and unlock early access pricing.
+                        A pre-order deposit is required to lock in your beta slot — pick a tier to continue.
                       </p>
                     </div>
 
@@ -291,7 +278,7 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                     </div>
 
                     <p className="text-[9px] text-muted-foreground leading-relaxed max-w-sm mx-auto">
-                      Secure checkout via Lemon Squeezy. No payment required to join the waitlist — pre-order is optional.
+                      Secure checkout via Lemon Squeezy. A pre-order deposit is required to reserve your beta slot.
                     </p>
                   </motion.div>
                 )}
@@ -300,7 +287,7 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
 
             {/* Footer */}
             <div className="px-6 pb-6 flex items-center justify-between">
-              {currentStep > 0 && !submitted ? (
+              {currentStep > 0 && !pickingTier ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -314,7 +301,7 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                 <div />
               )}
 
-              {!submitted && currentStep < steps.length - 1 && (
+              {!pickingTier && currentStep < steps.length - 1 && (
                 <Button
                   size="sm"
                   onClick={next}
@@ -326,15 +313,15 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                 </Button>
               )}
 
-              {!submitted && currentStep === steps.length - 1 && (
+              {!pickingTier && currentStep === steps.length - 1 && (
                 <Button
                   size="sm"
                   onClick={handleSubmit}
                   disabled={!canProceed()}
                   className="bg-teal hover:bg-teal-dark text-white"
                 >
-                  Join Waitlist
-                  <Check className="w-4 h-4 ml-1" />
+                  Continue to Pre-order
+                  <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               )}
             </div>

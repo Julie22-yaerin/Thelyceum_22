@@ -114,7 +114,7 @@ export default function Home() {
             onClick={() => setWaitlistOpen(true)}
             className="bg-teal hover:bg-teal-dark text-white text-sm px-5"
           >
-            Join Waitlist
+            Reserve Your Slot
           </Button>
         </div>
         </nav>
@@ -431,7 +431,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* Waitlist Modal */}
+      {/* Pre-order Modal — mandatory checkout, no free waitlist path */}
       <WaitlistModal open={waitlistOpen} onClose={() => setWaitlistOpen(false)} />
     </div>
   );
