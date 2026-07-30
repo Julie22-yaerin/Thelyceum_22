@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ArrowRight, ArrowLeft, Crown, Zap, ArrowUpRight } from "lucide-react";
+import { X, ArrowRight, ArrowLeft, Crown, Zap, ArrowUpRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /*
@@ -9,10 +9,14 @@ import { Button } from "@/components/ui/button";
  * Multi-step form: Email → Team Size → AI Count → Challenges → Budget → Pick a tier
  *
  * Pre-order is mandatory — there is no "just join, pay later" path. The
- * final step requires picking VIP or Basic and completing Lemon Squeezy
- * checkout; there's no free/no-payment exit.
- *   VIP ($222) — earliest access + VIP privileges
- *   Basic ($52) — early access
+ * final step requires picking a tier and completing Lemon Squeezy checkout;
+ * there's no free/no-payment exit.
+ *   Founder Pass ($222) — Starter + roadmap voting, governance templates, private channel
+ *   Starter Pass ($52)  — live beta access, BYOK, standard audit harness
+ *
+ * The displayed amounts must match what the Lemon Squeezy products below
+ * actually charge. Change the product in Lemon Squeezy first, then the number
+ * here — never the other way round, or the checkout page contradicts the site.
  */
 
 const LEMON_LINKS = {
@@ -228,9 +232,13 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                       <div className="flex-1 h-px bg-border" />
                     </div>
 
-                    {/* Pricing Tiers */}
+                    {/* Pricing Tiers
+                        Every line below is a thing we already ship or can ship
+                        without bespoke per-customer work. Nothing here promises
+                        custom build-outs — that turns a product company into an
+                        agency and the margin disappears. */}
                     <div className="grid grid-cols-2 gap-3 mb-6">
-                      {/* VIP Tier */}
+                      {/* Founder Pass */}
                       <div className="relative rounded-xl border-2 border-amber-200/60 bg-amber-50/50 p-4 text-left group hover:border-amber-300 transition-colors">
                         <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
                           <span className="text-[8px] font-semibold uppercase tracking-widest text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
@@ -239,41 +247,64 @@ export default function WaitlistModal({ open, onClose }: { open: boolean; onClos
                         </div>
                         <div className="flex items-center gap-1.5 mb-1 mt-1">
                           <Crown className="w-4 h-4 text-amber-500" />
-                          <span className="font-display font-semibold text-sm text-foreground">VIP</span>
+                          <span className="font-display font-semibold text-sm text-foreground">
+                            Founder Pass
+                          </span>
                         </div>
-                        <p className="text-2xl font-display font-bold text-foreground mb-1">
-                          $222
-                        </p>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed mb-3">
-                          Immediate live beta access · Witness daily improvements · VIP privileges
-                        </p>
+                        <p className="text-2xl font-display font-bold text-foreground mb-2">$222</p>
+                        <ul className="space-y-1.5 mb-3">
+                          {[
+                            "Everything in Starter",
+                            "Priority roadmap voting",
+                            "Advanced deterministic governance templates (Dev / Finance / MCP)",
+                            "VIP private support channel",
+                          ].map((line) => (
+                            <li key={line} className="flex items-start gap-1.5">
+                              <Check className="w-2.5 h-2.5 text-amber-600 mt-[3px] shrink-0" />
+                              <span className="text-[10px] text-muted-foreground leading-snug">
+                                {line}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                         <a
                           href={buildCheckoutUrl(LEMON_LINKS.VIP)}
                           className="lemonsqueezy-button inline-flex items-center justify-center w-full h-8 rounded-lg text-[11px] font-medium bg-amber-500 hover:bg-amber-600 text-white transition-colors"
                         >
                           <ArrowUpRight className="w-3 h-3 mr-1" />
-                          Pre-order VIP
+                          Get the Founder Pass
                         </a>
                       </div>
 
-                      {/* Basic Tier */}
+                      {/* Starter Pass */}
                       <div className="rounded-xl border border-border bg-white p-4 text-left group hover:border-teal/30 transition-colors">
                         <div className="flex items-center gap-1.5 mb-1">
                           <Zap className="w-4 h-4 text-teal" />
-                          <span className="font-display font-semibold text-sm text-foreground">Basic</span>
+                          <span className="font-display font-semibold text-sm text-foreground">
+                            Starter Pass
+                          </span>
                         </div>
-                        <p className="text-2xl font-display font-bold text-foreground mb-1">
-                          $52
-                        </p>
-                        <p className="text-[10px] text-muted-foreground leading-relaxed mb-3">
-                          Immediate live beta access · Witness daily improvements
-                        </p>
+                        <p className="text-2xl font-display font-bold text-foreground mb-2">$52</p>
+                        <ul className="space-y-1.5 mb-3">
+                          {[
+                            "Live beta access",
+                            "Bring your own keys (BYOK)",
+                            "Standard audit harness",
+                          ].map((line) => (
+                            <li key={line} className="flex items-start gap-1.5">
+                              <Check className="w-2.5 h-2.5 text-teal mt-[3px] shrink-0" />
+                              <span className="text-[10px] text-muted-foreground leading-snug">
+                                {line}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                         <a
                           href={buildCheckoutUrl(LEMON_LINKS.BASIC)}
                           className="lemonsqueezy-button inline-flex items-center justify-center w-full h-8 rounded-lg text-[11px] font-medium bg-teal hover:bg-teal-dark text-white transition-colors"
                         >
                           <ArrowUpRight className="w-3 h-3 mr-1" />
-                          Pre-order Basic
+                          Get the Starter Pass
                         </a>
                       </div>
                     </div>

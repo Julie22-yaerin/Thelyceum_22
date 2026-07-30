@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import {
-  ArrowRight, Zap, Shield, Users, Brain, Sparkles, Play, Trash2, Plus,
+  ArrowRight, Zap, Shield, Users, Brain, Sparkles, Play, Trash2, Plus, Crown,
 } from "lucide-react";
 import WaitlistModal from "@/components/WaitlistModal";
 import AnimatedCounter from "@/components/AnimatedCounter";
@@ -558,9 +558,13 @@ export default function Home() {
 
           <ul className="landing-pricing__perks">
             {[
-              { icon: Zap, text: "Immediate access to the live beta workspace" },
-              { icon: Sparkles, text: "Witness daily improvements — changelog updates in real time" },
-              { icon: Users, text: "Join a community shaping the product day by day" },
+              { icon: Zap, text: "Live beta access — the deterministic proxy and audit harness" },
+              { icon: Shield, text: "Bring your own keys — swap one base URL, no SDK, no refactor" },
+              { icon: Sparkles, text: "Daily improvements, with a changelog you can actually read" },
+              {
+                icon: Crown,
+                text: "Founder Pass ($222) adds roadmap voting, governance templates (Dev / Finance / MCP), and a private support channel",
+              },
             ].map((perk, i) => (
               <li key={i} className="landing-pricing__perk">
                 <div className="landing-pricing__perk-icon">

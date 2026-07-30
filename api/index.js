@@ -157,7 +157,7 @@ __export(sessions_exports, {
   updateSessionTasks: () => updateSessionTasks
 });
 async function createSession(params) {
-  const ref = collection5().doc();
+  const ref = collection6().doc();
   const session = {
     id: ref.id,
     licenseKey: params.licenseKey,
@@ -173,7 +173,7 @@ async function createSession(params) {
   return session;
 }
 async function confirmSession(sessionId, licenseKey) {
-  const ref = collection5().doc(sessionId);
+  const ref = collection6().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -187,7 +187,7 @@ async function confirmSession(sessionId, licenseKey) {
   return { ...data, ...updated };
 }
 async function updateSessionTasks(sessionId, licenseKey, tasks) {
-  const ref = collection5().doc(sessionId);
+  const ref = collection6().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -200,7 +200,7 @@ async function updateSessionTasks(sessionId, licenseKey, tasks) {
   return { ...data, ...updated, tasks };
 }
 async function updateSessionMeta(sessionId, licenseKey, meta) {
-  const ref = collection5().doc(sessionId);
+  const ref = collection6().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -210,17 +210,17 @@ async function updateSessionMeta(sessionId, licenseKey, meta) {
   return { ...data, ...updated };
 }
 async function getSession(sessionId, licenseKey) {
-  const snap = await collection5().doc(sessionId).get();
+  const snap = await collection6().doc(sessionId).get();
   if (!snap.exists) return null;
   const data = snap.data();
   return data.licenseKey === licenseKey ? data : null;
 }
 async function listSessions(licenseKey, limit = 50) {
-  const snap = await collection5().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
+  const snap = await collection6().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
   return snap.docs.map((d) => d.data());
 }
 async function deleteSession(sessionId, licenseKey) {
-  const ref = collection5().doc(sessionId);
+  const ref = collection6().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return false;
   const data = snap.data();
@@ -228,21 +228,21 @@ async function deleteSession(sessionId, licenseKey) {
   await ref.delete();
   return true;
 }
-var collection5;
+var collection6;
 var init_sessions = __esm({
   "server/db/sessions.ts"() {
     "use strict";
     init_firestore();
-    collection5 = () => getDb().collection("sessions");
+    collection6 = () => getDb().collection("sessions");
   }
 });
 
 // server/index.ts
-import express from "express";
+import express2 from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import crypto from "crypto";
+import crypto3 from "crypto";
 
 // client/src/lib/modelConfig.ts
 var DOMAINS = ["LAW", "FINANCE", "TECH", "MUSE", "KIMI"];
@@ -394,7 +394,7 @@ var TIER_CREDITS = {
 var DEFAULT_CREDITS = TIER_CREDITS.basic;
 function creditsForProduct(product) {
   if (!product) return DEFAULT_CREDITS;
-  const key = Object.keys(TIER_CREDITS).find((k) => product.toLowerCase().includes(k));
+  const key = Object.keys(TIER_CREDITS).find((k2) => product.toLowerCase().includes(k2));
   return key ? TIER_CREDITS[key] : DEFAULT_CREDITS;
 }
 var collection = () => getDb().collection("accounts");
@@ -1217,33 +1217,1000 @@ function getSupabase() {
   return client;
 }
 
+// server/proxy/llmProxy.ts
+import crypto from "crypto";
+import express from "express";
+
+// server/lib/breakerStore.ts
+var MemoryBreakerStore = class {
+  counters = /* @__PURE__ */ new Map();
+  windows = /* @__PURE__ */ new Map();
+  lastSweep = 0;
+  /** Drop expired entries occasionally so a long-lived process can't leak. */
+  sweep(now) {
+    if (now - this.lastSweep < 3e4) return;
+    this.lastSweep = now;
+    for (const [k2, c] of Array.from(this.counters.entries())) {
+      if (c.expiresAt <= now) this.counters.delete(k2);
+    }
+    for (const [k2, times] of Array.from(this.windows.entries())) {
+      if (times.length === 0 || now - times[times.length - 1] > 36e5) {
+        this.windows.delete(k2);
+      }
+    }
+  }
+  async incr(key, by, ttlMs) {
+    const now = Date.now();
+    this.sweep(now);
+    const existing = this.counters.get(key);
+    if (!existing || existing.expiresAt <= now) {
+      this.counters.set(key, { value: by, expiresAt: now + ttlMs });
+      return by;
+    }
+    existing.value += by;
+    return existing.value;
+  }
+  async get(key) {
+    const now = Date.now();
+    const existing = this.counters.get(key);
+    if (!existing || existing.expiresAt <= now) return 0;
+    return existing.value;
+  }
+  async pushWindow(key, at, windowMs) {
+    this.sweep(at);
+    const times = this.windows.get(key) ?? [];
+    times.push(at);
+    const cutoff = at - windowMs;
+    let i = 0;
+    while (i < times.length && times[i] < cutoff) i++;
+    const trimmed = i > 0 ? times.slice(i) : times;
+    this.windows.set(key, trimmed);
+    return trimmed.length;
+  }
+  async countWindow(key, now, windowMs) {
+    const times = this.windows.get(key);
+    if (!times) return 0;
+    const cutoff = now - windowMs;
+    let count = 0;
+    for (let i = times.length - 1; i >= 0; i--) {
+      if (times[i] < cutoff) break;
+      count++;
+    }
+    return count;
+  }
+  async resetSession(sessionId) {
+    const prefix = `${sessionId}:`;
+    for (const k2 of Array.from(this.counters.keys())) {
+      if (k2.startsWith(prefix)) this.counters.delete(k2);
+    }
+    for (const k2 of Array.from(this.windows.keys())) {
+      if (k2.startsWith(prefix)) this.windows.delete(k2);
+    }
+  }
+};
+var memoryStore = new MemoryBreakerStore();
+
+// server/lib/circuitBreaker.ts
+var DEFAULT_POLICY = {
+  maxCentsPerSession: 500,
+  // $5.00
+  maxToolCalls: 50,
+  maxTokensPerMinute: 12e4,
+  maxCallsPerMinute: 120,
+  loopThreshold: 5,
+  loopWindowMs: 6e4
+};
+var DENY_RULES = [
+  {
+    code: "RESTRICTED_PAYLOAD",
+    name: "recursive_filesystem_delete",
+    // rm with a recursive+force flag pair aimed at a root-ish path.
+    //
+    // The target must be `/`, `~` or `$HOME` *terminated* by a delimiter, which
+    // is what separates `rm -rf /` from the perfectly ordinary
+    // `rm -rf ./build/tmp` or `rm -rf /tmp/cache`. The delimiter set includes
+    // quotes and shell separators so the command is still caught when it is
+    // nested inside JSON tool arguments — e.g. {"cmd":"rm -rf /"} — which is
+    // how an agent actually emits it.
+    pattern: /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*[rR]|-r\s+-f|-f\s+-r)\s+(?:\/|~|\$HOME)(?=[\s"'`;&|)*\\]|$)/,
+    reason: "Tried to recursively delete a root or home directory."
+  },
+  {
+    code: "RESTRICTED_PAYLOAD",
+    name: "disk_overwrite",
+    pattern: /\b(mkfs(\.\w+)?\s|dd\s+[^\n]*\bof=\/dev\/(sd|nvme|disk|hd)|>\s*\/dev\/(sd|nvme|disk|hd))/,
+    reason: "Tried to format or overwrite a raw disk device."
+  },
+  {
+    code: "RESTRICTED_PAYLOAD",
+    name: "fork_bomb",
+    pattern: /:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/,
+    reason: "Payload contains a fork bomb."
+  },
+  {
+    code: "RESTRICTED_PAYLOAD",
+    name: "pipe_to_shell",
+    // curl/wget piped straight into a shell — the classic remote-exec pattern.
+    pattern: /\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba|z|k|da)?sh\b/,
+    reason: "Tried to download and execute a remote script."
+  },
+  {
+    code: "RESTRICTED_PAYLOAD",
+    name: "destructive_sql",
+    pattern: /\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE|DELETE\s+FROM\s+\w+\s*(;|$))/i,
+    reason: "Tried to drop, truncate, or unconditionally delete database rows."
+  },
+  {
+    code: "RESTRICTED_PAYLOAD",
+    name: "credential_exfiltration",
+    // Reading a known secret store and sending it somewhere in one breath.
+    pattern: /(\.ssh\/id_[a-z0-9_]+|\.aws\/credentials|\.env(\.\w+)?|id_rsa)\b[^\n]{0,120}\b(curl|wget|nc|netcat|http:\/\/|https:\/\/)/i,
+    reason: "Tried to read credentials and send them to a remote host."
+  },
+  {
+    code: "RESTRICTED_PAYLOAD",
+    name: "history_rewrite_force_push",
+    pattern: /\bgit\s+push\b[^\n]*\s(--force|-f)\b[^\n]*\b(main|master|production)\b|\bgit\s+reset\s+--hard\b[^\n]*\borigin\//,
+    reason: "Tried to force-push over a protected branch or hard-reset to remote."
+  },
+  {
+    code: "RESTRICTED_PAYLOAD",
+    name: "permission_wideopen",
+    pattern: /\bchmod\s+(-R\s+)?0?777\s+(\/\s*$|\/\s|\/etc|\/usr|\/var)/,
+    reason: "Tried to make a system directory world-writable."
+  }
+];
+function extractText(payload) {
+  const out = [];
+  const walk = (v, depth) => {
+    if (depth > 8 || out.length > 400) return;
+    if (typeof v === "string") {
+      out.push(v);
+    } else if (Array.isArray(v)) {
+      for (const item of v) walk(item, depth + 1);
+    } else if (v && typeof v === "object") {
+      for (const val of Object.values(v)) walk(val, depth + 1);
+    }
+  };
+  walk(payload, 0);
+  return out.join("\n");
+}
+function staticScan(payload, extra = []) {
+  const text = extractText(payload);
+  if (!text) return null;
+  for (const rule of DENY_RULES) {
+    const m = rule.pattern.exec(text);
+    if (m) {
+      return {
+        rule: rule.name,
+        code: rule.code,
+        reason: rule.reason,
+        excerpt: redact(m[0])
+      };
+    }
+  }
+  for (const rule of extra) {
+    const m = rule.pattern.exec(text);
+    if (m) {
+      return {
+        rule: rule.code,
+        code: "RESTRICTED_PAYLOAD",
+        reason: rule.reason,
+        excerpt: redact(m[0])
+      };
+    }
+  }
+  return null;
+}
+function redact(s) {
+  return s.replace(/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}/g, "$1-***REDACTED***").replace(/\bBearer\s+[A-Za-z0-9._-]{8,}/gi, "Bearer ***REDACTED***").replace(/\bAKIA[0-9A-Z]{12,}/g, "AKIA***REDACTED***").replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "***REDACTED KEY***").slice(0, 200);
+}
+var MODEL_PRICES = {
+  "gpt-4o": { inputCentsPerMTok: 250, outputCentsPerMTok: 1e3 },
+  "gpt-4o-mini": { inputCentsPerMTok: 15, outputCentsPerMTok: 60 },
+  "claude-sonnet": { inputCentsPerMTok: 300, outputCentsPerMTok: 1500 },
+  "claude-opus": { inputCentsPerMTok: 1500, outputCentsPerMTok: 7500 },
+  "claude-haiku": { inputCentsPerMTok: 80, outputCentsPerMTok: 400 },
+  "gemini-2.5-flash": { inputCentsPerMTok: 30, outputCentsPerMTok: 250 }
+};
+var FALLBACK_PRICE = { inputCentsPerMTok: 1500, outputCentsPerMTok: 7500 };
+function priceFor(model) {
+  const key = Object.keys(MODEL_PRICES).find((k2) => model.toLowerCase().includes(k2));
+  return key ? MODEL_PRICES[key] : FALLBACK_PRICE;
+}
+function costInCents(model, inputTokens, outputTokens) {
+  const p = priceFor(model);
+  return inputTokens / 1e6 * p.inputCentsPerMTok + outputTokens / 1e6 * p.outputCentsPerMTok;
+}
+function estimateTokens(payload) {
+  return Math.ceil(extractText(payload).length / 4);
+}
+var k = {
+  spend: (c) => `${c.sessionId}:spend`,
+  tools: (c) => `${c.sessionId}:tools`,
+  tokens: (c) => `${c.sessionId}:tokens`,
+  calls: (c) => `${c.sessionId}:calls`,
+  loop: (c, hash) => `${c.sessionId}:loop:${hash}`
+};
+function payloadFingerprint(payload) {
+  const text = extractText(payload);
+  let h1 = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h1 ^= text.charCodeAt(i);
+    h1 = Math.imul(h1, 16777619);
+  }
+  return (h1 >>> 0).toString(36) + ":" + text.length.toString(36);
+}
+var SESSION_TTL_MS = 24 * 60 * 60 * 1e3;
+function createCircuitBreaker(opts = {}) {
+  const store = opts.store ?? memoryStore;
+  async function snapshot(sessionId) {
+    const now = Date.now();
+    const fake = { sessionId };
+    const [spend, tools, granted] = await Promise.all([
+      store.get(k.spend(fake)),
+      store.get(k.tools(fake)),
+      store.get(`${sessionId}:granted`)
+    ]);
+    return {
+      spentCents: spend / 100,
+      // stored as hundredths of a cent for precision
+      toolCalls: tools,
+      tokensLastMinute: await store.countWindow(k.tokens(fake), now, 6e4),
+      callsLastMinute: await store.countWindow(k.calls(fake), now, 6e4),
+      ...granted ? {} : {}
+    };
+  }
+  return {
+    async checkBefore(ctx, override = {}) {
+      const startedAt = performance.now();
+      const policy = { ...DEFAULT_POLICY, ...override };
+      const now = ctx.now ?? Date.now();
+      const finding = staticScan(ctx.payload, policy.extraDenyPatterns);
+      if (finding) {
+        return {
+          allowed: false,
+          breach: {
+            code: finding.code,
+            reason: finding.reason,
+            observed: finding.excerpt,
+            limit: `rule:${finding.rule}`,
+            // A human raising a budget cannot make `rm -rf /` acceptable.
+            recoverable: false
+          },
+          state: await snapshot(ctx.sessionId),
+          evaluatedInMs: performance.now() - startedAt
+        };
+      }
+      if (ctx.mcpServer && policy.allowedMcpServers && policy.allowedMcpServers.length > 0) {
+        if (!policy.allowedMcpServers.includes(ctx.mcpServer)) {
+          return {
+            allowed: false,
+            breach: {
+              code: "UNAUTHORIZED_MCP",
+              reason: `This agent is not allowed to reach the MCP server "${ctx.mcpServer}".`,
+              observed: ctx.mcpServer,
+              limit: policy.allowedMcpServers.join(", "),
+              recoverable: true
+            },
+            state: await snapshot(ctx.sessionId),
+            evaluatedInMs: performance.now() - startedAt
+          };
+        }
+      }
+      const spentHundredths = await store.get(k.spend(ctx));
+      const grantedExtra = await store.get(`${ctx.sessionId}:granted`);
+      const ceilingCents = policy.maxCentsPerSession + grantedExtra / 100;
+      const spentCents = spentHundredths / 100;
+      if (policy.maxCentsPerSession > 0) {
+        const estimateCents = costInCents(ctx.model, estimateTokens(ctx.payload), 0);
+        if (spentCents + estimateCents > ceilingCents) {
+          return {
+            allowed: false,
+            breach: {
+              code: "BUDGET_EXCEEDED",
+              reason: `This task has spent $${spentCents.toFixed(2)} of its $${ceilingCents.toFixed(2)} limit.`,
+              observed: Number(spentCents.toFixed(4)),
+              limit: Number(ceilingCents.toFixed(4)),
+              recoverable: true
+            },
+            state: await snapshot(ctx.sessionId),
+            evaluatedInMs: performance.now() - startedAt
+          };
+        }
+      }
+      if (policy.maxToolCalls > 0 && ctx.isToolCall) {
+        const used = await store.get(k.tools(ctx));
+        if (used >= policy.maxToolCalls) {
+          return {
+            allowed: false,
+            breach: {
+              code: "TOOL_CALL_LIMIT",
+              reason: `This task has already run ${used} tool calls, its limit is ${policy.maxToolCalls}.`,
+              observed: used,
+              limit: policy.maxToolCalls,
+              recoverable: true
+            },
+            state: await snapshot(ctx.sessionId),
+            evaluatedInMs: performance.now() - startedAt
+          };
+        }
+      }
+      if (policy.maxCallsPerMinute > 0) {
+        const inWindow = await store.countWindow(k.calls(ctx), now, 6e4);
+        if (inWindow >= policy.maxCallsPerMinute) {
+          return {
+            allowed: false,
+            breach: {
+              code: "CALL_RATE",
+              reason: `This agent is calling too fast \u2014 ${inWindow} calls in the last minute.`,
+              observed: inWindow,
+              limit: policy.maxCallsPerMinute,
+              recoverable: true
+            },
+            state: await snapshot(ctx.sessionId),
+            evaluatedInMs: performance.now() - startedAt
+          };
+        }
+      }
+      if (policy.maxTokensPerMinute > 0) {
+        const tokensInWindow = await store.countWindow(k.tokens(ctx), now, 6e4);
+        if (tokensInWindow >= policy.maxTokensPerMinute) {
+          return {
+            allowed: false,
+            breach: {
+              code: "TOKEN_VELOCITY",
+              reason: `This agent burned ${tokensInWindow.toLocaleString()} tokens in the last minute.`,
+              observed: tokensInWindow,
+              limit: policy.maxTokensPerMinute,
+              recoverable: true
+            },
+            state: await snapshot(ctx.sessionId),
+            evaluatedInMs: performance.now() - startedAt
+          };
+        }
+      }
+      if (policy.loopThreshold > 0) {
+        const fp = payloadFingerprint(ctx.payload);
+        const repeats = await store.pushWindow(k.loop(ctx, fp), now, policy.loopWindowMs);
+        if (repeats > policy.loopThreshold) {
+          return {
+            allowed: false,
+            breach: {
+              code: "LOOP_DETECTED",
+              reason: `The same request repeated ${repeats} times in ${Math.round(policy.loopWindowMs / 1e3)}s \u2014 the agent looks stuck.`,
+              observed: repeats,
+              limit: policy.loopThreshold,
+              recoverable: true
+            },
+            state: await snapshot(ctx.sessionId),
+            evaluatedInMs: performance.now() - startedAt
+          };
+        }
+      }
+      await store.pushWindow(k.calls(ctx), now, 6e4);
+      if (ctx.isToolCall) await store.incr(k.tools(ctx), 1, SESSION_TTL_MS);
+      return {
+        allowed: true,
+        state: await snapshot(ctx.sessionId),
+        evaluatedInMs: performance.now() - startedAt
+      };
+    },
+    async recordAfter(ctx, usage) {
+      const now = ctx.now ?? Date.now();
+      const cents = costInCents(ctx.model, usage.inputTokens, usage.outputTokens);
+      const totalHundredths = await store.incr(
+        k.spend(ctx),
+        Math.round(cents * 100),
+        SESSION_TTL_MS
+      );
+      const total = usage.inputTokens + usage.outputTokens;
+      const marks = Math.max(1, Math.round(total / 1e3));
+      for (let i = 0; i < marks; i++) {
+        await store.pushWindow(k.tokens(ctx), now, 6e4);
+      }
+      return { spentCents: totalHundredths / 100 };
+    },
+    async raiseBudget(sessionId, extraCents) {
+      await memoryStoreSafeIncr(store, `${sessionId}:granted`, Math.round(extraCents * 100));
+    },
+    async resetSession(sessionId) {
+      await store.resetSession(sessionId);
+    },
+    snapshot
+  };
+}
+async function memoryStoreSafeIncr(store, key, by) {
+  await store.incr(key, by, SESSION_TTL_MS);
+}
+var breaker = createCircuitBreaker();
+function breachToErrorBody(breach, state, sessionId) {
+  return {
+    error: {
+      // OpenAI-compatible envelope so existing SDK error handling still works.
+      message: `[Lyceum] ${breach.reason}`,
+      type: "lyceum_circuit_breaker",
+      code: breach.code,
+      param: null
+    },
+    lyceum: {
+      halted: true,
+      sessionId,
+      breach,
+      state,
+      /** Told plainly so an agent author knows retrying is pointless. */
+      retryable: false,
+      humanActionRequired: breach.recoverable,
+      docs: "https://www.thelyceum.site/docs/circuit-breaker"
+    }
+  };
+}
+function breachToStatus(code) {
+  switch (code) {
+    case "RESTRICTED_PAYLOAD":
+    case "UNAUTHORIZED_MCP":
+      return 403;
+    case "BUDGET_EXCEEDED":
+      return 402;
+    // Payment Required — distinguishes money from rate limiting.
+    default:
+      return 429;
+  }
+}
+
+// server/db/evidenceGraph.ts
+init_firestore();
+var nodes = () => getDb().collection("evidenceNodes");
+var edges = () => getDb().collection("evidenceEdges");
+function coordinatesFor(sessionId, depth, kind, actorKind) {
+  let h = 2166136261;
+  const seed = `${sessionId}:${depth}:${kind}`;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const spread = (h >>> 0) % 1e3 / 1e3;
+  return {
+    x: Math.round((spread * 800 - 400) * 100) / 100,
+    y: depth * 120,
+    z: actorKind === "human" ? 200 : actorKind === "system" ? 100 : 0
+  };
+}
+function safePayload(payload) {
+  const out = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (/^(authorization|api[-_]?key|secret|token|password|cookie)$/i.test(key)) {
+      out[key] = "***REDACTED***";
+      continue;
+    }
+    out[key] = typeof value === "string" ? redact(value) : value;
+  }
+  return out;
+}
+async function writeNode(input) {
+  const parents = input.causedBy ?? [];
+  let depth = 0;
+  if (parents.length > 0) {
+    const snaps = await Promise.all(parents.map((p) => nodes().doc(p.nodeId).get()));
+    for (const s of snaps) {
+      const parent = s.exists ? s.data() : void 0;
+      if (parent) depth = Math.max(depth, parent.causalDepth + 1);
+    }
+  }
+  const ref = nodes().doc();
+  const node = {
+    id: ref.id,
+    licenseKey: input.licenseKey,
+    sessionId: input.sessionId,
+    kind: input.kind,
+    occurredAt: Date.now(),
+    actorKind: input.actorKind,
+    actorId: input.actorId,
+    actorLabel: input.actorLabel,
+    summary: redact(input.summary),
+    costCents: input.costCents ?? 0,
+    inputTokens: input.inputTokens ?? 0,
+    outputTokens: input.outputTokens ?? 0,
+    model: input.model,
+    upstream: input.upstream,
+    breachCode: input.breachCode,
+    evaluatedInMs: input.evaluatedInMs,
+    payload: safePayload(input.payload ?? {}),
+    pos: coordinatesFor(input.sessionId, depth, input.kind, input.actorKind),
+    causalDepth: depth
+  };
+  await ref.set(stripUndefined(node));
+  await Promise.all(
+    parents.map((p, i) => {
+      const eRef = edges().doc();
+      const edge = {
+        id: eRef.id,
+        licenseKey: input.licenseKey,
+        fromNode: p.nodeId,
+        toNode: ref.id,
+        kind: p.kind ?? "caused",
+        createdAt: Date.now(),
+        sequence: i,
+        rationale: p.rationale
+      };
+      return eRef.set(stripUndefined(edge));
+    })
+  );
+  return node;
+}
+function stripUndefined(obj) {
+  const out = {};
+  for (const [k2, v] of Object.entries(obj)) if (v !== void 0) out[k2] = v;
+  return out;
+}
+async function recordProxyCall(input) {
+  return writeNode({
+    licenseKey: input.licenseKey,
+    sessionId: input.sessionId,
+    kind: "proxy_call",
+    actorKind: "ai",
+    actorId: input.model,
+    actorLabel: input.model,
+    summary: `${input.model} via ${input.upstream} \u2192 ${input.status}`,
+    // Cost of this single call: total-after minus what it was before is not
+    // available here, so we price the call from its own usage in the breaker
+    // and store the running total in the payload for reconciliation.
+    costCents: 0,
+    inputTokens: input.usage.inputTokens,
+    outputTokens: input.usage.outputTokens,
+    model: input.model,
+    upstream: input.upstream,
+    evaluatedInMs: input.evaluatedInMs,
+    payload: {
+      status: input.status,
+      keyFingerprint: input.keyFingerprint,
+      sessionSpentCents: input.spentCentsAfter,
+      latencyMs: Math.round(input.latencyMs),
+      streamed: !!input.streamed,
+      request: input.redactedRequest
+    },
+    causedBy: input.causedBy ? [{ nodeId: input.causedBy }] : void 0
+  });
+}
+async function recordBreach(input) {
+  return writeNode({
+    licenseKey: input.licenseKey,
+    sessionId: input.sessionId,
+    kind: "breach",
+    actorKind: "system",
+    actorId: "circuit_breaker",
+    actorLabel: "Circuit breaker",
+    summary: input.breach.reason,
+    breachCode: input.breach.code,
+    model: input.model,
+    evaluatedInMs: input.evaluatedInMs,
+    payload: {
+      observed: input.breach.observed,
+      limit: input.breach.limit,
+      recoverable: input.breach.recoverable,
+      state: input.state,
+      excerpt: input.redactedExcerpt
+    },
+    causedBy: input.causedBy ? [{ nodeId: input.causedBy, kind: "blocked_by" }] : void 0
+  });
+}
+async function recordHumanApproval(input) {
+  const verb = input.decision === "approve" ? `approved +$${((input.grantedCents ?? 0) / 100).toFixed(2)}` : input.decision === "abort" ? "aborted the task" : "changed the limits";
+  return writeNode({
+    licenseKey: input.licenseKey,
+    sessionId: input.sessionId,
+    kind: "human_approval",
+    actorKind: "human",
+    actorId: input.memberId,
+    actorLabel: input.memberName,
+    summary: `${input.memberName} ${verb}`,
+    payload: {
+      decision: input.decision,
+      note: input.note ?? "",
+      grantedCents: input.grantedCents ?? 0,
+      newLimits: input.newLimits ?? {}
+    },
+    causedBy: [
+      {
+        nodeId: input.breachNodeId,
+        kind: input.decision === "abort" ? "rejected_by" : "approved_by",
+        rationale: input.note
+      }
+    ]
+  });
+}
+async function lineage(licenseKey, nodeId, maxDepth = 50) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  let frontier = [{ id: nodeId }];
+  for (let depth = 0; depth <= maxDepth && frontier.length > 0; depth++) {
+    const snaps = await Promise.all(frontier.map((f) => nodes().doc(f.id).get()));
+    const next = [];
+    for (let i = 0; i < snaps.length; i++) {
+      const snap = snaps[i];
+      if (!snap.exists) continue;
+      const node = snap.data();
+      if (node.licenseKey !== licenseKey || seen.has(node.id)) continue;
+      seen.add(node.id);
+      out.push({ depth, node, via: frontier[i].via });
+      const parentEdges = await edges().where("toNode", "==", node.id).get();
+      for (const e of parentEdges.docs) {
+        const edge = e.data();
+        if (!seen.has(edge.fromNode)) next.push({ id: edge.fromNode, via: edge.kind });
+      }
+    }
+    frontier = next;
+  }
+  return out;
+}
+async function sessionSummary(licenseKey, sessionId) {
+  const snap = await nodes().where("licenseKey", "==", licenseKey).where("sessionId", "==", sessionId).get();
+  const all = snap.docs.map((d) => d.data());
+  const spent = all.reduce(
+    (max, n) => Math.max(max, Number(n.payload?.sessionSpentCents ?? 0)),
+    0
+  );
+  return {
+    sessionId,
+    nodeCount: all.length,
+    totalTokens: all.reduce((s, n) => s + n.inputTokens + n.outputTokens, 0),
+    spentCents: spent,
+    breachCount: all.filter((n) => n.kind === "breach").length,
+    humanDecisionCount: all.filter((n) => n.kind === "human_approval").length,
+    deepestCausalChain: all.reduce((m, n) => Math.max(m, n.causalDepth), 0),
+    startedAt: all.reduce((m, n) => Math.min(m, n.occurredAt), Date.now()),
+    lastActivityAt: all.reduce((m, n) => Math.max(m, n.occurredAt), 0)
+  };
+}
+async function pendingBreaches(licenseKey, limit = 20) {
+  const snap = await nodes().where("licenseKey", "==", licenseKey).where("kind", "==", "breach").get();
+  const breaches = snap.docs.map((d) => d.data()).filter((n) => n.payload?.recoverable === true).sort((a, b) => b.occurredAt - a.occurredAt).slice(0, limit);
+  const answered = /* @__PURE__ */ new Set();
+  for (const b of breaches) {
+    const es = await edges().where("fromNode", "==", b.id).get();
+    if (es.docs.some((e) => ["approved_by", "rejected_by"].includes(e.data().kind))) {
+      answered.add(b.id);
+    }
+  }
+  return breaches.filter((b) => !answered.has(b.id));
+}
+
+// server/proxy/llmProxy.ts
+var UPSTREAMS = {
+  openai: "https://api.openai.com",
+  anthropic: "https://api.anthropic.com",
+  openrouter: "https://openrouter.ai/api",
+  google: "https://generativelanguage.googleapis.com"
+};
+function inferUpstream(model, fallback) {
+  if (!model) return fallback;
+  const m = model.toLowerCase();
+  if (m.startsWith("claude") || m.includes("anthropic")) return "anthropic";
+  if (m.startsWith("gpt") || m.startsWith("o1") || m.startsWith("o3")) return "openai";
+  if (m.startsWith("gemini")) return "google";
+  if (m.includes("/")) return "openrouter";
+  return fallback;
+}
+function fingerprintKey(authHeader) {
+  if (!authHeader) return "none";
+  const salt = process.env.LYCEUM_FINGERPRINT_SALT ?? "";
+  if (!salt) {
+    return "unsalted";
+  }
+  return crypto.createHash("sha256").update(salt).update(authHeader).digest("hex").slice(0, 8);
+}
+function resolveSessionId(req, tenant, body) {
+  const header = req.header("x-lyceum-session");
+  if (header) return `${tenant.token}:${header}`;
+  const user = typeof body.user === "string" ? body.user : void 0;
+  if (user) return `${tenant.token}:user:${user}`;
+  return `${tenant.token}:default:${fingerprintKey(req.header("authorization"))}`;
+}
+var HOP_BY_HOP = /* @__PURE__ */ new Set([
+  "host",
+  "connection",
+  "keep-alive",
+  "transfer-encoding",
+  "upgrade",
+  "proxy-authorization",
+  "proxy-connection",
+  "te",
+  "trailer",
+  "content-length"
+]);
+var LYCEUM_HEADERS = /* @__PURE__ */ new Set(["x-lyceum-key", "x-lyceum-session"]);
+function forwardableHeaders(req) {
+  const out = {};
+  for (const [name, value] of Object.entries(req.headers)) {
+    const lower = name.toLowerCase();
+    if (HOP_BY_HOP.has(lower) || LYCEUM_HEADERS.has(lower)) continue;
+    if (typeof value === "string") out[name] = value;
+    else if (Array.isArray(value)) out[name] = value.join(", ");
+  }
+  return out;
+}
+function createProxyRouter(opts) {
+  const router = express.Router();
+  const doFetch = opts.fetchImpl ?? fetch;
+  const rawJson = express.raw({ type: () => true, limit: "20mb" });
+  const handler = async (req, res) => {
+    const startedAt = performance.now();
+    const token = req.params.token ?? req.header("x-lyceum-key");
+    if (!token) {
+      res.status(401).json({
+        error: {
+          message: "[Lyceum] Missing proxy token. Point your baseURL at https://proxy.thelyceum.ai/t/<your-token>/v1",
+          type: "lyceum_config",
+          code: "MISSING_PROXY_TOKEN"
+        }
+      });
+      return;
+    }
+    const tenant = await opts.resolveTenant(token);
+    if (!tenant) {
+      res.status(401).json({
+        error: {
+          message: "[Lyceum] Unknown proxy token.",
+          type: "lyceum_config",
+          code: "UNKNOWN_PROXY_TOKEN"
+        }
+      });
+      return;
+    }
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const contentType = req.header("content-type") ?? "";
+    let body = {};
+    if (contentType.includes("json") && rawBody.length > 0) {
+      try {
+        body = JSON.parse(rawBody.toString("utf8"));
+      } catch {
+        res.status(400).json({
+          error: {
+            message: "[Lyceum] Request body is not valid JSON, so it cannot be governed.",
+            type: "lyceum_config",
+            code: "UNPARSEABLE_BODY"
+          }
+        });
+        return;
+      }
+    }
+    const model = typeof body.model === "string" ? body.model : void 0;
+    const sessionId = resolveSessionId(req, tenant, body);
+    const isStream = body.stream === true;
+    const isToolCall = Array.isArray(body.tools) || Array.isArray(body.functions);
+    const ctx = {
+      sessionId,
+      tenantId: tenant.licenseKey,
+      model: model ?? "unknown",
+      payload: body,
+      isToolCall,
+      mcpServer: req.header("x-lyceum-mcp-server") ?? void 0
+    };
+    const verdict = await breaker.checkBefore(ctx, tenant.policy);
+    if (!verdict.allowed && verdict.breach) {
+      const status = breachToStatus(verdict.breach.code);
+      const payload = breachToErrorBody(verdict.breach, verdict.state, sessionId);
+      await recordBreach({
+        licenseKey: tenant.licenseKey,
+        sessionId,
+        model: ctx.model,
+        breach: verdict.breach,
+        state: verdict.state,
+        redactedExcerpt: redact(JSON.stringify(body).slice(0, 2e3)),
+        evaluatedInMs: verdict.evaluatedInMs
+      }).catch(() => {
+      });
+      res.status(status).set("x-lyceum-decision", "blocked").set("x-lyceum-breach", verdict.breach.code).set("x-lyceum-eval-ms", verdict.evaluatedInMs.toFixed(2)).json(payload);
+      return;
+    }
+    const upstreamName = inferUpstream(model, tenant.defaultUpstream);
+    const upstreamBase = UPSTREAMS[upstreamName];
+    const suffix = req.params[0] ?? "";
+    const qIndex = req.originalUrl.indexOf("?");
+    const query = qIndex >= 0 ? req.originalUrl.slice(qIndex) : "";
+    const upstreamUrl = `${upstreamBase}/v1/${suffix}${query}`;
+    let upstreamRes;
+    try {
+      upstreamRes = await doFetch(upstreamUrl, {
+        method: req.method,
+        headers: forwardableHeaders(req),
+        body: req.method === "GET" || req.method === "HEAD" ? void 0 : rawBody
+      });
+    } catch (err) {
+      res.status(502).json({
+        error: {
+          message: `[Lyceum] Could not reach ${upstreamName}: ${err instanceof Error ? err.message : "unknown"}`,
+          type: "lyceum_upstream",
+          code: "UPSTREAM_UNREACHABLE"
+        }
+      });
+      return;
+    }
+    res.status(upstreamRes.status);
+    upstreamRes.headers.forEach((value, name) => {
+      if (!HOP_BY_HOP.has(name.toLowerCase())) res.setHeader(name, value);
+    });
+    res.setHeader("x-lyceum-decision", "allowed");
+    res.setHeader("x-lyceum-eval-ms", verdict.evaluatedInMs.toFixed(2));
+    res.setHeader("x-lyceum-session", sessionId);
+    if (isStream && upstreamRes.body) {
+      await pipeAndMeter(upstreamRes, res, ctx, {
+        licenseKey: tenant.licenseKey,
+        sessionId,
+        upstream: upstreamName,
+        keyFingerprint: fingerprintKey(req.header("authorization")),
+        startedAt,
+        verdict,
+        body
+      });
+      return;
+    }
+    const text = await upstreamRes.text();
+    let usage = { inputTokens: 0, outputTokens: 0 };
+    try {
+      const parsed = JSON.parse(text);
+      usage = readUsage(parsed);
+    } catch {
+    }
+    const after = await breaker.recordAfter(ctx, usage);
+    await recordProxyCall({
+      licenseKey: tenant.licenseKey,
+      sessionId,
+      model: ctx.model,
+      upstream: upstreamName,
+      keyFingerprint: fingerprintKey(req.header("authorization")),
+      status: upstreamRes.status,
+      usage,
+      spentCentsAfter: after.spentCents,
+      latencyMs: performance.now() - startedAt,
+      evaluatedInMs: verdict.evaluatedInMs,
+      redactedRequest: redact(JSON.stringify(body).slice(0, 2e3))
+    }).catch(() => {
+    });
+    res.send(text);
+  };
+  router.all("/t/:token/v1/*", rawJson, handler);
+  router.all("/v1/*", rawJson, handler);
+  return router;
+}
+function readUsage(parsed) {
+  const u = parsed?.usage;
+  if (!u) return { inputTokens: 0, outputTokens: 0 };
+  return {
+    inputTokens: u.prompt_tokens ?? u.input_tokens ?? 0,
+    outputTokens: u.completion_tokens ?? u.output_tokens ?? 0
+  };
+}
+async function pipeAndMeter(upstreamRes, res, ctx, meta) {
+  const reader = upstreamRes.body.getReader();
+  const decoder = new TextDecoder();
+  let tail = "";
+  let usage = { inputTokens: 0, outputTokens: 0 };
+  try {
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+      tail = (tail + decoder.decode(value, { stream: true })).slice(-8192);
+    }
+  } finally {
+    res.end();
+  }
+  for (const line of tail.split("\n")) {
+    const trimmed = line.startsWith("data:") ? line.slice(5).trim() : line.trim();
+    if (!trimmed || trimmed === "[DONE]" || !trimmed.startsWith("{")) continue;
+    try {
+      const found = readUsage(JSON.parse(trimmed));
+      if (found.inputTokens || found.outputTokens) usage = found;
+    } catch {
+    }
+  }
+  const after = await breaker.recordAfter(ctx, usage);
+  await recordProxyCall({
+    licenseKey: meta.licenseKey,
+    sessionId: meta.sessionId,
+    model: ctx.model,
+    upstream: meta.upstream,
+    keyFingerprint: meta.keyFingerprint,
+    status: upstreamRes.status,
+    usage,
+    spentCentsAfter: after.spentCents,
+    latencyMs: performance.now() - meta.startedAt,
+    evaluatedInMs: meta.verdict.evaluatedInMs,
+    redactedRequest: redact(JSON.stringify(meta.body).slice(0, 2e3)),
+    streamed: true
+  }).catch(() => {
+  });
+}
+
+// server/db/proxyTokens.ts
+init_firestore();
+import crypto2 from "crypto";
+var collection5 = () => getDb().collection("proxyTokens");
+function generateProxyToken() {
+  return `lyc_live_${crypto2.randomBytes(18).toString("base64url")}`;
+}
+async function mintProxyToken(params) {
+  const record = {
+    token: generateProxyToken(),
+    licenseKey: params.licenseKey,
+    label: params.label ?? "Default",
+    defaultUpstream: params.defaultUpstream ?? "openai",
+    policy: params.policy ?? {},
+    createdAt: Date.now()
+  };
+  await collection5().doc(record.token).set(record);
+  return record;
+}
+async function resolveProxyToken(token) {
+  const snap = await collection5().doc(token).get();
+  if (!snap.exists) return null;
+  const record = snap.data();
+  if (record.revokedAt) return null;
+  collection5().doc(token).set({ lastUsedAt: Date.now() }, { merge: true }).catch(() => {
+  });
+  return record;
+}
+async function listProxyTokens(licenseKey) {
+  const snap = await collection5().where("licenseKey", "==", licenseKey).get();
+  return snap.docs.map((d) => d.data()).sort((a, b) => b.createdAt - a.createdAt);
+}
+async function revokeProxyToken(licenseKey, token) {
+  const ref = collection5().doc(token);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().licenseKey !== licenseKey) return false;
+  await ref.set({ revokedAt: Date.now() }, { merge: true });
+  return true;
+}
+async function updateProxyPolicy(licenseKey, token, policy) {
+  const ref = collection5().doc(token);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().licenseKey !== licenseKey) return false;
+  await ref.set({ policy }, { merge: true });
+  return true;
+}
+
 // server/index.ts
 var orders = /* @__PURE__ */ new Map();
 var BETA_SLOT_BASELINE = Number(process.env.BETA_SLOT_BASELINE ?? 84);
 var BETA_SLOT_CAP = Number(process.env.BETA_SLOT_CAP ?? 100);
 function verifyLemonSignature(rawBody, signatureHeader, secret) {
   if (!signatureHeader || !secret) return false;
-  const digest = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const digest = crypto3.createHmac("sha256", secret).update(rawBody).digest("hex");
   const expected = Buffer.from(digest, "utf8");
   const actual = Buffer.from(signatureHeader, "utf8");
-  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  return expected.length === actual.length && crypto3.timingSafeEqual(expected, actual);
 }
 function requireAdmin(req, res, next) {
   const configured = process.env.ADMIN_TOKEN || "";
   const provided = req.header("x-admin-token") || "";
   const expected = Buffer.from(configured, "utf8");
   const actual = Buffer.from(provided, "utf8");
-  const valid = configured.length > 0 && expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  const valid = configured.length > 0 && expected.length === actual.length && crypto3.timingSafeEqual(expected, actual);
   if (!valid) {
     return res.status(401).json({ error: "unauthorized" });
   }
   next();
 }
 function createApiApp() {
-  const app2 = express();
+  const app2 = express2();
+  app2.use(
+    createProxyRouter({
+      resolveTenant: async (token) => {
+        const record = await resolveProxyToken(token).catch(() => null);
+        if (!record) return null;
+        return {
+          token: record.token,
+          licenseKey: record.licenseKey,
+          defaultUpstream: record.defaultUpstream,
+          policy: record.policy
+        };
+      }
+    })
+  );
   app2.post(
     "/api/webhooks/lemonsqueezy",
-    express.raw({ type: "application/json", limit: "1mb" }),
+    express2.raw({ type: "application/json", limit: "1mb" }),
     async (req, res) => {
       const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET || "";
       const signature = req.header("X-Signature");
@@ -1309,7 +2276,7 @@ function createApiApp() {
     const list = Array.from(orders.entries()).map(([ref, order]) => ({ ref, ...order })).sort((a, b) => (b.paidAt ?? 0) - (a.paidAt ?? 0));
     res.json({ orders: list });
   });
-  app2.use(express.json({ limit: "1mb" }));
+  app2.use(express2.json({ limit: "1mb" }));
   app2.post("/api/chat", async (req, res) => {
     try {
       const result = await proxyToOpenRouter(req.body);
@@ -1455,7 +2422,7 @@ function createApiApp() {
     res.json({
       status: "ok",
       domains: Object.keys(KEY_MAP),
-      keysConfigured: Object.entries(KEY_MAP).filter(([, v]) => !!v).map(([k]) => k),
+      keysConfigured: Object.entries(KEY_MAP).filter(([, v]) => !!v).map(([k2]) => k2),
       mcpEndpoint: "/api/mcp",
       apiEndpoint: "/api/v1/chat",
       timestamp: Date.now()
@@ -1514,6 +2481,124 @@ function createApiApp() {
     res.json({ task });
   });
   app2.all("/api/mcp", authenticateLicenseKey, handleMcpRequest);
+  app2.get("/api/v1/proxy-tokens", authenticateLicenseKey, async (req, res) => {
+    const tokens = await listProxyTokens(req.lyceumAccount.licenseKey);
+    res.json({
+      // The token itself is only shown at mint time; listing returns a prefix
+      // so a leaked screenshot of this page isn't a working credential.
+      tokens: tokens.map((t) => ({
+        preview: `${t.token.slice(0, 16)}\u2026`,
+        label: t.label,
+        defaultUpstream: t.defaultUpstream,
+        policy: t.policy,
+        createdAt: t.createdAt,
+        lastUsedAt: t.lastUsedAt,
+        revoked: !!t.revokedAt
+      }))
+    });
+  });
+  app2.post("/api/v1/proxy-tokens", authenticateLicenseKey, async (req, res) => {
+    const { label, defaultUpstream, policy } = req.body ?? {};
+    const record = await mintProxyToken({
+      licenseKey: req.lyceumAccount.licenseKey,
+      label,
+      defaultUpstream,
+      policy
+    });
+    res.json({
+      token: record.token,
+      baseUrl: `${req.protocol}://${req.get("host")}/t/${record.token}/v1`,
+      // Said explicitly because there is no second chance to copy it.
+      notice: "Copy this now \u2014 the full token is not shown again."
+    });
+  });
+  app2.delete("/api/v1/proxy-tokens/:token", authenticateLicenseKey, async (req, res) => {
+    const ok = await revokeProxyToken(req.lyceumAccount.licenseKey, req.params.token);
+    if (!ok) return res.status(404).json({ error: "Token not found" });
+    res.json({ revoked: true });
+  });
+  app2.patch("/api/v1/proxy-tokens/:token/policy", authenticateLicenseKey, async (req, res) => {
+    const ok = await updateProxyPolicy(
+      req.lyceumAccount.licenseKey,
+      req.params.token,
+      req.body ?? {}
+    );
+    if (!ok) return res.status(404).json({ error: "Token not found" });
+    res.json({ updated: true });
+  });
+  app2.get("/api/v1/decisions", authenticateLicenseKey, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const breaches = await pendingBreaches(licenseKey, 20);
+    const cards = await Promise.all(
+      breaches.map(async (b) => {
+        const summary = await sessionSummary(licenseKey, b.sessionId);
+        const live = await breaker.snapshot(b.sessionId);
+        return {
+          breachNodeId: b.id,
+          sessionId: b.sessionId,
+          taskName: b.payload?.excerpt?.slice(0, 80) ?? b.sessionId,
+          reason: b.summary,
+          breachCode: b.breachCode,
+          observed: b.payload?.observed,
+          limit: b.payload?.limit,
+          model: b.model,
+          occurredAt: b.occurredAt,
+          evaluatedInMs: b.evaluatedInMs,
+          spend: {
+            spentCents: live.spentCents,
+            // The ceiling the breach was measured against.
+            limitCents: typeof b.payload?.limit === "number" ? b.payload.limit : null
+          },
+          session: summary
+        };
+      })
+    );
+    res.json({ cards });
+  });
+  app2.post("/api/v1/decisions/:breachNodeId", authenticateLicenseKey, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const { decision, sessionId, grantCents, newLimits, note, memberId, memberName } = req.body ?? {};
+    if (!decision || !sessionId) {
+      return res.status(400).json({ error: "decision and sessionId are required" });
+    }
+    if (decision === "approve") {
+      await breaker.raiseBudget(sessionId, grantCents ?? 100);
+    } else if (decision === "abort") {
+    } else if (decision === "modify" && newLimits) {
+      if (typeof newLimits.grantCents === "number") {
+        await breaker.raiseBudget(sessionId, newLimits.grantCents);
+      }
+    }
+    const node = await recordHumanApproval({
+      licenseKey,
+      sessionId,
+      memberId: memberId ?? "member-owner",
+      memberName: memberName ?? "You",
+      decision,
+      breachNodeId: req.params.breachNodeId,
+      note,
+      grantedCents: decision === "approve" ? grantCents ?? 100 : newLimits?.grantCents,
+      newLimits
+    });
+    res.json({ recorded: true, decisionNodeId: node.id, state: await breaker.snapshot(sessionId) });
+  });
+  app2.get("/api/v1/evidence/:nodeId/lineage", authenticateLicenseKey, async (req, res) => {
+    const trail = await lineage(req.lyceumAccount.licenseKey, req.params.nodeId);
+    res.json({
+      lineage: trail.map(({ depth, node, via }) => ({
+        depth,
+        via,
+        id: node.id,
+        kind: node.kind,
+        actor: { kind: node.actorKind, label: node.actorLabel ?? node.actorId },
+        summary: node.summary,
+        costCents: node.costCents,
+        breachCode: node.breachCode,
+        occurredAt: node.occurredAt,
+        pos: node.pos
+      }))
+    });
+  });
   return app2;
 }
 async function startServer() {
@@ -1522,7 +2607,7 @@ async function startServer() {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const staticPath = process.env.NODE_ENV === "production" ? path.resolve(__dirname, "public") : path.resolve(__dirname, "..", "dist", "public");
-  app2.use(express.static(staticPath));
+  app2.use(express2.static(staticPath));
   app2.get("*", (_req, res) => {
     res.sendFile(path.join(staticPath, "index.html"));
   });

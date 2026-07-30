@@ -5,7 +5,7 @@ export default function RefundPolicy() {
     <LegalPageLayout title="Refund Policy">
       <LegalSection heading="1. What You're Paying For">
         <p>
-          Pre-order payments ($22 Basic / $122 VIP, or the amount shown at checkout) are deposits that
+          Pre-order payments ($52 Starter Pass / $222 Founder Pass, or the amount shown at checkout) are deposits that
           reserve your beta slot and are applied toward your plan at launch. They are not a purchase of a
           finished, generally-available product — The Lyceum is in capped beta, and features are actively
           being built.
