@@ -12,8 +12,7 @@ import ThankYou from "./pages/ThankYou";
 import Waiting from "./pages/Waiting";
 import Admin from "./pages/Admin";
 import Notes from "./pages/Notes";
-import TaskOnboarding from "./pages/TaskOnboarding";
-import SessionPage from "./pages/SessionPage";
+import Dashboard from "./pages/Dashboard";
 import Missions from "./pages/Missions";
 import Governance from "./pages/Governance";
 import Terms from "./pages/Terms";
@@ -25,9 +24,8 @@ function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
-      <Route path={"/onboarding"} component={TaskOnboarding} />
-      <Route path={"/session"} component={SessionPage} />
       <Route path={"/canvas"} component={WorkforceCanvasPage} />
+      <Route path={"/app"} component={Dashboard} />
       <Route path={"/missions"} component={Missions} />
       <Route path={"/governance"} component={Governance} />
       <Route path={"/thank-you"} component={ThankYou} />

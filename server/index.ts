@@ -394,8 +394,11 @@ export function createApiApp(): express.Express {
   app.get("/api/v1/account", authenticateLicenseKey, (req: AuthedRequest, res: express.Response) => {
     const account = req.lyceumAccount!;
     res.json({
+      // name/organization come from the checkout, which is why the app needs
+      // no onboarding wizard to learn who the customer is.
+      name: account.name ?? null,
+      organization: account.organization ?? null,
       product: account.product,
-      organization: account.organization,
       creditsRemaining: account.creditsRemaining,
       creditsTotal: account.creditsTotal,
     });

@@ -38,7 +38,7 @@ export function LicenseKeyEntry({ open, onClose }: { open: boolean; onClose: () 
       setLicenseKey(trimmed);
       // Attempt to load any existing server-side sessions
       loadServerSessions();
-      navigate("/onboarding");
+      navigate("/app");
     } catch {
       setError("Couldn't verify that key right now. Try again in a moment.");
       setChecking(false);

@@ -308,22 +308,11 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       createdAt: Date.now(),
     };
 
-    // Create default folders
-    const defaultFolders: WorkspaceFolder[] = [
-      { id: `${workspaceId}-folder-reports`, workspaceId, name: "Reports", parentId: null, createdBy: memberId, createdAt: Date.now(), documentCount: 2 },
-      { id: `${workspaceId}-folder-research`, workspaceId, name: "Research", parentId: null, createdBy: memberId, createdAt: Date.now(), documentCount: 1 },
-      { id: `${workspaceId}-folder-contracts`, workspaceId, name: "Contracts", parentId: null, createdBy: memberId, createdAt: Date.now(), documentCount: 3 },
-    ];
-
-    // Create default documents
-    const defaultDocs: WorkspaceDocument[] = [
-      { id: `${workspaceId}-doc-1`, workspaceId, folderId: `${workspaceId}-folder-reports`, name: "Q4_Financial_Summary.pdf", type: "pdf", size: 2_450_000, uploadedBy: memberId, uploadedAt: Date.now(), content: "mock-base64-pdf-content-q4-summary" },
-      { id: `${workspaceId}-doc-2`, workspaceId, folderId: `${workspaceId}-folder-reports`, name: "Team_Velocity_Report.md", type: "md", size: 12_400, uploadedBy: memberId, uploadedAt: Date.now(), content: "# Team Velocity Report\n\n## Sprint 24\n- Completed: 42 story points\n- Velocity: +12% vs last sprint", description: "Weekly velocity tracking" },
-      { id: `${workspaceId}-doc-3`, workspaceId, folderId: `${workspaceId}-folder-research`, name: "Competitor_Analysis.json", type: "json", size: 89_000, uploadedBy: memberId, uploadedAt: Date.now(), content: '{"competitors":["Company A","Company B","Company C"],"market_share":{"Company A":0.34,"Company B":0.28,"Company C":0.15}}' },
-      { id: `${workspaceId}-doc-4`, workspaceId, folderId: `${workspaceId}-folder-contracts`, name: "Vendor_Agreement_2024.docx", type: "doc", size: 1_800_000, uploadedBy: memberId, uploadedAt: Date.now(), content: "mock-base64-doc-vendor-agreement" },
-      { id: `${workspaceId}-doc-5`, workspaceId, folderId: `${workspaceId}-folder-contracts`, name: "NDA_Template.txt", type: "txt", size: 4_200, uploadedBy: memberId, uploadedAt: Date.now(), content: "This Non-Disclosure Agreement (\"NDA\") is entered into between...", description: "Standard NDA template v2.1" },
-      { id: `${workspaceId}-doc-6`, workspaceId, folderId: `${workspaceId}-folder-contracts`, name: "Service_Level_Agreement.xlsx", type: "xlsx", size: 920_000, uploadedBy: memberId, uploadedAt: Date.now(), content: "mock-base64-xlsx-sla" },
-    ];
+    // A new company starts with nothing in it. Seeding fake folders and
+    // documents makes the workspace look alive but means the first real thing
+    // a user saves sits next to invented files they now have to clean up.
+    const defaultFolders: WorkspaceFolder[] = [];
+    const defaultDocs: WorkspaceDocument[] = [];
 
     set({
       companies: [company],

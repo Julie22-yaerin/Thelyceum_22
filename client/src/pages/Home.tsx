@@ -9,7 +9,6 @@ import AnimatedCounter from "@/components/AnimatedCounter";
 import AIWorkflowSimulation from "@/components/AIWorkflowSimulation";
 import CanvasWorkforceDemo from "@/components/CanvasWorkforceDemo";
 import { LicenseKeyEntry } from "@/components/LicenseKeyEntry";
-import { useSessionStore } from "@/store/useSessionStore";
 
 import "@/styles/hero.css";
 
@@ -130,150 +129,6 @@ function LogoImage({ className, size }: { className?: string; size?: number }) {
       className={className}
       style={{ width: size || 28, height: size || 28, objectFit: "contain" }}
     />
-  );
-}
-
-/* ── Your Sessions ──────────────────────────────────────────────────────────── */
-
-function YourSessions() {
-  const [, setLocation] = useLocation();
-  const sessions = useSessionStore((s) => s.sessions);
-  const loadSession = useSessionStore((s) => s.loadSession);
-  const deleteSession = useSessionStore((s) => s.deleteSession);
-
-  if (sessions.length === 0) return null;
-
-  return (
-    <>
-      <div className="landing-divider" />
-      <section className="landing-section" style={{ paddingTop: 64, paddingBottom: 64 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
-          <motion.div {...fadeInUp}>
-            <p className="landing-section__label">Your Workspace</p>
-            <h2 className="landing-section__title" style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)" }}>
-              Resume where you left off
-            </h2>
-          </motion.div>
-          <motion.button
-            {...fadeInUp}
-            onClick={() => setLocation("/onboarding")}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              fontFamily: "'Inter', sans-serif", fontSize: 12, color: "#888",
-              background: "none", border: "none", cursor: "pointer",
-            }}
-          >
-            <Sparkles style={{ width: 12, height: 12 }} />
-            New Session
-          </motion.button>
-        </div>
-
-        <motion.div
-          variants={staggerContainer}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: 16,
-          }}
-        >
-          {[...sessions].reverse().map((s) => {
-            const done = s.tasks.filter((t) => t.status === "completed").length;
-            const total = s.tasks.length;
-            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-            const allDone = pct === 100;
-
-            return (
-              <motion.div
-                key={s.id}
-                variants={fadeInUp}
-                className="session-card"
-              >
-                <button
-                  className="session-card__delete"
-                  onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
-                  aria-label="Delete session"
-                >
-                  <Trash2 style={{ width: 12, height: 12 }} />
-                </button>
-
-                <button
-                  onClick={() => { loadSession(s.id); setLocation(`/session?session=${s.id}`); }}
-                  style={{
-                    width: "100%", textAlign: "left", padding: 20,
-                    background: "none", border: "none", cursor: "pointer",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                    <div style={{
-                      width: 28, height: 28, borderRadius: 8,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      background: allDone ? "rgba(0,0,0,0.06)" : "rgba(0,0,0,0.04)",
-                      flexShrink: 0,
-                    }}>
-                      <Sparkles style={{ width: 14, height: 14, color: allDone ? "#111" : "#888" }} />
-                    </div>
-                    <p style={{
-                      fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: 14, color: "#111",
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0,
-                    }}>
-                      {s.name}
-                    </p>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                    <div style={{
-                      flex: 1, height: 4, borderRadius: 2,
-                      background: "rgba(0,0,0,0.06)", overflow: "hidden",
-                    }}>
-                      <div style={{
-                        height: "100%", borderRadius: 2, width: `${pct}%`,
-                        background: allDone ? "#111" : "rgba(0,0,0,0.3)",
-                        transition: "width 0.7s ease",
-                      }} />
-                    </div>
-                    <span style={{
-                      fontFamily: "'Inter', sans-serif", fontSize: 10, color: "#aaa",
-                      fontVariantNumeric: "tabular-nums",
-                    }}>
-                      {done}/{total}
-                    </span>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 10, color: "#aaa" }}>
-                        {new Date(s.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                      </span>
-                      <span style={{ fontSize: 8, color: "#ccc" }}>·</span>
-                      <span style={{
-                        fontFamily: "'Inter', sans-serif", fontSize: 10,
-                        color: allDone ? "#111" : "#888", fontWeight: allDone ? 500 : 400,
-                      }}>
-                        {allDone ? "Complete" : "In progress"}
-                      </span>
-                    </div>
-                    <Play className="session-card__play" style={{ width: 12, height: 12, color: "#111" }} />
-                  </div>
-                </button>
-              </motion.div>
-            );
-          })}
-
-          <motion.div variants={fadeInUp}>
-            <button
-              className="session-card__new"
-              onClick={() => setLocation("/onboarding")}
-            >
-              <Sparkles style={{ width: 20, height: 20, color: "#aaa" }} />
-              <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: "#888", fontWeight: 500 }}>
-                New Session
-              </span>
-            </button>
-          </motion.div>
-        </motion.div>
-      </section>
-      <div className="landing-divider" />
-    </>
   );
 }
 
@@ -418,8 +273,6 @@ export default function Home() {
       <CanvasWorkforceDemo onNavigateToWorkspace={() => setLocation("/onboarding")} />
 
       {/* ── Below Hero: Existing Sections ─────────────────────────────────────── */}
-
-      <YourSessions />
 
       {/* ── Features Section ──────────────────────────────────────────────────── */}
       <section id="features" className="landing-section">

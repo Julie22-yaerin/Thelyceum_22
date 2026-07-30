@@ -117,192 +117,6 @@ export interface MonthlyBudgetCap {
   triggeredThresholds: number[];
 }
 
-// ── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_AGENTS: AgentData[] = [
-  {
-    label: "Orion",
-    tier: 1,
-    role: "Executive Strategist",
-    status: "AWAKE_WORKING",
-    wallet: { balance: 85000, budgetLimit: 100000, usdEquivalent: 850 },
-    config: {
-      systemPrompt: "You are the Executive Master Agent. Decompose high-level strategy into actionable tasks.",
-      connectionMode: "DIRECT_API",
-      apiKey: "sk-...orion",
-      monthlyBudgetLimit: 500,
-      billingStatus: "ACTIVE",
-    },
-    commentCount: 3,
-    connectedUserIds: ["user-1", "user-2"],
-  },
-  {
-    label: "Meridian",
-    tier: 2,
-    role: "Quality Router",
-    status: "AWAKE_WORKING",
-    wallet: { balance: 62000, budgetLimit: 80000, usdEquivalent: 620 },
-    config: {
-      systemPrompt: "You are the Manager Agent. Route tasks, enforce quality gates, and flag edge cases.",
-      connectionMode: "MCP_SERVER",
-      mcpServerUrl: "mcp://meridian.lyceum.internal:8443",
-      monthlyBudgetLimit: 300,
-      billingStatus: "ACTIVE",
-    },
-    commentCount: 5,
-    connectedUserIds: ["user-3"],
-  },
-  {
-    label: "Scribe",
-    tier: 3,
-    role: "Data Extraction Specialist",
-    status: "AWAKE_WORKING",
-    wallet: { balance: 34000, budgetLimit: 50000, usdEquivalent: 340 },
-    config: {
-      systemPrompt: "Extract structured data from unstructured sources. Return JSON only.",
-      connectionMode: "DIRECT_API",
-      apiKey: "sk-...scribe",
-      monthlyBudgetLimit: 200,
-      billingStatus: "ACTIVE",
-    },
-    commentCount: 1,
-    connectedUserIds: [],
-  },
-  {
-    label: "Forge",
-    tier: 3,
-    role: "Code Generation Specialist",
-    status: "DROWSY_WARNING",
-    wallet: { balance: 4200, budgetLimit: 50000, usdEquivalent: 42 },
-    config: {
-      systemPrompt: "Generate production-ready TypeScript code following project standards.",
-      connectionMode: "DIRECT_API",
-      apiKey: "sk-...forge",
-      monthlyBudgetLimit: 200,
-      billingStatus: "LIMIT_EXCEEDED",
-    },
-    commentCount: 2,
-    connectedUserIds: [],
-  },
-  {
-    label: "Aegis",
-    tier: 2,
-    role: "QA & Audit Manager",
-    status: "ON_STRIKE_ASLEEP",
-    wallet: { balance: 0, budgetLimit: 60000, usdEquivalent: 0 },
-    config: {
-      systemPrompt: "Audit all outputs for quality, security, and compliance before approval.",
-      connectionMode: "MCP_SERVER",
-      mcpServerUrl: "mcp://aegis.lyceum.internal:8443",
-      monthlyBudgetLimit: 300,
-      billingStatus: "NO_KEY",
-    },
-    commentCount: 7,
-    connectedUserIds: ["user-1"],
-  },
-  {
-    label: "Pulse",
-    tier: 3,
-    role: "Real-time Analytics Agent",
-    status: "AWAKE_WORKING",
-    wallet: { balance: 28000, budgetLimit: 40000, usdEquivalent: 280 },
-    config: {
-      systemPrompt: "Monitor real-time data streams and generate anomaly alerts.",
-      connectionMode: "DIRECT_API",
-      apiKey: "sk-...pulse",
-      monthlyBudgetLimit: 150,
-      billingStatus: "ACTIVE",
-    },
-    commentCount: 0,
-    connectedUserIds: [],
-  },
-];
-
-const MOCK_USERS: MultiplayerUser[] = [
-  {
-    id: "user-1",
-    name: "Alex Chen",
-    avatar: "",
-    color: "#6366f1",
-    activeNodeId: "agent-1",
-    cursorPosition: { x: 400, y: 120 },
-  },
-  {
-    id: "user-2",
-    name: "Sarah Kim",
-    avatar: "",
-    color: "#f59e0b",
-    activeNodeId: "agent-1",
-    cursorPosition: { x: 500, y: 150 },
-  },
-  {
-    id: "user-3",
-    name: "Marcus Johnson",
-    avatar: "",
-    color: "#10b981",
-    activeNodeId: "agent-2",
-    cursorPosition: { x: 350, y: 380 },
-  },
-];
-
-const MOCK_EXECUTION_LOGS: ExecutionLog[] = [
-  {
-    id: "log-1",
-    type: "A2A",
-    sourceNodeId: "agent-1",
-    targetNodeId: "agent-2",
-    action: "task_decompose",
-    payload: '{"task":"Scrape competitor pricing data","subtasks":["Identify URLs","Extract tables","Normalize currency"]}',
-    result: "Successfully decomposed into 3 subtasks",
-    timestamp: Date.now() - 120000,
-    success: true,
-  },
-  {
-    id: "log-2",
-    type: "A2A",
-    sourceNodeId: "agent-2",
-    targetNodeId: "agent-3",
-    action: "route_task",
-    payload: '{"task":"Extract pricing tables from competitor URLs"}',
-    result: "Routed to Scribe (Data Extraction Specialist)",
-    timestamp: Date.now() - 90000,
-    success: true,
-  },
-  {
-    id: "log-3",
-    type: "A2A",
-    sourceNodeId: "agent-3",
-    targetNodeId: "agent-2",
-    action: "data_extracted",
-    payload: '{"records":142,"source":"competitor_pricing.html"}',
-    result: "Extracted 142 pricing records",
-    timestamp: Date.now() - 60000,
-    success: true,
-  },
-  {
-    id: "log-4",
-    type: "H2A",
-    sourceNodeId: "user-1",
-    targetNodeId: "agent-4",
-    action: "prompt_override",
-    payload: '{"instruction":"Use TypeScript strict mode, add JSDoc comments"}',
-    result: "Configuration updated",
-    timestamp: Date.now() - 30000,
-    success: true,
-  },
-  {
-    id: "log-5",
-    type: "A2A",
-    sourceNodeId: "agent-2",
-    targetNodeId: "agent-5",
-    action: "qa_request",
-    payload: '{"task":"Audit Scribe extraction output for quality"}',
-    result: "FAILED - Agent Aegis has insufficient funds (balance: 0)",
-    timestamp: Date.now() - 10000,
-    success: false,
-  },
-];
-
 // ── Initial Nodes & Edges for React Flow ─────────────────────────────────────
 
 const TIER_COLORS: Record<PyramidTier, string> = {
@@ -311,50 +125,24 @@ const TIER_COLORS: Record<PyramidTier, string> = {
   3: "#d97706",
 };
 
+/**
+ * A brand-new workspace starts empty. Agents are created by the user (or
+ * registered by a connected AI over MCP) — nothing is invented for them,
+ * because a dashboard full of fictional agents is worse than an empty one:
+ * it can't be trusted and it can't be acted on.
+ */
 export function buildInitialNodes(): Node<AgentData>[] {
-  // Pyramid layout: Tier 1 top-center, Tier 2 middle width-2, Tier 3 bottom width-3
-  const positions: Record<string, { x: number; y: number }> = {
-    "agent-1": { x: 500, y: 50 }, // Tier 1 - Exec
-    "agent-2": { x: 300, y: 300 }, // Tier 2 - Router
-    "agent-5": { x: 700, y: 300 }, // Tier 2 - QA
-    "agent-3": { x: 150, y: 550 }, // Tier 3 - Scribe
-    "agent-4": { x: 500, y: 550 }, // Tier 3 - Forge
-    "agent-6": { x: 850, y: 550 }, // Tier 3 - Pulse
-  };
+  return [];
+}
 
-  return MOCK_AGENTS.map((agent, idx) => {
-    const id = `agent-${idx + 1}`;
-    return {
-      id,
-      type: "agentNode",
-      position: positions[id] || { x: 100 + idx * 200, y: 100 + idx * 150 },
-      data: {
-        ...agent,
-        label: agent.label,
-      },
-      style: {
-        border: `2px solid ${TIER_COLORS[agent.tier]}40`,
-        borderRadius: 12,
-        background: "transparent",
-        padding: 0,
-        width: "auto",
-        height: "auto",
-      },
-    };
-  });
+/** Layout for agents the user actually creates. */
+export function positionForIndex(idx: number): { x: number; y: number } {
+  const perRow = 3;
+  return { x: 120 + (idx % perRow) * 280, y: 120 + Math.floor(idx / perRow) * 220 };
 }
 
 export function buildInitialEdges(): Edge[] {
-  return [
-    { id: "edge-1-2", source: "agent-1", target: "agent-2", animated: true, style: { stroke: "#7c3aed", strokeWidth: 2 }, label: "strategy" },
-    { id: "edge-1-5", source: "agent-1", target: "agent-5", animated: true, style: { stroke: "#7c3aed", strokeWidth: 2 }, label: "audit_req" },
-    { id: "edge-2-3", source: "agent-2", target: "agent-3", animated: true, style: { stroke: "#2563eb", strokeWidth: 2 }, label: "extract" },
-    { id: "edge-2-4", source: "agent-2", target: "agent-4", animated: true, style: { stroke: "#2563eb", strokeWidth: 2 }, label: "generate" },
-    { id: "edge-3-5", source: "agent-3", target: "agent-5", animated: true, style: { stroke: "#d97706", strokeWidth: 1.5 }, label: "qa_check" },
-    { id: "edge-4-5", source: "agent-4", target: "agent-5", animated: true, style: { stroke: "#d97706", strokeWidth: 1.5 }, label: "qa_check" },
-    { id: "edge-5-1", source: "agent-5", target: "agent-1", animated: true, style: { stroke: "#ef4444", strokeWidth: 1.5 }, label: "report" },
-    { id: "edge-2-6", source: "agent-2", target: "agent-6", animated: true, style: { stroke: "#2563eb", strokeWidth: 2 }, label: "monitor" },
-  ];
+  return [];
 }
 
 // ── Store Interface ──────────────────────────────────────────────────────────
@@ -470,44 +258,13 @@ export const useWorkforceStore = create<WorkforceStore>()(
   nodes: buildInitialNodes(),
   edges: buildInitialEdges(),
   selectedNodeId: null,
-  multiplayerUsers: MOCK_USERS,
-  nodeComments: MOCK_AGENTS.reduce(
-    (acc, _, idx) => {
-      const nodeId = `agent-${idx + 1}`;
-      acc[nodeId] = [
-        {
-          id: `comment-${nodeId}-1`,
-          nodeId,
-          author: "Alex Chen",
-          authorAvatar: "",
-          text: `Reviewing ${["Orion","Meridian","Scribe","Forge","Aegis","Pulse"][idx]}'s recent output — looks good but let's tighten the prompt constraints.`,
-          timestamp: Date.now() - 3600000,
-        },
-        {
-          id: `comment-${nodeId}-2`,
-          nodeId,
-          author: "Sarah Kim",
-          authorAvatar: "",
-          text: "Agreed. I'd also like to increase the token budget by 20k for the next sprint.",
-          timestamp: Date.now() - 1800000,
-        },
-      ];
-      return acc;
-    },
-    {} as Record<string, H2HComment[]>
-  ),
-  executionLogs: MOCK_EXECUTION_LOGS,
+  multiplayerUsers: [],
+  nodeComments: {},
+  executionLogs: [],
   lyceumSuggestions: [],
-  domainSpend: { LAW: 142.3, FINANCE: 89.5, TECH: 215.75 },
+  domainSpend: { LAW: 0, FINANCE: 0, TECH: 0 },
   selectedModels: {},
-  agentDomains: {
-    "agent-1": "LAW",
-    "agent-2": "LAW",
-    "agent-3": "FINANCE",
-    "agent-4": "TECH",
-    "agent-5": "FINANCE",
-    "agent-6": "TECH",
-  },
+  agentDomains: {},
   budgetCaps: {
     LAW: { cap: 500, triggeredThresholds: [] },
     FINANCE: { cap: 400, triggeredThresholds: [] },
@@ -795,14 +552,9 @@ export const useWorkforceStore = create<WorkforceStore>()(
       }
     }
 
-    if (suggestions.length < 3) {
-      suggestions.push({
-        id: "sug-review",
-        text: "H2H Review Needed: Meridian has 5 unresolved comments. Suggested H2H Step: Resolve discussion threads before next deployment.",
-        type: "H2H",
-        priority: "medium",
-      });
-    }
+    // Suggestions are derived from real activity only. If there is nothing to
+    // observe yet, say nothing rather than padding the list with an invented
+    // recommendation about an agent that doesn't exist.
 
     set({ lyceumSuggestions: suggestions.slice(0, 3) });
   },
