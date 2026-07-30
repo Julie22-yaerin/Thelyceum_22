@@ -8,30 +8,202 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// server/db/memoryFirestore.ts
+function incrementAmount(value) {
+  if (typeof value !== "object" || value === null) return null;
+  const v = value;
+  if (typeof v.operand === "number") return v.operand;
+  if (typeof v.__increment__ === "number") return v.__increment__;
+  return null;
+}
+function applyUpdate(existing, patch) {
+  const merged = { ...existing ?? {} };
+  for (const [key, value] of Object.entries(patch)) {
+    const inc = incrementAmount(value);
+    if (inc !== null) {
+      merged[key] = (typeof merged[key] === "number" ? merged[key] : 0) + inc;
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+var MemoryQuery, MemoryCollection, MemoryFirestore;
+var init_memoryFirestore = __esm({
+  "server/db/memoryFirestore.ts"() {
+    "use strict";
+    MemoryQuery = class _MemoryQuery {
+      constructor(rows) {
+        this.rows = rows;
+      }
+      where(field, op, value) {
+        const rows = this.rows.filter((r) => {
+          const actual = r.data[field];
+          switch (op) {
+            case "==":
+              return actual === value;
+            case "!=":
+              return actual !== value;
+            case ">":
+              return actual > value;
+            case ">=":
+              return actual >= value;
+            case "<":
+              return actual < value;
+            case "<=":
+              return actual <= value;
+            case "in":
+              return Array.isArray(value) && value.includes(actual);
+            case "array-contains":
+              return Array.isArray(actual) && actual.includes(value);
+            default:
+              throw new Error(`memoryFirestore: unsupported operator "${op}"`);
+          }
+        });
+        return new _MemoryQuery(rows);
+      }
+      orderBy(field, dir = "asc") {
+        const sorted = [...this.rows].sort((a, b) => {
+          const av = a.data[field];
+          const bv = b.data[field];
+          if (av === bv) return 0;
+          const cmp = av > bv ? 1 : -1;
+          return dir === "desc" ? -cmp : cmp;
+        });
+        return new _MemoryQuery(sorted);
+      }
+      limit(n) {
+        return new _MemoryQuery(this.rows.slice(0, n));
+      }
+      async get() {
+        return {
+          empty: this.rows.length === 0,
+          size: this.rows.length,
+          docs: this.rows.map((r) => ({
+            id: String(r.data.id ?? ""),
+            exists: true,
+            data: () => ({ ...r.data })
+          }))
+        };
+      }
+    };
+    MemoryCollection = class {
+      store = /* @__PURE__ */ new Map();
+      autoId = 0;
+      doc(id) {
+        const docId = id ?? `mem${(++this.autoId).toString(36).padStart(6, "0")}${Date.now().toString(36)}`;
+        const store = this.store;
+        return {
+          id: docId,
+          get: async () => {
+            const doc = store.get(docId);
+            return {
+              id: docId,
+              exists: !!doc,
+              data: () => doc ? { ...doc.data } : void 0
+            };
+          },
+          set: async (data, opts) => {
+            const existing = store.get(docId);
+            store.set(docId, {
+              data: opts?.merge ? applyUpdate(existing?.data, data) : { ...data }
+            });
+          },
+          update: async (data) => {
+            const existing = store.get(docId);
+            store.set(docId, { data: applyUpdate(existing?.data, data) });
+          },
+          delete: async () => {
+            store.delete(docId);
+          }
+        };
+      }
+      where(field, op, value) {
+        return new MemoryQuery(Array.from(this.store.values())).where(field, op, value);
+      }
+      orderBy(field, dir = "asc") {
+        return new MemoryQuery(Array.from(this.store.values())).orderBy(field, dir);
+      }
+      async get() {
+        return new MemoryQuery(Array.from(this.store.values())).get();
+      }
+    };
+    MemoryFirestore = class {
+      collections = /* @__PURE__ */ new Map();
+      collection(name) {
+        let c = this.collections.get(name);
+        if (!c) {
+          c = new MemoryCollection();
+          this.collections.set(name, c);
+        }
+        return c;
+      }
+      /**
+       * Runs the body immediately. There is no isolation and no retry: this is a
+       * single-threaded process, so the read-modify-write inside a transaction
+       * cannot interleave with another one. Callers relying on Firestore's
+       * contention retries get the same *result* here, just without the
+       * concurrency guarantee — which is fine because there is no concurrency.
+       */
+      async runTransaction(fn) {
+        return fn({
+          get: (ref) => ref.get(),
+          set: (ref, data, opts) => {
+            void ref.set(data, opts);
+          },
+          update: (ref, data) => {
+            void ref.update(data);
+          },
+          delete: (ref) => {
+            void ref.delete();
+          }
+        });
+      }
+    };
+  }
+});
+
 // server/db/firestore.ts
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 function getDb() {
   if (db) return db;
-  if (!getApps().length) {
-    const projectId = process.env.FIREBASE_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-    if (!projectId || !clientEmail || !privateKey) {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+  const configured = !!(projectId && clientEmail && privateKey);
+  if (!configured) {
+    if (process.env.NODE_ENV === "production") {
       throw new Error(
-        "Firestore is not configured \u2014 set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY."
+        "Firestore is not configured \u2014 set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY. The in-memory fallback is deliberately disabled in production because it is not durable."
       );
     }
+    if (!warned) {
+      warned = true;
+      console.warn(
+        "[Lyceum] No Firebase credentials \u2014 using the in-memory store. Data will be lost on restart and is not shared between instances. Set FIREBASE_* to persist."
+      );
+    }
+    memory ??= new MemoryFirestore();
+    return memory;
+  }
+  if (!getApps().length) {
     initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
   }
   db = getFirestore();
   return db;
 }
-var db;
+function isEphemeralStore() {
+  return memory !== null && db === null;
+}
+var db, memory, warned;
 var init_firestore = __esm({
   "server/db/firestore.ts"() {
     "use strict";
+    init_memoryFirestore();
     db = null;
+    memory = null;
+    warned = false;
   }
 });
 
@@ -71,7 +243,7 @@ __export(tasks_exports, {
   updateTaskAttempt: () => updateTaskAttempt
 });
 async function recordTask(params) {
-  const ref = collection2().doc();
+  const ref = collection3().doc();
   const task = {
     id: ref.id,
     createdAt: Date.now(),
@@ -93,7 +265,7 @@ async function recordTask(params) {
   return task;
 }
 async function updateTaskAttempt(taskId, licenseKey, update) {
-  const ref = collection2().doc(taskId);
+  const ref = collection3().doc(taskId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const existing = snap.data();
@@ -112,7 +284,7 @@ async function updateTaskAttempt(taskId, licenseKey, update) {
   return updated;
 }
 async function updateTaskApproval(taskId, licenseKey, approval) {
-  const ref = collection2().doc(taskId);
+  const ref = collection3().doc(taskId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const existing = snap.data();
@@ -126,22 +298,22 @@ async function updateTaskApproval(taskId, licenseKey, approval) {
   return updated;
 }
 async function listTasks(licenseKey, limit = 20) {
-  const snap = await collection2().where("licenseKey", "==", licenseKey).orderBy("createdAt", "desc").limit(limit).get();
+  const snap = await collection3().where("licenseKey", "==", licenseKey).orderBy("createdAt", "desc").limit(limit).get();
   return snap.docs.map((d) => d.data());
 }
 async function getTask(taskId, licenseKey) {
-  const snap = await collection2().doc(taskId).get();
+  const snap = await collection3().doc(taskId).get();
   if (!snap.exists) return null;
   const task = snap.data();
   return task.licenseKey === licenseKey ? task : null;
 }
-var collection2;
+var collection3;
 var init_tasks = __esm({
   "server/db/tasks.ts"() {
     "use strict";
     init_firestore();
     init_executionConfig();
-    collection2 = () => getDb().collection("tasks");
+    collection3 = () => getDb().collection("tasks");
   }
 });
 
@@ -157,7 +329,7 @@ __export(sessions_exports, {
   updateSessionTasks: () => updateSessionTasks
 });
 async function createSession(params) {
-  const ref = collection6().doc();
+  const ref = collection7().doc();
   const session = {
     id: ref.id,
     licenseKey: params.licenseKey,
@@ -173,7 +345,7 @@ async function createSession(params) {
   return session;
 }
 async function confirmSession(sessionId, licenseKey) {
-  const ref = collection6().doc(sessionId);
+  const ref = collection7().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -187,7 +359,7 @@ async function confirmSession(sessionId, licenseKey) {
   return { ...data, ...updated };
 }
 async function updateSessionTasks(sessionId, licenseKey, tasks) {
-  const ref = collection6().doc(sessionId);
+  const ref = collection7().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -200,7 +372,7 @@ async function updateSessionTasks(sessionId, licenseKey, tasks) {
   return { ...data, ...updated, tasks };
 }
 async function updateSessionMeta(sessionId, licenseKey, meta) {
-  const ref = collection6().doc(sessionId);
+  const ref = collection7().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -210,17 +382,17 @@ async function updateSessionMeta(sessionId, licenseKey, meta) {
   return { ...data, ...updated };
 }
 async function getSession(sessionId, licenseKey) {
-  const snap = await collection6().doc(sessionId).get();
+  const snap = await collection7().doc(sessionId).get();
   if (!snap.exists) return null;
   const data = snap.data();
   return data.licenseKey === licenseKey ? data : null;
 }
 async function listSessions(licenseKey, limit = 50) {
-  const snap = await collection6().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
+  const snap = await collection7().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
   return snap.docs.map((d) => d.data());
 }
 async function deleteSession(sessionId, licenseKey) {
-  const ref = collection6().doc(sessionId);
+  const ref = collection7().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return false;
   const data = snap.data();
@@ -228,12 +400,12 @@ async function deleteSession(sessionId, licenseKey) {
   await ref.delete();
   return true;
 }
-var collection6;
+var collection7;
 var init_sessions = __esm({
   "server/db/sessions.ts"() {
     "use strict";
     init_firestore();
-    collection6 = () => getDb().collection("sessions");
+    collection7 = () => getDb().collection("sessions");
   }
 });
 
@@ -242,7 +414,7 @@ import express2 from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import crypto3 from "crypto";
+import crypto4 from "crypto";
 
 // client/src/lib/modelConfig.ts
 var DOMAINS = ["LAW", "FINANCE", "TECH", "MUSE", "KIMI"];
@@ -456,6 +628,79 @@ async function deductCredits(licenseKey, amount) {
   });
 }
 
+// server/db/workers.ts
+init_firestore();
+import crypto from "crypto";
+var collection2 = () => getDb().collection("workers");
+function generateWorkerToken() {
+  return `lyw_${crypto.randomBytes(18).toString("base64url")}`;
+}
+async function createWorker(params) {
+  const ref = collection2().doc();
+  const worker = {
+    id: ref.id,
+    licenseKey: params.licenseKey,
+    name: params.name,
+    role: params.role,
+    departmentId: params.departmentId,
+    departmentName: params.departmentName,
+    model: params.model,
+    mcpToken: generateWorkerToken(),
+    tokensUsed: 0,
+    stepsCompleted: 0,
+    lastSeenAt: null,
+    createdAt: Date.now()
+  };
+  await ref.set(worker);
+  return worker;
+}
+async function listWorkers(licenseKey) {
+  const snap = await collection2().where("licenseKey", "==", licenseKey).get();
+  return snap.docs.map((d) => d.data()).filter((w) => !w.revokedAt).sort((a, b) => b.createdAt - a.createdAt);
+}
+async function resolveWorkerToken(token) {
+  if (!token) return null;
+  const snap = await collection2().where("mcpToken", "==", token).get();
+  const doc = snap.docs?.[0];
+  if (!doc) return null;
+  const worker = doc.data();
+  if (!worker || worker.revokedAt) return null;
+  return worker;
+}
+async function touchWorker(workerId) {
+  await collection2().doc(workerId).set({ lastSeenAt: Date.now() }, { merge: true }).catch(() => {
+  });
+}
+async function recordWorkerUsage(workerId, patch) {
+  const ref = collection2().doc(workerId);
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const current = snap.data();
+  await ref.set(
+    {
+      tokensUsed: current.tokensUsed + (patch.tokens ?? 0),
+      stepsCompleted: current.stepsCompleted + (patch.stepsCompleted ?? 0),
+      lastSeenAt: Date.now()
+    },
+    { merge: true }
+  );
+}
+async function revokeWorker(licenseKey, workerId) {
+  const ref = collection2().doc(workerId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().licenseKey !== licenseKey) return false;
+  await ref.set({ revokedAt: Date.now() }, { merge: true });
+  return true;
+}
+async function rotateWorkerToken(licenseKey, workerId) {
+  const ref = collection2().doc(workerId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().licenseKey !== licenseKey) return null;
+  const mcpToken = generateWorkerToken();
+  await ref.set({ mcpToken }, { merge: true });
+  return mcpToken;
+}
+
 // server/lib/auth.ts
 async function authenticateLicenseKey(req, res, next) {
   const header = req.header("authorization") || "";
@@ -474,6 +719,25 @@ async function authenticateLicenseKey(req, res, next) {
       creditsRemaining: 999999,
       createdAt: Date.now()
     };
+    next();
+    return;
+  }
+  if (licenseKey.startsWith("lyw_")) {
+    const worker = await resolveWorkerToken(licenseKey).catch(() => null);
+    if (!worker) {
+      res.status(401).json({ error: "Unknown or revoked AI token" });
+      return;
+    }
+    const owner = await getAccount(worker.licenseKey).catch(() => null);
+    req.lyceumAccount = owner ?? {
+      licenseKey: worker.licenseKey,
+      product: "Worker",
+      creditsTotal: 0,
+      creditsRemaining: 0,
+      createdAt: worker.createdAt
+    };
+    req.lyceumWorker = worker;
+    void touchWorker(worker.id);
     next();
     return;
   }
@@ -671,14 +935,14 @@ init_tasks();
 // server/db/aiRoles.ts
 init_firestore();
 import { FieldValue as FieldValue2 } from "firebase-admin/firestore";
-var collection3 = () => getDb().collection("aiRoles");
+var collection4 = () => getDb().collection("aiRoles");
 function roleId(licenseKey, name) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return `${licenseKey.slice(0, 12)}--${slug}`;
 }
 async function registerAiRole(params) {
   const id = roleId(params.licenseKey, params.name);
-  const ref = collection3().doc(id);
+  const ref = collection4().doc(id);
   const existing = await ref.get();
   const now = Date.now();
   if (existing.exists) {
@@ -710,7 +974,7 @@ async function registerAiRole(params) {
   return role;
 }
 async function listAiRoles(licenseKey) {
-  const snap = await collection3().where("licenseKey", "==", licenseKey).get();
+  const snap = await collection4().where("licenseKey", "==", licenseKey).get();
   return snap.docs.map((d) => d.data()).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 }
 var TokenBudgetExceededError = class extends Error {
@@ -723,7 +987,7 @@ var TokenBudgetExceededError = class extends Error {
 };
 async function reportTokens(licenseKey, name, tokens) {
   const db2 = getDb();
-  const ref = collection3().doc(roleId(licenseKey, name));
+  const ref = collection4().doc(roleId(licenseKey, name));
   return db2.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new Error(`No AI role named "${name}" \u2014 register it first.`);
@@ -740,14 +1004,14 @@ async function reportTokens(licenseKey, name, tokens) {
 
 // server/db/missions.ts
 init_firestore();
-var collection4 = () => getDb().collection("missions");
+var collection5 = () => getDb().collection("missions");
 function progressOf(mission) {
   if (mission.steps.length === 0) return 0;
   const done = mission.steps.filter((s) => s.status === "done").length;
   return Math.round(done / mission.steps.length * 100);
 }
 async function createMission(params) {
-  const ref = collection4().doc();
+  const ref = collection5().doc();
   const now = Date.now();
   const mission = {
     id: ref.id,
@@ -761,6 +1025,7 @@ async function createMission(params) {
       id: `step-${i + 1}`,
       title: s.title,
       ownerKind: s.ownerKind,
+      ownerId: s.ownerId,
       ownerName: s.ownerName,
       status: "todo",
       tokensUsed: 0
@@ -772,7 +1037,7 @@ async function createMission(params) {
   return mission;
 }
 async function listMissions(licenseKey, department) {
-  const snap = await collection4().where("licenseKey", "==", licenseKey).get();
+  const snap = await collection5().where("licenseKey", "==", licenseKey).get();
   return snap.docs.map((d) => d.data()).filter((m) => !department || m.department === department).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 function derivedStatus(steps, current) {
@@ -783,7 +1048,7 @@ function derivedStatus(steps, current) {
 }
 async function updateStep(params) {
   const db2 = getDb();
-  const ref = collection4().doc(params.missionId);
+  const ref = collection5().doc(params.missionId);
   return db2.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) return null;
@@ -807,10 +1072,172 @@ async function updateStep(params) {
     return updated;
   });
 }
+async function stepsForWorker(licenseKey, workerId, opts = {}) {
+  const missions = await listMissions(licenseKey);
+  const out = [];
+  for (const mission of missions) {
+    for (const step of mission.steps) {
+      if (step.ownerKind !== "ai" || step.ownerId !== workerId) continue;
+      if (!opts.includeDone && step.status === "done") continue;
+      out.push({
+        missionId: mission.id,
+        missionTitle: mission.title,
+        goal: mission.goal,
+        department: mission.department,
+        stepId: step.id,
+        stepTitle: step.title,
+        status: step.status,
+        tokensUsed: step.tokensUsed,
+        note: step.note
+      });
+    }
+  }
+  return out;
+}
 
 // server/mcp/http-server.ts
-function buildServer(account) {
+function buildServer(account, worker) {
   const server = new McpServer({ name: "the-lyceum", version: "1.0.0" });
+  if (worker) {
+    server.registerTool(
+      "whoami",
+      {
+        title: "Who am I",
+        description: "Identify yourself in this workspace: your name, the department you serve, and what you have done so far."
+      },
+      async () => ({
+        content: [
+          {
+            type: "text",
+            text: `You are "${worker.name}" \u2014 ${worker.role}
+Department: ${worker.departmentName}
+Model on file: ${worker.model}
+Steps completed: ${worker.stepsCompleted} \xB7 Tokens reported: ${worker.tokensUsed.toLocaleString()}
+
+Use my_steps to see what is waiting for you.`
+          }
+        ]
+      })
+    );
+    server.registerTool(
+      "my_steps",
+      {
+        title: "My assigned work",
+        description: "List the steps assigned to you that still need doing, with the task and goal each belongs to. Start here.",
+        inputSchema: {
+          includeDone: z.boolean().optional().describe("Also show steps you already finished")
+        }
+      },
+      async ({ includeDone }) => {
+        const steps = await stepsForWorker(account.licenseKey, worker.id, { includeDone });
+        if (steps.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Nothing is assigned to you right now."
+              }
+            ]
+          };
+        }
+        const lines = steps.map(
+          (s) => `\u2022 [${s.status}] ${s.stepTitle}
+    task: ${s.missionTitle}${s.goal ? ` \u2014 ${s.goal}` : ""}
+    department: ${s.department}
+    ids: mission=${s.missionId} step=${s.stepId}` + (s.note ? `
+    last note: ${s.note}` : "")
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: `${steps.length} step(s) assigned to you:
+
+${lines.join("\n\n")}`
+            }
+          ]
+        };
+      }
+    );
+    server.registerTool(
+      "start_step",
+      {
+        title: "Start a step",
+        description: "Mark one of your steps as in progress, so the team can see you picked it up before you spend anything on it.",
+        inputSchema: {
+          missionId: z.string().min(1),
+          stepId: z.string().min(1)
+        }
+      },
+      async ({ missionId, stepId }) => {
+        const mine = await stepsForWorker(account.licenseKey, worker.id, { includeDone: true });
+        if (!mine.some((s) => s.missionId === missionId && s.stepId === stepId)) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: "That step is not assigned to you." }]
+          };
+        }
+        const updated = await updateStep({
+          licenseKey: account.licenseKey,
+          missionId,
+          stepId,
+          status: "doing"
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: updated ? `Started. "${updated.title}" is now ${progressOf(updated)}%.` : "Task not found."
+            }
+          ]
+        };
+      }
+    );
+    server.registerTool(
+      "complete_step",
+      {
+        title: "Finish a step",
+        description: "Report a step as done (or stuck), with a plain-language note of what you produced and the tokens it cost. The team sees this immediately.",
+        inputSchema: {
+          missionId: z.string().min(1),
+          stepId: z.string().min(1),
+          note: z.string().min(1).describe("What you did or produced \u2014 a human reads this"),
+          tokens: z.number().int().nonnegative().optional(),
+          blocked: z.boolean().optional().describe("Set true if you could not finish and need a human")
+        }
+      },
+      async (args) => {
+        const mine = await stepsForWorker(account.licenseKey, worker.id, { includeDone: true });
+        if (!mine.some((s) => s.missionId === args.missionId && s.stepId === args.stepId)) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: "That step is not assigned to you." }]
+          };
+        }
+        const updated = await updateStep({
+          licenseKey: account.licenseKey,
+          missionId: args.missionId,
+          stepId: args.stepId,
+          status: args.blocked ? "blocked" : "done",
+          note: args.note,
+          addTokens: args.tokens
+        });
+        await recordWorkerUsage(worker.id, {
+          tokens: args.tokens ?? 0,
+          stepsCompleted: args.blocked ? 0 : 1
+        }).catch(() => {
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: updated ? `${args.blocked ? "Flagged as stuck" : "Done"}. "${updated.title}" is now ${progressOf(updated)}% (${updated.status}).` : "Task not found."
+            }
+          ]
+        };
+      }
+    );
+  }
   server.registerTool(
     "check_quota",
     {
@@ -1193,7 +1620,7 @@ async function handleMcpRequest(req, res) {
     res.status(401).json({ error: "Unauthenticated" });
     return;
   }
-  const server = buildServer(account);
+  const server = buildServer(account, req.lyceumWorker);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: void 0 });
   res.on("close", () => {
     void transport.close();
@@ -1218,7 +1645,7 @@ function getSupabase() {
 }
 
 // server/proxy/llmProxy.ts
-import crypto from "crypto";
+import crypto2 from "crypto";
 import express from "express";
 
 // server/lib/breakerStore.ts
@@ -1897,7 +2324,7 @@ function fingerprintKey(authHeader) {
   if (!salt) {
     return "unsalted";
   }
-  return crypto.createHash("sha256").update(salt).update(authHeader).digest("hex").slice(0, 8);
+  return crypto2.createHash("sha256").update(salt).update(authHeader).digest("hex").slice(0, 8);
 }
 function resolveSessionId(req, tenant, body) {
   const header = req.header("x-lyceum-session");
@@ -2125,10 +2552,10 @@ async function pipeAndMeter(upstreamRes, res, ctx, meta) {
 
 // server/db/proxyTokens.ts
 init_firestore();
-import crypto2 from "crypto";
-var collection5 = () => getDb().collection("proxyTokens");
+import crypto3 from "crypto";
+var collection6 = () => getDb().collection("proxyTokens");
 function generateProxyToken() {
-  return `lyc_live_${crypto2.randomBytes(18).toString("base64url")}`;
+  return `lyc_live_${crypto3.randomBytes(18).toString("base64url")}`;
 }
 async function mintProxyToken(params) {
   const record = {
@@ -2139,31 +2566,31 @@ async function mintProxyToken(params) {
     policy: params.policy ?? {},
     createdAt: Date.now()
   };
-  await collection5().doc(record.token).set(record);
+  await collection6().doc(record.token).set(record);
   return record;
 }
 async function resolveProxyToken(token) {
-  const snap = await collection5().doc(token).get();
+  const snap = await collection6().doc(token).get();
   if (!snap.exists) return null;
   const record = snap.data();
   if (record.revokedAt) return null;
-  collection5().doc(token).set({ lastUsedAt: Date.now() }, { merge: true }).catch(() => {
+  collection6().doc(token).set({ lastUsedAt: Date.now() }, { merge: true }).catch(() => {
   });
   return record;
 }
 async function listProxyTokens(licenseKey) {
-  const snap = await collection5().where("licenseKey", "==", licenseKey).get();
+  const snap = await collection6().where("licenseKey", "==", licenseKey).get();
   return snap.docs.map((d) => d.data()).sort((a, b) => b.createdAt - a.createdAt);
 }
 async function revokeProxyToken(licenseKey, token) {
-  const ref = collection5().doc(token);
+  const ref = collection6().doc(token);
   const snap = await ref.get();
   if (!snap.exists || snap.data().licenseKey !== licenseKey) return false;
   await ref.set({ revokedAt: Date.now() }, { merge: true });
   return true;
 }
 async function updateProxyPolicy(licenseKey, token, policy) {
-  const ref = collection5().doc(token);
+  const ref = collection6().doc(token);
   const snap = await ref.get();
   if (!snap.exists || snap.data().licenseKey !== licenseKey) return false;
   await ref.set({ policy }, { merge: true });
@@ -2171,22 +2598,23 @@ async function updateProxyPolicy(licenseKey, token, policy) {
 }
 
 // server/index.ts
+init_firestore();
 var orders = /* @__PURE__ */ new Map();
 var BETA_SLOT_BASELINE = Number(process.env.BETA_SLOT_BASELINE ?? 84);
 var BETA_SLOT_CAP = Number(process.env.BETA_SLOT_CAP ?? 100);
 function verifyLemonSignature(rawBody, signatureHeader, secret) {
   if (!signatureHeader || !secret) return false;
-  const digest = crypto3.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const digest = crypto4.createHmac("sha256", secret).update(rawBody).digest("hex");
   const expected = Buffer.from(digest, "utf8");
   const actual = Buffer.from(signatureHeader, "utf8");
-  return expected.length === actual.length && crypto3.timingSafeEqual(expected, actual);
+  return expected.length === actual.length && crypto4.timingSafeEqual(expected, actual);
 }
 function requireAdmin(req, res, next) {
   const configured = process.env.ADMIN_TOKEN || "";
   const provided = req.header("x-admin-token") || "";
   const expected = Buffer.from(configured, "utf8");
   const actual = Buffer.from(provided, "utf8");
-  const valid = configured.length > 0 && expected.length === actual.length && crypto3.timingSafeEqual(expected, actual);
+  const valid = configured.length > 0 && expected.length === actual.length && crypto4.timingSafeEqual(expected, actual);
   if (!valid) {
     return res.status(401).json({ error: "unauthorized" });
   }
@@ -2483,7 +2911,97 @@ function createApiApp() {
     if (!task) return res.status(404).json({ error: "Task not found" });
     res.json({ task });
   });
+  app2.all(
+    "/api/mcp/w/:token",
+    (req, _res, next) => {
+      req.headers.authorization = `Bearer ${req.params.token}`;
+      next();
+    },
+    authenticateLicenseKey,
+    handleMcpRequest
+  );
   app2.all("/api/mcp", authenticateLicenseKey, handleMcpRequest);
+  const mcpUrlFor = (req, token) => `${req.protocol}://${req.get("host")}/api/mcp/w/${token}`;
+  app2.get("/api/v1/workers", authenticateLicenseKey, async (req, res) => {
+    const workers = await listWorkers(req.lyceumAccount.licenseKey);
+    res.json({
+      ephemeralStore: isEphemeralStore(),
+      workers: workers.map((w) => ({
+        id: w.id,
+        name: w.name,
+        role: w.role,
+        departmentId: w.departmentId,
+        departmentName: w.departmentName,
+        model: w.model,
+        tokensUsed: w.tokensUsed,
+        stepsCompleted: w.stepsCompleted,
+        lastSeenAt: w.lastSeenAt,
+        // Full URL: this is the thing the customer pastes into their client,
+        // and they will need it again every time they set up a new machine.
+        mcpUrl: mcpUrlFor(req, w.mcpToken)
+      }))
+    });
+  });
+  app2.post("/api/v1/workers", authenticateLicenseKey, async (req, res) => {
+    const { name, role, departmentId, departmentName, model } = req.body ?? {};
+    if (!name || !departmentId) {
+      return res.status(400).json({ error: "name and departmentId are required" });
+    }
+    const worker = await createWorker({
+      licenseKey: req.lyceumAccount.licenseKey,
+      name,
+      role: role || "Assistant",
+      departmentId,
+      departmentName: departmentName || departmentId,
+      model: model || "gpt-4o"
+    });
+    res.json({ worker: { ...worker, mcpUrl: mcpUrlFor(req, worker.mcpToken) } });
+  });
+  app2.post("/api/v1/workers/:id/rotate", authenticateLicenseKey, async (req, res) => {
+    const token = await rotateWorkerToken(req.lyceumAccount.licenseKey, req.params.id);
+    if (!token) return res.status(404).json({ error: "Worker not found" });
+    res.json({ mcpUrl: mcpUrlFor(req, token) });
+  });
+  app2.delete("/api/v1/workers/:id", authenticateLicenseKey, async (req, res) => {
+    const ok = await revokeWorker(req.lyceumAccount.licenseKey, req.params.id);
+    if (!ok) return res.status(404).json({ error: "Worker not found" });
+    res.json({ revoked: true });
+  });
+  app2.get("/api/v1/missions", authenticateLicenseKey, async (req, res) => {
+    const missions = await listMissions(
+      req.lyceumAccount.licenseKey,
+      typeof req.query.department === "string" ? req.query.department : void 0
+    );
+    res.json({ missions: missions.map((m) => ({ ...m, progress: progressOf(m) })) });
+  });
+  app2.post("/api/v1/missions", authenticateLicenseKey, async (req, res) => {
+    const { department, title, goal, headName, steps } = req.body ?? {};
+    if (!department || !title) {
+      return res.status(400).json({ error: "department and title are required" });
+    }
+    const mission = await createMission({
+      licenseKey: req.lyceumAccount.licenseKey,
+      department,
+      title,
+      goal,
+      headName: headName || "You",
+      steps
+    });
+    res.json({ mission });
+  });
+  app2.patch("/api/v1/missions/:id/steps/:stepId", authenticateLicenseKey, async (req, res) => {
+    const { status, note, addTokens } = req.body ?? {};
+    const updated = await updateStep({
+      licenseKey: req.lyceumAccount.licenseKey,
+      missionId: req.params.id,
+      stepId: req.params.stepId,
+      status,
+      note,
+      addTokens
+    });
+    if (!updated) return res.status(404).json({ error: "Task or step not found" });
+    res.json({ mission: { ...updated, progress: progressOf(updated) } });
+  });
   app2.get("/api/v1/proxy-tokens", authenticateLicenseKey, async (req, res) => {
     const tokens = await listProxyTokens(req.lyceumAccount.licenseKey);
     res.json({

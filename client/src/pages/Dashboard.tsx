@@ -36,6 +36,8 @@ import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useWorkforceStore } from "@/store/useWorkforceStore";
 import { useMissionStore, departmentTheme, missionProgress } from "@/store/useMissionStore";
 import { ROLE_ICONS } from "@/lib/workCollaborationTypes";
+import SystemGraph from "@/components/SystemGraph";
+import { pullFromServer, isServerBacked } from "@/services/workspaceSync";
 
 // ── Performance chart ───────────────────────────────────────────────────────
 
@@ -218,6 +220,14 @@ export default function Dashboard() {
     };
   }, [companies.length, licenseKey, createCompany, initWorkRoles]);
 
+  // Connected AI work outside this browser, so poll for what they've done.
+  useEffect(() => {
+    if (!isServerBacked()) return;
+    void pullFromServer();
+    const t = setInterval(() => void pullFromServer(), 8000);
+    return () => clearInterval(t);
+  }, []);
+
   const company = getCurrentCompany();
   const me = members[0];
   const t = totals();
@@ -384,18 +394,19 @@ export default function Dashboard() {
         {/* ── The funnel: pick a department to work ── */}
         <section>
           <div className="flex items-baseline justify-between mb-1">
-            <h2 className="text-sm font-semibold text-ws-text">Departments</h2>
+            <h2 className="text-sm font-semibold text-ws-text">How the company is wired</h2>
           </div>
-          <p className="text-[12px] text-ws-text-muted mb-3">
-            To do any work, open a department. Tasks, documents and AI all live inside one.
+          <p className="text-[12px] text-ws-text-muted mb-4">
+            Every department, who runs it, the AI connected to it, and how its work is going.
+            Click one to go in — all work happens inside a department.
           </p>
 
           {departments.length === 0 ? (
             <div className="rounded-xl border border-dashed border-ws-border p-8 text-center">
               <p className="text-sm text-ws-text mb-1">No departments yet</p>
               <p className="text-[12px] text-ws-text-muted mb-4 max-w-md mx-auto">
-                A department is a area of work someone owns — Marketing, Engineering, Sales.
-                Create the first one and you can start adding tasks to it.
+                A department is an area of work someone owns — Marketing, Engineering, Sales.
+                Create the first one and you can start adding tasks and connecting AI to it.
               </p>
               <Link
                 href="/missions"
@@ -406,55 +417,16 @@ export default function Dashboard() {
               </Link>
             </div>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {departments.map(({ role, head }) => {
-                const theme = departmentTheme(role.id, role.name);
-                const count = missions.filter((m) => m.roleId === role.id).length;
-                const progress = roleProgress(role.id);
-                const inFlight = missions.filter(
-                  (m) => m.roleId === role.id && m.status === "active"
-                ).length;
-
-                return (
-                  <button
-                    key={role.id}
-                    onClick={() => openDepartment(role.id)}
-                    className="text-left rounded-xl border border-ws-border bg-ws-bg p-4 hover:shadow-sm transition-shadow"
-                  >
-                    <div className="flex items-center gap-2 mb-2.5 min-w-0">
-                      <span className="text-lg shrink-0">{ROLE_ICONS[role.icon] ?? "💼"}</span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-ws-text truncate">{role.name}</p>
-                        <span
-                          className={cn(
-                            "inline-block px-1.5 py-0.5 rounded text-[10px] font-medium mt-0.5",
-                            theme.bg,
-                            theme.ink
-                          )}
-                        >
-                          {theme.tag}
-                        </span>
-                      </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-ws-text-muted ml-auto shrink-0" />
-                    </div>
-
-                    <p className="text-[11px] text-ws-text-muted mb-2 truncate">
-                      {head!.memberName} ·{" "}
-                      {count === 0
-                        ? "no tasks"
-                        : `${count} task${count !== 1 ? "s" : ""}${inFlight ? `, ${inFlight} active` : ""}`}
-                    </p>
-
-                    <div className="h-1.5 rounded-full bg-ws-hover overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-green-500 transition-all duration-500"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <SystemGraph
+              companyName={company?.name ?? "Your company"}
+              departments={departments.map(({ role, head }) => ({
+                role,
+                headName: head!.memberName,
+                missions: missions.filter((m) => m.roleId === role.id),
+                workers: workers.filter((w) => w.roleId === role.id),
+              }))}
+              onOpenDepartment={openDepartment}
+            />
           )}
         </section>
 

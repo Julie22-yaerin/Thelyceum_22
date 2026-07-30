@@ -12,7 +12,7 @@
  *   - the AI allowed in, and nothing else
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   ArrowLeft,
@@ -26,6 +26,8 @@ import {
   StickyNote,
   Trash2,
   X,
+  Copy,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkforceStore } from "@/store/useWorkforceStore";
@@ -40,6 +42,14 @@ import {
 } from "@/store/useMissionStore";
 import { ROLE_ICONS, ROLE_DESCRIPTIONS } from "@/lib/workCollaborationTypes";
 import MissionPyramid from "@/components/MissionPyramid";
+import {
+  createWorkerRemote,
+  deleteWorkerRemote,
+  createMissionRemote,
+  updateStepRemote,
+  pullFromServer,
+  isServerBacked,
+} from "@/services/workspaceSync";
 import DepartmentTaskGraph from "@/components/DepartmentTaskGraph";
 
 // ── Create a department ─────────────────────────────────────────────────────
@@ -131,29 +141,108 @@ function CreateDepartment({ onDone }: { onDone: (roleId: string) => void }) {
 
 // ── Connect an AI ───────────────────────────────────────────────────────────
 
-function ConnectAiForm({ roleId, onClose }: { roleId: string; onClose: () => void }) {
+function ConnectAiForm({
+  roleId,
+  departmentName,
+  onClose,
+}: {
+  roleId: string;
+  departmentName: string;
+  onClose: () => void;
+}) {
   const addWorker = useMissionStore((s) => s.addWorker);
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [model, setModel] = useState("gpt-4o");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mcpUrl, setMcpUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     if (!name.trim()) return;
-    addWorker({
+    setBusy(true);
+    setError(null);
+
+    const result = await createWorkerRemote({
       name: name.trim(),
       role: role.trim() || "Assistant",
-      roleId,
+      departmentId: roleId,
+      departmentName,
       model,
-      source: "manual",
     });
-    onClose();
+
+    if ("error" in result) {
+      // Without a server there is no URL, so the AI cannot connect. Record it
+      // locally anyway so the roster still reflects the intent, but say
+      // plainly that it won't be able to join.
+      addWorker({ name: name.trim(), role: role.trim() || "Assistant", roleId, model, source: "manual" });
+      setError(result.error);
+      setBusy(false);
+      return;
+    }
+
+    setMcpUrl(result.mcpUrl);
+    setBusy(false);
   };
+
+  if (mcpUrl) {
+    const config = JSON.stringify(
+      { mcpServers: { [`lyceum-${name.trim().toLowerCase().replace(/\s+/g, "-")}`]: { url: mcpUrl } } },
+      null,
+      2
+    );
+    return (
+      <div className="mt-3 rounded-xl border border-ws-border bg-ws-subtle p-3.5">
+        <p className="text-[13px] font-medium text-ws-text mb-1">
+          {name} is on the roster. Connect it now.
+        </p>
+        <p className="text-[12px] text-ws-text-muted mb-3">
+          Paste this into Claude Desktop, Claude Code or Cursor. Once connected it can ask what
+          work is assigned to it and report back — nothing else to set up.
+        </p>
+
+        <div className="relative">
+          <pre className="rounded-lg border border-ws-border bg-[#0f0f13] text-[11px] leading-relaxed text-white/90 px-3 py-2.5 overflow-x-auto">
+            <code>{config}</code>
+          </pre>
+          <button
+            onClick={async () => {
+              await navigator.clipboard.writeText(mcpUrl);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            className="absolute top-2 right-2 p-1.5 rounded-md bg-white/5 hover:bg-white/10 transition-colors"
+            aria-label="Copy the URL"
+          >
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-teal" />
+            ) : (
+              <Copy className="w-3.5 h-3.5 text-white/60" />
+            )}
+          </button>
+        </div>
+
+        <p className="text-[11px] text-amber-700 mt-2">
+          This URL is {name}'s key — anyone holding it can act as this AI. You can see it again in
+          this department, and revoke it by removing the AI.
+        </p>
+
+        <button
+          onClick={onClose}
+          className="mt-3 h-8 px-3 rounded-lg text-[13px] font-medium bg-teal text-white hover:bg-teal-dark transition-colors"
+        >
+          Done
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3 rounded-xl border border-ws-border bg-ws-subtle p-3.5">
       <p className="text-[12px] text-ws-text-muted mb-3">
-        Give the AI a name your team will recognise. An AI connected over MCP registers itself and
-        shows up here automatically.
+        Name the AI so your team recognises it. You'll get a URL to paste into its client, and it
+        will then be able to pick up the steps you assign to it here.
       </p>
       <div className="grid gap-2 sm:grid-cols-3 mb-3">
         <input
@@ -174,22 +263,28 @@ function ConnectAiForm({ roleId, onClose }: { roleId: string; onClose: () => voi
           onChange={(e) => setModel(e.target.value)}
           className="h-9 px-2 rounded-lg border border-ws-border bg-ws-bg text-[13px] text-ws-text focus:outline-none focus:border-teal"
         >
-          {["gpt-4o", "gpt-4o-mini", "claude-sonnet-5", "claude-haiku", "gemini-2.5-flash"].map(
-            (m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            )
-          )}
+          {["gpt-4o", "gpt-4o-mini", "claude-sonnet-5", "claude-haiku", "gemini-2.5-flash"].map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
         </select>
       </div>
+
+      {error && (
+        <p className="text-[12px] text-amber-700 leading-relaxed mb-3 flex items-start gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          {error}
+        </p>
+      )}
+
       <div className="flex gap-2">
         <button
           onClick={submit}
-          disabled={!name.trim()}
+          disabled={!name.trim() || busy}
           className="h-8 px-3 rounded-lg text-[13px] font-medium bg-teal text-white hover:bg-teal-dark disabled:opacity-40 transition-colors"
         >
-          Add AI
+          {busy ? "Creating…" : "Create & get URL"}
         </button>
         <button
           onClick={onClose}
@@ -232,19 +327,51 @@ function NewTaskForm({
       ? { kind: "human", id: headMemberId, name: headName }
       : { kind: "ai", id: ownerId, name: aiOptions.find((a) => a.id === ownerId)?.name ?? "AI" };
 
-  const submit = () => {
+  const submit = async () => {
     if (!title.trim()) return;
-    createMission({
+    const chosen = steps.filter((s) => s.title.trim());
+
+    // Server first: a task an assigned AI can't see isn't assigned to it.
+    // The id it returns becomes the local id so both sides agree.
+    const remoteId = await createMissionRemote({
+      department: roleId,
+      title: title.trim(),
+      goal: goal.trim(),
+      headName,
+      steps: chosen.map((s) => {
+        const owner = ownerFor(s.ownerId);
+        return {
+          title: s.title.trim(),
+          ownerKind: owner.kind,
+          ownerName: owner.name,
+          ownerId: owner.kind === "ai" ? owner.id : undefined,
+        };
+      }),
+    });
+
+    const localId = createMission({
       roleId,
       title: title.trim(),
       goal: goal.trim(),
       headMemberId,
       headName,
       dependsOn,
-      steps: steps
-        .filter((s) => s.title.trim())
-        .map((s) => ({ title: s.title.trim(), owner: ownerFor(s.ownerId) })),
+      steps: chosen.map((s) => ({ title: s.title.trim(), owner: ownerFor(s.ownerId) })),
     });
+
+    // Adopt the server's id, keeping the dependency edges drawn locally.
+    if (remoteId && remoteId !== localId) {
+      useMissionStore.setState({
+        missions: useMissionStore
+          .getState()
+          .missions.map((m) => (m.id === localId ? { ...m, id: remoteId } : m))
+          .map((m) => ({
+            ...m,
+            dependsOn: m.dependsOn.map((d) => (d === localId ? remoteId : d)),
+          })),
+      });
+    }
+
     onClose();
   };
 
@@ -491,6 +618,16 @@ function DepartmentWorkspace({ roleId }: { roleId: string }) {
 
   const [showNew, setShowNew] = useState(false);
   const [showConnect, setShowConnect] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // An AI working in another process is the whole point, so poll for what it
+  // has done. 8s is frequent enough to feel live without being chatty.
+  useEffect(() => {
+    if (!isServerBacked()) return;
+    void pullFromServer();
+    const t = setInterval(() => void pullFromServer(), 8000);
+    return () => clearInterval(t);
+  }, []);
 
   const role = workRoles.find((r) => r.id === roleId);
   const head =
@@ -584,8 +721,28 @@ function DepartmentWorkspace({ roleId }: { roleId: string }) {
                     {w.tokensUsed.toLocaleString()}
                   </span>
                 )}
+                {w.mcpUrl && (
+                  <button
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(w.mcpUrl!);
+                      setCopiedId(w.id);
+                      setTimeout(() => setCopiedId(null), 1500);
+                    }}
+                    className="text-purple-700/60 hover:text-purple-700"
+                    title="Copy this AI's connection URL"
+                  >
+                    {copiedId === w.id ? (
+                      <Check className="w-3 h-3" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </button>
+                )}
                 <button
-                  onClick={() => removeWorker(w.id)}
+                  onClick={() => {
+                    removeWorker(w.id);
+                    void deleteWorkerRemote(w.id);
+                  }}
                   className="opacity-0 group-hover:opacity-100 text-purple-700/60 hover:text-red-700 transition-opacity"
                   aria-label={`Remove ${w.name}`}
                 >
@@ -596,7 +753,13 @@ function DepartmentWorkspace({ roleId }: { roleId: string }) {
           )}
         </div>
 
-        {showConnect && <ConnectAiForm roleId={roleId} onClose={() => setShowConnect(false)} />}
+        {showConnect && (
+          <ConnectAiForm
+            roleId={roleId}
+            departmentName={role.name}
+            onClose={() => setShowConnect(false)}
+          />
+        )}
       </section>
 
       {/* Task graph */}
@@ -637,7 +800,10 @@ function DepartmentWorkspace({ roleId }: { roleId: string }) {
 
           <MissionPyramid
             mission={openMission}
-            onStepStatus={(stepId, status) => setStepStatus(openMission.id, stepId, status)}
+            onStepStatus={(stepId, status) => {
+              setStepStatus(openMission.id, stepId, status);
+              void updateStepRemote(openMission.id, stepId, { status });
+            }}
           />
 
           <TaskDocuments mission={openMission} authorName={me?.name ?? "You"} />

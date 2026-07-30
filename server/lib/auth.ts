@@ -1,8 +1,15 @@
 import type express from "express";
 import { getAccount, type Account } from "../db/accounts.js";
+import { resolveWorkerToken, touchWorker, type Worker } from "../db/workers.js";
 
 export interface AuthedRequest extends express.Request {
   lyceumAccount?: Account;
+  /**
+   * Set when the caller authenticated as a specific AI on the roster rather
+   * than as the account owner. Presence of this is what lets the MCP server
+   * answer "what work is mine" instead of "what work exists".
+   */
+  lyceumWorker?: Worker;
 }
 
 /**
@@ -41,6 +48,31 @@ export async function authenticateLicenseKey(
       creditsRemaining: 999_999,
       createdAt: Date.now(),
     };
+    next();
+    return;
+  }
+
+  // ── Worker token ───────────────────────────────────────────────────────
+  // An AI connected over MCP presents its own token (lyw_…), not the
+  // company's license key. It gets the account's permissions plus an
+  // identity, so the MCP tools can scope answers to its own steps.
+  if (licenseKey.startsWith("lyw_")) {
+    const worker = await resolveWorkerToken(licenseKey).catch(() => null);
+    if (!worker) {
+      res.status(401).json({ error: "Unknown or revoked AI token" });
+      return;
+    }
+    const owner = await getAccount(worker.licenseKey).catch(() => null);
+    req.lyceumAccount =
+      owner ?? {
+        licenseKey: worker.licenseKey,
+        product: "Worker",
+        creditsTotal: 0,
+        creditsRemaining: 0,
+        createdAt: worker.createdAt,
+      };
+    req.lyceumWorker = worker;
+    void touchWorker(worker.id);
     next();
     return;
   }

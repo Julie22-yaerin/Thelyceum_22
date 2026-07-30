@@ -13,6 +13,8 @@ export interface MissionStepData {
   id: string;
   title: string;
   ownerKind: "human" | "ai";
+  /** Worker id when ownerKind is "ai" — how a connected AI finds its own work. */
+  ownerId?: string;
   ownerName: string;
   status: StepStatus;
   tokensUsed: number;
@@ -47,7 +49,7 @@ export async function createMission(params: {
   title: string;
   goal?: string;
   headName: string;
-  steps?: { title: string; ownerKind: "human" | "ai"; ownerName: string }[];
+  steps?: { title: string; ownerKind: "human" | "ai"; ownerName: string; ownerId?: string }[];
 }): Promise<MissionData> {
   const ref = collection().doc();
   const now = Date.now();
@@ -63,6 +65,7 @@ export async function createMission(params: {
       id: `step-${i + 1}`,
       title: s.title,
       ownerKind: s.ownerKind,
+      ownerId: s.ownerId,
       ownerName: s.ownerName,
       status: "todo" as StepStatus,
       tokensUsed: 0,
@@ -142,4 +145,50 @@ export async function updateStep(params: {
     tx.set(ref, updated);
     return updated;
   });
+}
+
+
+/**
+ * Every step assigned to one AI worker that still needs doing, newest task
+ * first. This is the whole point of the roster: an AI connects and is told
+ * what is waiting for it, rather than being handed a prompt by a human.
+ */
+export async function stepsForWorker(
+  licenseKey: string,
+  workerId: string,
+  opts: { includeDone?: boolean } = {}
+): Promise<
+  {
+    missionId: string;
+    missionTitle: string;
+    goal: string;
+    department: string;
+    stepId: string;
+    stepTitle: string;
+    status: StepStatus;
+    tokensUsed: number;
+    note?: string;
+  }[]
+> {
+  const missions = await listMissions(licenseKey);
+  const out: Awaited<ReturnType<typeof stepsForWorker>> = [];
+
+  for (const mission of missions) {
+    for (const step of mission.steps) {
+      if (step.ownerKind !== "ai" || step.ownerId !== workerId) continue;
+      if (!opts.includeDone && step.status === "done") continue;
+      out.push({
+        missionId: mission.id,
+        missionTitle: mission.title,
+        goal: mission.goal,
+        department: mission.department,
+        stepId: step.id,
+        stepTitle: step.title,
+        status: step.status,
+        tokensUsed: step.tokensUsed,
+        note: step.note,
+      });
+    }
+  }
+  return out;
 }

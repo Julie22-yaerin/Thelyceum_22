@@ -101,6 +101,8 @@ export interface AiWorker {
   tokensUsed: number;
   lastActiveAt: number | null;
   addedAt: number;
+  /** The URL this AI's client (Claude Desktop, Cursor, …) connects to. */
+  mcpUrl?: string;
 }
 
 /** A pastel identity per department, so each workspace is visually distinct. */

@@ -31,10 +31,176 @@ import {
   reportTokens,
   TokenBudgetExceededError,
 } from "../db/aiRoles.js";
-import { createMission, listMissions, updateStep, progressOf } from "../db/missions.js";
+import { createMission, listMissions, updateStep, progressOf, stepsForWorker } from "../db/missions.js";
+import { recordWorkerUsage, type Worker } from "../db/workers.js";
 
-function buildServer(account: Account): McpServer {
+function buildServer(account: Account, worker?: Worker): McpServer {
   const server = new McpServer({ name: "the-lyceum", version: "1.0.0" });
+
+  // ── Worker-scoped tools ─────────────────────────────────────────────────
+  // Only registered when the caller connected with an AI's own token. This
+  // is what makes the roster operational: the AI is told what is assigned to
+  // it and reports back, instead of a human pasting prompts around.
+  if (worker) {
+    server.registerTool(
+      "whoami",
+      {
+        title: "Who am I",
+        description:
+          "Identify yourself in this workspace: your name, the department you serve, and what you have done so far.",
+      },
+      async () => ({
+        content: [
+          {
+            type: "text" as const,
+            text:
+              `You are "${worker.name}" — ${worker.role}\n` +
+              `Department: ${worker.departmentName}\n` +
+              `Model on file: ${worker.model}\n` +
+              `Steps completed: ${worker.stepsCompleted} · Tokens reported: ${worker.tokensUsed.toLocaleString()}\n\n` +
+              `Use my_steps to see what is waiting for you.`,
+          },
+        ],
+      })
+    );
+
+    server.registerTool(
+      "my_steps",
+      {
+        title: "My assigned work",
+        description:
+          "List the steps assigned to you that still need doing, with the task and goal each belongs to. Start here.",
+        inputSchema: {
+          includeDone: z.boolean().optional().describe("Also show steps you already finished"),
+        },
+      },
+      async ({ includeDone }: { includeDone?: boolean }) => {
+        const steps = await stepsForWorker(account.licenseKey, worker.id, { includeDone });
+        if (steps.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Nothing is assigned to you right now.",
+              },
+            ],
+          };
+        }
+        const lines = steps.map(
+          (s) =>
+            `• [${s.status}] ${s.stepTitle}\n` +
+            `    task: ${s.missionTitle}${s.goal ? ` — ${s.goal}` : ""}\n` +
+            `    department: ${s.department}\n` +
+            `    ids: mission=${s.missionId} step=${s.stepId}` +
+            (s.note ? `\n    last note: ${s.note}` : "")
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `${steps.length} step(s) assigned to you:\n\n${lines.join("\n\n")}`,
+            },
+          ],
+        };
+      }
+    );
+
+    server.registerTool(
+      "start_step",
+      {
+        title: "Start a step",
+        description:
+          "Mark one of your steps as in progress, so the team can see you picked it up before you spend anything on it.",
+        inputSchema: {
+          missionId: z.string().min(1),
+          stepId: z.string().min(1),
+        },
+      },
+      async ({ missionId, stepId }: { missionId: string; stepId: string }) => {
+        const mine = await stepsForWorker(account.licenseKey, worker.id, { includeDone: true });
+        if (!mine.some((s) => s.missionId === missionId && s.stepId === stepId)) {
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: "That step is not assigned to you." }],
+          };
+        }
+        const updated = await updateStep({
+          licenseKey: account.licenseKey,
+          missionId,
+          stepId,
+          status: "doing",
+        });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: updated
+                ? `Started. "${updated.title}" is now ${progressOf(updated)}%.`
+                : "Task not found.",
+            },
+          ],
+        };
+      }
+    );
+
+    server.registerTool(
+      "complete_step",
+      {
+        title: "Finish a step",
+        description:
+          "Report a step as done (or stuck), with a plain-language note of what you produced and the tokens it cost. The team sees this immediately.",
+        inputSchema: {
+          missionId: z.string().min(1),
+          stepId: z.string().min(1),
+          note: z.string().min(1).describe("What you did or produced — a human reads this"),
+          tokens: z.number().int().nonnegative().optional(),
+          blocked: z
+            .boolean()
+            .optional()
+            .describe("Set true if you could not finish and need a human"),
+        },
+      },
+      async (args: {
+        missionId: string;
+        stepId: string;
+        note: string;
+        tokens?: number;
+        blocked?: boolean;
+      }) => {
+        const mine = await stepsForWorker(account.licenseKey, worker.id, { includeDone: true });
+        if (!mine.some((s) => s.missionId === args.missionId && s.stepId === args.stepId)) {
+          return {
+            isError: true,
+            content: [{ type: "text" as const, text: "That step is not assigned to you." }],
+          };
+        }
+        const updated = await updateStep({
+          licenseKey: account.licenseKey,
+          missionId: args.missionId,
+          stepId: args.stepId,
+          status: args.blocked ? "blocked" : "done",
+          note: args.note,
+          addTokens: args.tokens,
+        });
+        await recordWorkerUsage(worker.id, {
+          tokens: args.tokens ?? 0,
+          stepsCompleted: args.blocked ? 0 : 1,
+        }).catch(() => {});
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: updated
+                ? `${args.blocked ? "Flagged as stuck" : "Done"}. "${updated.title}" is now ${progressOf(updated)}% (${updated.status}).`
+                : "Task not found.",
+            },
+          ],
+        };
+      }
+    );
+  }
+
 
   server.registerTool(
     "check_quota",
@@ -478,7 +644,7 @@ export async function handleMcpRequest(req: AuthedRequest, res: express.Response
     return;
   }
 
-  const server = buildServer(account);
+  const server = buildServer(account, req.lyceumWorker);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
   res.on("close", () => {

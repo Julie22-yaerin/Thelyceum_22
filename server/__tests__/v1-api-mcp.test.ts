@@ -8,6 +8,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Make getDb() take the *configured* path so it calls the mocked
+// firebase-admin below, rather than falling back to the real in-memory store
+// (which is module-level and would leak state between tests).
+process.env.FIREBASE_PROJECT_ID = "test-project";
+process.env.FIREBASE_CLIENT_EMAIL = "test@example.com";
+process.env.FIREBASE_PRIVATE_KEY = "test-key";
+
 // ── Fake Firestore ───────────────────────────────────────────────────────
 
 interface FakeDoc {
@@ -461,5 +468,143 @@ describe("missions", () => {
       status: "done",
     });
     expect(result).toBeNull();
+  });
+});
+
+// ── The roster loop: an outside AI connects and does the work ───────────────
+// This is the mechanism that lets a third party read and write a customer's
+// tasks, so the isolation properties are tested as hard as the happy path.
+
+const { createWorker, listWorkers, resolveWorkerToken, revokeWorker, rotateWorkerToken, recordWorkerUsage } =
+  await import("../db/workers.js");
+const { stepsForWorker } = await import("../db/missions.js");
+
+describe("AI roster", () => {
+  async function makeWorker(over: Partial<Parameters<typeof createWorker>[0]> = {}) {
+    return createWorker({
+      licenseKey: LICENSE_KEY,
+      name: "Draft Bot",
+      role: "Writes drafts",
+      departmentId: "role-marketing",
+      departmentName: "Marketing",
+      model: "gpt-4o",
+      ...over,
+    });
+  }
+
+  it("issues a unique, unguessable token per worker", async () => {
+    const a = await makeWorker();
+    const b = await makeWorker({ name: "Other Bot" });
+    expect(a.mcpToken).not.toBe(b.mcpToken);
+    expect(a.mcpToken.startsWith("lyw_")).toBe(true);
+    // 18 random bytes, base64url — long enough not to be brute-forced.
+    expect(a.mcpToken.length).toBeGreaterThan(20);
+  });
+
+  it("resolves a token back to its worker", async () => {
+    const w = await makeWorker();
+    const found = await resolveWorkerToken(w.mcpToken);
+    expect(found?.id).toBe(w.id);
+    expect(await resolveWorkerToken("lyw_nonsense")).toBeNull();
+  });
+
+  it("shows a worker only the steps assigned to it", async () => {
+    const mine = await makeWorker();
+    const theirs = await makeWorker({ name: "Other Bot" });
+
+    await createMission({
+      licenseKey: LICENSE_KEY,
+      department: "Marketing",
+      title: "Newsletter",
+      headName: "Alex",
+      steps: [
+        { title: "Draft copy", ownerKind: "ai", ownerName: mine.name, ownerId: mine.id },
+        { title: "Approve copy", ownerKind: "human", ownerName: "Alex" },
+        { title: "Something else", ownerKind: "ai", ownerName: theirs.name, ownerId: theirs.id },
+      ],
+    });
+
+    const forMine = await stepsForWorker(LICENSE_KEY, mine.id);
+    expect(forMine).toHaveLength(1);
+    expect(forMine[0].stepTitle).toBe("Draft copy");
+
+    // Critically: it must not see the human's step or the other AI's.
+    expect(forMine.some((s) => s.stepTitle === "Approve copy")).toBe(false);
+    expect(forMine.some((s) => s.stepTitle === "Something else")).toBe(false);
+  });
+
+  it("hides finished steps unless asked, so an AI isn't handed the same work twice", async () => {
+    const w = await makeWorker();
+    const mission = await createMission({
+      licenseKey: LICENSE_KEY,
+      department: "Marketing",
+      title: "Newsletter",
+      headName: "Alex",
+      steps: [{ title: "Draft copy", ownerKind: "ai", ownerName: w.name, ownerId: w.id }],
+    });
+
+    await updateStep({
+      licenseKey: LICENSE_KEY,
+      missionId: mission.id,
+      stepId: "step-1",
+      status: "done",
+      note: "drafted",
+      addTokens: 4200,
+    });
+
+    expect(await stepsForWorker(LICENSE_KEY, w.id)).toHaveLength(0);
+    expect(await stepsForWorker(LICENSE_KEY, w.id, { includeDone: true })).toHaveLength(1);
+  });
+
+  it("does not leak one account's workers or work to another", async () => {
+    const mine = await makeWorker();
+    await createMission({
+      licenseKey: LICENSE_KEY,
+      department: "Marketing",
+      title: "Private",
+      headName: "Alex",
+      steps: [{ title: "secret", ownerKind: "ai", ownerName: mine.name, ownerId: mine.id }],
+    });
+
+    expect(await listWorkers("someone-elses-key")).toHaveLength(0);
+    // Same worker id, wrong account: must return nothing rather than the work.
+    expect(await stepsForWorker("someone-elses-key", mine.id)).toHaveLength(0);
+  });
+
+  it("accumulates usage the workspace bills and displays", async () => {
+    const w = await makeWorker();
+    await recordWorkerUsage(w.id, { tokens: 1000, stepsCompleted: 1 });
+    await recordWorkerUsage(w.id, { tokens: 500, stepsCompleted: 1 });
+    const [updated] = await listWorkers(LICENSE_KEY);
+    expect(updated.tokensUsed).toBe(1500);
+    expect(updated.stepsCompleted).toBe(2);
+    expect(updated.lastSeenAt).not.toBeNull();
+  });
+
+  it("revoking kills the token immediately and hides the worker", async () => {
+    const w = await makeWorker();
+    expect(await revokeWorker(LICENSE_KEY, w.id)).toBe(true);
+    expect(await resolveWorkerToken(w.mcpToken)).toBeNull();
+    expect(await listWorkers(LICENSE_KEY)).toHaveLength(0);
+    // Another account must not be able to revoke someone else's worker.
+    const other = await makeWorker({ name: "Safe Bot" });
+    expect(await revokeWorker("someone-elses-key", other.id)).toBe(false);
+  });
+
+  it("rotating replaces the token but keeps the worker's history", async () => {
+    const w = await makeWorker();
+    await recordWorkerUsage(w.id, { tokens: 900, stepsCompleted: 3 });
+
+    const fresh = await rotateWorkerToken(LICENSE_KEY, w.id);
+    expect(fresh).toBeTruthy();
+    expect(fresh).not.toBe(w.mcpToken);
+    // The leaked token stops working; the new one identifies the same worker.
+    expect(await resolveWorkerToken(w.mcpToken)).toBeNull();
+    const found = await resolveWorkerToken(fresh!);
+    expect(found?.id).toBe(w.id);
+    expect(found?.tokensUsed).toBe(900);
+    expect(found?.stepsCompleted).toBe(3);
+
+    expect(await rotateWorkerToken("someone-elses-key", w.id)).toBeNull();
   });
 });
