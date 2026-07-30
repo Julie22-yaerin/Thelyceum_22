@@ -25,6 +25,13 @@ import type { Account } from "../db/accounts.js";
 import { getTask, listTasks } from "../db/tasks.js";
 import { InsufficientCreditsError, MaxAttemptsError, NeedsHumanApprovalError, RetryableError, runTask, TASK_COST, type RunTaskResult } from "../lib/runTask.js";
 import type { AuthedRequest } from "../lib/auth.js";
+import {
+  registerAiRole,
+  listAiRoles,
+  reportTokens,
+  TokenBudgetExceededError,
+} from "../db/aiRoles.js";
+import { createMission, listMissions, updateStep, progressOf } from "../db/missions.js";
 
 function buildServer(account: Account): McpServer {
   const server = new McpServer({ name: "the-lyceum", version: "1.0.0" });
@@ -159,6 +166,256 @@ function buildServer(account: Account): McpServer {
           {
             type: "text" as const,
             text: task.status === "completed" ? task.result ?? "" : `Task failed: ${task.error}`,
+          },
+        ],
+      };
+    }
+  );
+
+  // ── Role registration ───────────────────────────────────────────────────
+  // How a connected AI declares what it is. Everything below (token
+  // reporting, mission work) is attributed to the role registered here, so
+  // the humans in the workspace can see which AI did what.
+
+  server.registerTool(
+    "register_role",
+    {
+      title: "Register my role",
+      description:
+        "Declare which role you (the connected AI) are filling and which department you serve. Call this first — token reporting and mission updates are attributed to this role. Calling it again with the same name updates the description without losing usage history.",
+      inputSchema: {
+        name: z.string().min(1).describe('Your role name, e.g. "Newsletter Copywriter"'),
+        department: z
+          .string()
+          .min(1)
+          .describe('Department tag you serve, e.g. "marketing" or "coding"'),
+        purpose: z.string().min(1).describe("One line on what you do — humans will read this"),
+        client: z.string().optional().describe('Which app you are, e.g. "Claude Desktop"'),
+        tokenBudget: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe("Optional cap on your own token spend; 0 or omitted = no cap"),
+      },
+    },
+    async (args: {
+      name: string;
+      department: string;
+      purpose: string;
+      client?: string;
+      tokenBudget?: number;
+    }) => {
+      const role = await registerAiRole({ licenseKey: account.licenseKey, ...args });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              `Registered as "${role.name}" in ${role.department}.\n` +
+              `Tokens used so far: ${role.tokensUsed.toLocaleString()}` +
+              (role.tokenBudget > 0 ? ` of ${role.tokenBudget.toLocaleString()}` : " (no cap)"),
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerTool(
+    "list_roles",
+    {
+      title: "List AI roles",
+      description:
+        "List every AI role registered on this account, with the department each serves and how many tokens it has used. This is the token report for the whole workspace.",
+    },
+    async () => {
+      const roles = await listAiRoles(account.licenseKey);
+      if (roles.length === 0) {
+        return {
+          content: [
+            { type: "text" as const, text: "No AI roles registered yet. Use register_role first." },
+          ],
+        };
+      }
+      const total = roles.reduce((sum, r) => sum + r.tokensUsed, 0);
+      const lines = roles.map(
+        (r) =>
+          `• ${r.name} — ${r.department} — ${r.tokensUsed.toLocaleString()} tokens` +
+          (r.tokenBudget > 0 ? ` / ${r.tokenBudget.toLocaleString()} budget` : "") +
+          (r.client ? ` (${r.client})` : "")
+      );
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `${roles.length} role(s), ${total.toLocaleString()} tokens total:\n\n${lines.join("\n")}`,
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerTool(
+    "report_tokens",
+    {
+      title: "Report token usage",
+      description:
+        "Report tokens you have just consumed, so the workspace can track spend per AI role. Rejected if it would take the role past its own budget.",
+      inputSchema: {
+        roleName: z.string().min(1).describe("The role name you registered"),
+        tokens: z.number().int().positive().describe("Tokens consumed since your last report"),
+      },
+    },
+    async ({ roleName, tokens }: { roleName: string; tokens: number }) => {
+      try {
+        const role = await reportTokens(account.licenseKey, roleName, tokens);
+        const pct =
+          role.tokenBudget > 0 ? ` (${Math.round((role.tokensUsed / role.tokenBudget) * 100)}% of budget)` : "";
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Recorded ${tokens.toLocaleString()} tokens for "${role.name}". Total: ${role.tokensUsed.toLocaleString()}${pct}`,
+            },
+          ],
+        };
+      } catch (err) {
+        if (err instanceof TokenBudgetExceededError) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: `⛔ Token budget reached for "${err.roleName}" (${err.used.toLocaleString()}/${err.budget.toLocaleString()}). Ask the department head to raise it in the Lyceum workspace.`,
+              },
+            ],
+          };
+        }
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: err instanceof Error ? err.message : "Failed" }],
+        };
+      }
+    }
+  );
+
+  // ── Mission visibility & progress ───────────────────────────────────────
+  // The same missions the team sees in the workspace, so a connected AI can
+  // read where things stand and move its own step forward.
+
+  server.registerTool(
+    "list_missions",
+    {
+      title: "List missions",
+      description:
+        "See the missions the team is running, with plain progress percentages. Optionally filter to one department.",
+      inputSchema: {
+        department: z.string().optional().describe('e.g. "marketing" — omit for all departments'),
+      },
+    },
+    async ({ department }: { department?: string }) => {
+      const missions = await listMissions(account.licenseKey, department);
+      if (missions.length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: department
+                ? `No missions in ${department} yet.`
+                : "No missions yet. Create one with create_mission.",
+            },
+          ],
+        };
+      }
+      const lines = missions.map((m) => {
+        const steps = m.steps
+          .map((s) => `    - [${s.status}] ${s.title} — ${s.ownerName} (${s.ownerKind})`)
+          .join("\n");
+        return `• ${m.title} — ${m.department} — ${progressOf(m)}% — ${m.status}\n  head: ${m.headName}\n  id: ${m.id}\n${steps}`;
+      });
+      return { content: [{ type: "text" as const, text: lines.join("\n\n") }] };
+    }
+  );
+
+  server.registerTool(
+    "create_mission",
+    {
+      title: "Create a mission",
+      description:
+        "Create a mission (a piece of work broken into steps) in a department, so the whole team can see it and track progress.",
+      inputSchema: {
+        department: z.string().min(1).describe('Department tag, e.g. "marketing"'),
+        title: z.string().min(1).describe("What needs to happen"),
+        goal: z.string().optional().describe("Why it matters"),
+        headName: z.string().min(1).describe("The person accountable for the decision"),
+        steps: z
+          .array(
+            z.object({
+              title: z.string().min(1),
+              ownerKind: z.enum(["human", "ai"]),
+              ownerName: z.string().min(1),
+            })
+          )
+          .optional()
+          .describe("The steps, each owned by a person or an AI"),
+      },
+    },
+    async (args: {
+      department: string;
+      title: string;
+      goal?: string;
+      headName: string;
+      steps?: { title: string; ownerKind: "human" | "ai"; ownerName: string }[];
+    }) => {
+      const mission = await createMission({ licenseKey: account.licenseKey, ...args });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Created "${mission.title}" in ${mission.department} with ${mission.steps.length} step(s).\nid: ${mission.id}`,
+          },
+        ],
+      };
+    }
+  );
+
+  server.registerTool(
+    "update_mission_step",
+    {
+      title: "Update a mission step",
+      description:
+        "Move a step forward, leave a plain-language note on it, and optionally attribute tokens to it. The mission's own status is recalculated from its steps.",
+      inputSchema: {
+        missionId: z.string().min(1).describe("From list_missions"),
+        stepId: z.string().min(1).describe('From list_missions, e.g. "step-1"'),
+        status: z.enum(["todo", "doing", "done", "blocked"]).optional(),
+        note: z.string().optional().describe("What happened — humans read this"),
+        tokens: z.number().int().nonnegative().optional().describe("Tokens spent on this step"),
+      },
+    },
+    async (args: {
+      missionId: string;
+      stepId: string;
+      status?: "todo" | "doing" | "done" | "blocked";
+      note?: string;
+      tokens?: number;
+    }) => {
+      const mission = await updateStep({
+        licenseKey: account.licenseKey,
+        missionId: args.missionId,
+        stepId: args.stepId,
+        status: args.status,
+        note: args.note,
+        addTokens: args.tokens,
+      });
+      if (!mission) {
+        return { isError: true, content: [{ type: "text" as const, text: "Mission not found." }] };
+      }
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Updated. "${mission.title}" is now ${progressOf(mission)}% (${mission.status}).`,
           },
         ],
       };

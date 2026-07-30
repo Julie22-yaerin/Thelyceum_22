@@ -43,7 +43,7 @@ function TaskNodeCard({ node, index, onConfigure }: { node: TaskNode; index: num
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border border-white/5 rounded-lg overflow-hidden bg-white/[0.02] hover:border-white/10 transition-colors">
+    <div className="border border-ws-border rounded-lg overflow-hidden bg-ws-subtle hover:border-ws-border transition-colors">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-left"
@@ -51,20 +51,20 @@ function TaskNodeCard({ node, index, onConfigure }: { node: TaskNode; index: num
         <div className={cn(
           "w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold shrink-0",
           node.allocation.assigneeType === "AI"
-            ? "bg-cyan-500/15 text-cyan-400"
-            : "bg-amber-500/15 text-amber-400"
+            ? "bg-cyan-100 text-cyan-700"
+            : "bg-amber-100 text-amber-700"
         )}>
           {index + 1}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-medium text-white/90 truncate">{node.title}</p>
+          <p className="text-[10px] font-medium text-ws-text truncate">{node.title}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
             {node.allocation.assigneeType === "AI" ? (
-              <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-400 border-cyan-500/20">
+              <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-700 border-cyan-200">
                 <Bot className="w-2 h-2 mr-0.5" /> {node.allocation.defaultModel?.split("/").pop() || "AI"}
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-amber-400 border-amber-500/20">
+              <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-amber-700 border-amber-200">
                 <Users className="w-2 h-2 mr-0.5" /> {node.allocation.humanRoleName || "Human"}
               </Badge>
             )}
@@ -77,10 +77,10 @@ function TaskNodeCard({ node, index, onConfigure }: { node: TaskNode; index: num
         <Badge variant="outline" className={cn(
           "text-[7px] h-3.5 px-1",
           node.kpi.minimumQualityThreshold >= 90
-            ? "text-green-400 border-green-500/20"
+            ? "text-green-700 border-green-200"
             : node.kpi.minimumQualityThreshold >= 80
-              ? "text-amber-400 border-amber-500/20"
-              : "text-muted-foreground border-white/5"
+              ? "text-amber-700 border-amber-200"
+              : "text-muted-foreground border-ws-border"
         )}>
           {node.kpi.minimumQualityThreshold}%
         </Badge>
@@ -89,14 +89,14 @@ function TaskNodeCard({ node, index, onConfigure }: { node: TaskNode; index: num
 
       {expanded && (
         <div className="px-3 pb-3 space-y-2">
-          <p className="text-[9px] text-white/60 leading-relaxed">{node.description}</p>
+          <p className="text-[9px] text-ws-text-muted leading-relaxed">{node.description}</p>
 
           {/* Dependencies */}
           {node.dependsOn.length > 0 && (
             <div className="flex items-center gap-1 text-[8px] text-muted-foreground">
               <span>Depends on:</span>
               {node.dependsOn.map((d, i) => (
-                <Badge key={d} variant="outline" className="text-[7px] h-3 px-1 text-amber-400 border-amber-500/20">
+                <Badge key={d} variant="outline" className="text-[7px] h-3 px-1 text-amber-700 border-amber-200">
                   Step {i + 1}
                 </Badge>
               ))}
@@ -104,54 +104,54 @@ function TaskNodeCard({ node, index, onConfigure }: { node: TaskNode; index: num
           )}
 
           {/* Schedule */}
-          <div className="bg-white/[0.03] rounded px-2 py-1.5">
+          <div className="bg-ws-subtle rounded px-2 py-1.5">
             <div className="flex items-center gap-1 mb-0.5">
-              <Clock className="w-2.5 h-2.5 text-indigo-400" />
-              <span className="text-[8px] text-indigo-400 font-medium">Schedule</span>
+              <Clock className="w-2.5 h-2.5 text-indigo-700" />
+              <span className="text-[8px] text-indigo-700 font-medium">Schedule</span>
             </div>
-            <p className="text-[8px] text-white/50">{node.schedule.rationale}</p>
+            <p className="text-[8px] text-ws-text-muted">{node.schedule.rationale}</p>
             {node.schedule.suggestedBlocks.length > 0 && (
               <div className="flex gap-1 mt-0.5">
                 {node.schedule.suggestedBlocks.map((b) => (
-                  <Badge key={b} variant="outline" className="text-[7px] h-3 px-1 text-muted-foreground border-white/5">{b}</Badge>
+                  <Badge key={b} variant="outline" className="text-[7px] h-3 px-1 text-muted-foreground border-ws-border">{b}</Badge>
                 ))}
               </div>
             )}
           </div>
 
           {/* KPI */}
-          <div className="bg-white/[0.03] rounded px-2 py-1.5">
+          <div className="bg-ws-subtle rounded px-2 py-1.5">
             <div className="flex items-center gap-1 mb-0.5">
-              <Target className="w-2.5 h-2.5 text-teal-400" />
-              <span className="text-[8px] text-teal-400 font-medium">KPI</span>
+              <Target className="w-2.5 h-2.5 text-teal-700" />
+              <span className="text-[8px] text-teal-700 font-medium">KPI</span>
             </div>
-            <p className="text-[8px] text-white/50">Format: {node.kpi.requiredOutputFormat}</p>
+            <p className="text-[8px] text-ws-text-muted">Format: {node.kpi.requiredOutputFormat}</p>
             <div className="space-y-0.5 mt-0.5">
               {node.kpi.successCriteria.map((c, i) => (
                 <div key={i} className="flex items-start gap-1">
-                  <CheckCircle2 className="w-2 h-2 text-teal-400 mt-0.5 shrink-0" />
-                  <span className="text-[8px] text-white/60">{c}</span>
+                  <CheckCircle2 className="w-2 h-2 text-teal-700 mt-0.5 shrink-0" />
+                  <span className="text-[8px] text-ws-text-muted">{c}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Auditors */}
-          <div className="bg-white/[0.03] rounded px-2 py-1.5">
+          <div className="bg-ws-subtle rounded px-2 py-1.5">
             <div className="flex items-center gap-1 mb-0.5">
-              <Shield className="w-2.5 h-2.5 text-red-400" />
-              <span className="text-[8px] text-red-400 font-medium">Auditors</span>
+              <Shield className="w-2.5 h-2.5 text-red-700" />
+              <span className="text-[8px] text-red-700 font-medium">Auditors</span>
             </div>
             {node.auditors.map((auditor) => (
               <div key={auditor.auditorType} className="mb-1">
-                <p className="text-[8px] text-white/70 font-medium">{auditor.auditorType}</p>
+                <p className="text-[8px] text-ws-text-soft font-medium">{auditor.auditorType}</p>
                 {auditor.checkRules.map((rule, i) => (
                   <div key={i} className="flex items-start gap-1 ml-2">
                     <div className={cn(
                       "w-1 h-1 rounded-full mt-1 shrink-0",
                       rule.severity === "critical" ? "bg-red-400" : rule.severity === "warning" ? "bg-amber-400" : "bg-blue-400"
                     )} />
-                    <span className="text-[7px] text-white/50">{rule.checkDescription}</span>
+                    <span className="text-[7px] text-ws-text-muted">{rule.checkDescription}</span>
                   </div>
                 ))}
               </div>
@@ -170,7 +170,7 @@ function TaskNodeCard({ node, index, onConfigure }: { node: TaskNode; index: num
           {onConfigure && (
             <Button
               size="sm"
-              className="w-full h-6 text-[8px] bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30"
+              className="w-full h-6 text-[8px] bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-100"
               onClick={(e) => { e.stopPropagation(); onConfigure(node); }}
             >
               <Sliders className="w-2 h-2 mr-1" />
@@ -247,20 +247,20 @@ export default function WorkflowSetupModal() {
   if (!showWorkflowSetup) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[560px] max-h-[80vh] bg-[#0f0f13] border border-white/10 rounded-xl shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/25 backdrop-blur-sm">
+      <div className="w-[560px] max-h-[80vh] bg-ws-bg border border-ws-border rounded-xl shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-ws-border flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-teal-500/15 flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+            <div className="w-6 h-6 rounded bg-teal-100 flex items-center justify-center">
+              <Sparkles className="w-3.5 h-3.5 text-teal-700" />
             </div>
             <div>
-              <h3 className="text-xs font-semibold text-white">AI Workflow Generator</h3>
+              <h3 className="text-xs font-semibold text-ws-text">AI Workflow Generator</h3>
               <p className="text-[9px] text-muted-foreground">Powered by KIMI 3 — Organizer AI</p>
             </div>
           </div>
-          <button onClick={handleClose} className="text-muted-foreground hover:text-white">
+          <button onClick={handleClose} className="text-muted-foreground hover:text-ws-text">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -271,34 +271,34 @@ export default function WorkflowSetupModal() {
               /* ── Setup Form ── */
               <>
                 <div>
-                  <label className="text-[10px] text-white/70 font-medium mb-1 block">Task Description</label>
+                  <label className="text-[10px] text-ws-text-soft font-medium mb-1 block">Task Description</label>
                   <Textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder="Describe what you want to accomplish (e.g., 'Create a marketing campaign for our new product launch including email sequences, social media posts, and landing page copy')"
-                    className="h-20 text-[11px] bg-white/5 border-white/10 text-white resize-none"
+                    className="h-20 text-[11px] bg-ws-subtle border-ws-border text-ws-text resize-none"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[10px] text-white/70 font-medium mb-1 block">Context (optional)</label>
+                  <label className="text-[10px] text-ws-text-soft font-medium mb-1 block">Context (optional)</label>
                   <Textarea
                     value={context}
                     onChange={(e) => setContext(e.target.value)}
                     placeholder="Provide additional context: target audience, brand guidelines, budget constraints, deadlines, etc."
-                    className="h-16 text-[11px] bg-white/5 border-white/10 text-white resize-none"
+                    className="h-16 text-[11px] bg-ws-subtle border-ws-border text-ws-text resize-none"
                   />
                 </div>
 
                 {error && (
-                  <div className="flex items-start gap-1.5 text-[9px] text-amber-400 bg-amber-500/5 border border-amber-500/10 rounded px-2 py-1.5">
+                  <div className="flex items-start gap-1.5 text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                     <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
                     <span>{error}</span>
                   </div>
                 )}
 
                 <Button
-                  className="w-full h-8 text-[10px] bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+                  className="w-full h-8 text-[10px] bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
                   onClick={handleGenerate}
                   disabled={!prompt.trim() || generating}
                 >
@@ -319,14 +319,14 @@ export default function WorkflowSetupModal() {
               /* ── Workflow Display ── */
               <>
                 {/* Summary */}
-                <div className="bg-teal-500/5 border border-teal-500/10 rounded-lg p-3">
+                <div className="bg-teal-50 border border-teal-200 rounded-lg p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-[11px] font-medium text-white/90">{workflow.name}</h4>
-                    <Badge variant="outline" className="text-[8px] text-teal-400 border-teal-500/20">
+                    <h4 className="text-[11px] font-medium text-ws-text">{workflow.name}</h4>
+                    <Badge variant="outline" className="text-[8px] text-teal-700 border-teal-200">
                       {workflow.nodes.length} steps
                     </Badge>
                   </div>
-                  <p className="text-[9px] text-white/60 leading-relaxed mb-2">{workflow.description}</p>
+                  <p className="text-[9px] text-ws-text-muted leading-relaxed mb-2">{workflow.description}</p>
                   <div className="flex items-center gap-3 text-[8px] text-muted-foreground">
                     <span className="flex items-center gap-0.5">
                       <Clock className="w-2.5 h-2.5" /> ~{workflow.totalEstimatedMinutes}m
@@ -345,17 +345,17 @@ export default function WorkflowSetupModal() {
 
                 {/* Schedule Strategy */}
                 {workflow.scheduleStrategy && (
-                  <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-2.5">
-                    <p className="text-[8px] text-indigo-400 uppercase tracking-wider mb-0.5">Schedule Strategy</p>
-                    <p className="text-[9px] text-white/60">{workflow.scheduleStrategy}</p>
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2.5">
+                    <p className="text-[8px] text-indigo-700 uppercase tracking-wider mb-0.5">Schedule Strategy</p>
+                    <p className="text-[9px] text-ws-text-muted">{workflow.scheduleStrategy}</p>
                   </div>
                 )}
 
                 {/* KPI Summary */}
                 {workflow.kpiSummary && (
-                  <div className="bg-green-500/5 border border-green-500/10 rounded-lg p-2.5">
-                    <p className="text-[8px] text-green-400 uppercase tracking-wider mb-0.5">KPI Summary</p>
-                    <p className="text-[9px] text-white/60">{workflow.kpiSummary}</p>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-2.5">
+                    <p className="text-[8px] text-green-700 uppercase tracking-wider mb-0.5">KPI Summary</p>
+                    <p className="text-[9px] text-ws-text-muted">{workflow.kpiSummary}</p>
                   </div>
                 )}
 
@@ -371,7 +371,7 @@ export default function WorkflowSetupModal() {
 
                 {/* Error */}
                 {error && (
-                  <div className="flex items-start gap-1.5 text-[9px] text-amber-400 bg-amber-500/5 border border-amber-500/10 rounded px-2 py-1.5">
+                  <div className="flex items-start gap-1.5 text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                     <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
                     <span>{error}</span>
                   </div>
@@ -379,16 +379,16 @@ export default function WorkflowSetupModal() {
 
                 {/* Execution Result */}
                 {executionResult && (
-                  <div className="bg-green-500/5 border border-green-500/10 rounded-lg p-2.5">
-                    <p className="text-[8px] text-green-400 uppercase tracking-wider mb-0.5">Execution Result</p>
-                    <p className="text-[9px] text-white/70">{executionResult}</p>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-2.5">
+                    <p className="text-[8px] text-green-700 uppercase tracking-wider mb-0.5">Execution Result</p>
+                    <p className="text-[9px] text-ws-text-soft">{executionResult}</p>
                   </div>
                 )}
 
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
-                    className="flex-1 h-7 text-[9px] bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+                    className="flex-1 h-7 text-[9px] bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
                     onClick={handleExecute}
                     disabled={executing}
                   >
@@ -400,7 +400,7 @@ export default function WorkflowSetupModal() {
                   </Button>
                   <Button
                     variant="ghost"
-                    className="h-7 text-[9px] text-muted-foreground hover:text-white"
+                    className="h-7 text-[9px] text-muted-foreground hover:text-ws-text"
                     onClick={() => { setWorkflow(null); setError(null); setExecutionResult(null); }}
                   >
                     Back

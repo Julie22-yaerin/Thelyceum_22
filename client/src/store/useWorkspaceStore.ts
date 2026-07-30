@@ -14,6 +14,7 @@
  */
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { AlertSeverity } from "./useWorkforceStore";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -242,7 +243,9 @@ const RANDOM_NOUNS = [
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
-export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
+export const useWorkspaceStore = create<WorkspaceStore>()(
+  persist(
+    (set, get) => ({
   // ── Initial State ──────────────────────────────────────────────────────
   companies: [],
   members: [],
@@ -639,6 +642,24 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   getRootDocuments: () => {
     return get().documents.filter((d) => d.folderId === null);
   },
-}));
+    }),
+    {
+      name: "lyceum-workspace",
+      // Persist the org itself, not transient dialog/navigation state — a
+      // reload should land you back in your company, not re-run onboarding.
+      partialize: (s) => ({
+        companies: s.companies,
+        members: s.members,
+        workspaces: s.workspaces,
+        folders: s.folders,
+        documents: s.documents,
+        activeCompanyId: s.activeCompanyId,
+        activeWorkspaceId: s.activeWorkspaceId,
+        taskSpecs: s.taskSpecs,
+        showCompanySetup: s.showCompanySetup,
+      }),
+    }
+  )
+);
 
 export { FOLDER_ICONS, RANDOM_ADJECTIVES, RANDOM_NOUNS };

@@ -49,23 +49,23 @@ function SectionCard({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border border-white/5 rounded-lg overflow-hidden bg-white/[0.02]">
+    <div className="border border-ws-border rounded-lg overflow-hidden bg-ws-subtle">
       {/* Section header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-white/[0.02] transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-ws-subtle transition-colors"
       >
         {expanded ? (
           <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
         ) : (
           <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
         )}
-        <Layers className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+        <Layers className="w-3.5 h-3.5 text-indigo-700 shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-medium text-white/90 truncate">{section.title}</p>
+          <p className="text-[11px] font-medium text-ws-text truncate">{section.title}</p>
           <p className="text-[8px] text-muted-foreground mt-0.5 line-clamp-1">{section.summary}</p>
         </div>
-        <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-muted-foreground border-white/5 shrink-0">
+        <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-muted-foreground border-ws-border shrink-0">
           {section.groups.length} group{section.groups.length !== 1 ? "s" : ""}
         </Badge>
       </button>
@@ -101,22 +101,22 @@ function GroupCard({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border border-white/5 rounded-md bg-white/[0.01] overflow-hidden hover:border-white/10 transition-colors">
+    <div className="border border-ws-border rounded-md bg-ws-subtle overflow-hidden hover:border-ws-border transition-colors">
       {/* Group header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-white/[0.02] transition-colors"
+        className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-ws-subtle transition-colors"
       >
-        <div className="w-4 h-4 rounded bg-white/[0.03] flex items-center justify-center shrink-0">
+        <div className="w-4 h-4 rounded bg-ws-subtle flex items-center justify-center shrink-0">
           <div className="w-1.5 h-1.5 rounded-full bg-teal-400" />
         </div>
-        <span className="text-[10px] text-white/80 flex-1 truncate">{group.title}</span>
+        <span className="text-[10px] text-ws-text flex-1 truncate">{group.title}</span>
         <div className="flex items-center gap-1 shrink-0">
           {group.topics.slice(0, 2).map((topic) => (
             <Badge
               key={topic}
               variant="outline"
-              className="text-[6px] h-3 px-1 text-muted-foreground border-white/5"
+              className="text-[6px] h-3 px-1 text-muted-foreground border-ws-border"
             >
               {topic}
             </Badge>
@@ -127,14 +127,14 @@ function GroupCard({
       {/* Expanded content */}
       {expanded && (
         <div className="px-2.5 pb-2 space-y-2">
-          <div className="bg-white/[0.03] rounded px-2 py-1.5">
-            <p className="text-[9px] text-white/70 leading-relaxed">{group.content}</p>
+          <div className="bg-ws-subtle rounded px-2 py-1.5">
+            <p className="text-[9px] text-ws-text-soft leading-relaxed">{group.content}</p>
           </div>
           <div className="flex items-center gap-1.5">
             {group.suggestedAgentRole && (
               <Badge
                 variant="outline"
-                className="text-[7px] h-4 px-1.5 text-teal-400 border-teal-500/20 bg-teal-500/5"
+                className="text-[7px] h-4 px-1.5 text-teal-700 border-teal-200 bg-teal-50"
               >
                 <Brain className="w-2 h-2 mr-0.5" />
                 {group.suggestedAgentRole}
@@ -142,7 +142,7 @@ function GroupCard({
             )}
             <Button
               size="sm"
-              className="h-6 text-[8px] px-2 ml-auto bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+              className="h-6 text-[8px] px-2 ml-auto bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
               onClick={() => onSelect(documentId, group.id)}
             >
               <Send className="w-2.5 h-2.5 mr-1" />
@@ -175,21 +175,21 @@ export default function DocumentAnalysisPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0e]">
+    <div className="h-full flex flex-col bg-ws-bg">
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between">
+      <div className="px-3 py-2.5 border-b border-ws-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded bg-teal-500/15 flex items-center justify-center">
+          <div className="w-5 h-5 rounded bg-teal-100 flex items-center justify-center">
             {analysis.status === "complete" ? (
-              <CheckCircle2 className="w-3 h-3 text-teal-400" />
+              <CheckCircle2 className="w-3 h-3 text-teal-700" />
             ) : analysis.status === "error" ? (
-              <AlertCircle className="w-3 h-3 text-red-400" />
+              <AlertCircle className="w-3 h-3 text-red-700" />
             ) : (
-              <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />
+              <Loader2 className="w-3 h-3 text-amber-700 animate-spin" />
             )}
           </div>
           <div>
-            <h4 className="text-[10px] font-medium text-white/90">Document Analysis</h4>
+            <h4 className="text-[10px] font-medium text-ws-text">Document Analysis</h4>
             <p className="text-[7px] text-muted-foreground">
               {analysis.status === "complete"
                 ? `${analysis.sections.length} sections · ${analysis.sections.reduce((s, sec) => s + sec.groups.length, 0)} content groups`
@@ -201,7 +201,7 @@ export default function DocumentAnalysisPanel() {
         </div>
         <button
           onClick={() => setShowAnalysisPanel(false)}
-          className="text-muted-foreground hover:text-white"
+          className="text-muted-foreground hover:text-ws-text"
         >
           <X className="w-3 h-3" />
         </button>
@@ -212,14 +212,14 @@ export default function DocumentAnalysisPanel() {
         <div className="p-3 space-y-3">
           {/* Status indicator */}
           {analysis.status === "analyzing" && (
-            <div className="flex items-center gap-2 text-[10px] text-amber-400 bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               <Loader2 className="w-3 h-3 animate-spin shrink-0" />
               Muse Spark 1.1 is analyzing the document structure...
             </div>
           )}
 
           {analysis.status === "error" && (
-            <div className="flex items-center gap-2 text-[10px] text-red-400 bg-red-500/5 border border-red-500/10 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 text-[10px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               <AlertCircle className="w-3 h-3 shrink-0" />
               {analysis.error || "Analysis failed. The file may be too large or in an unsupported format."}
             </div>
@@ -228,9 +228,9 @@ export default function DocumentAnalysisPanel() {
           {analysis.status === "complete" && (
             <>
               {/* Overview */}
-              <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg px-3 py-2">
-                <p className="text-[8px] text-indigo-400 uppercase tracking-wider mb-1">Overview</p>
-                <p className="text-[10px] text-white/70 leading-relaxed">{analysis.overview}</p>
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                <p className="text-[8px] text-indigo-700 uppercase tracking-wider mb-1">Overview</p>
+                <p className="text-[10px] text-ws-text-soft leading-relaxed">{analysis.overview}</p>
               </div>
 
               {/* Sections */}

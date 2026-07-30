@@ -32,38 +32,38 @@ export interface WorkflowGraphNodeData extends Record<string, unknown> {
 
 const STATUS_META: Record<string, { color: string; border: string; icon: React.ElementType; bg: string }> = {
   not_started: {
-    color: "text-gray-400",
-    border: "border-gray-500/20",
-    bg: "bg-gray-500/5",
+    color: "text-ws-text-muted",
+    border: "border-ws-border",
+    bg: "bg-ws-hover",
     icon: Clock,
   },
   in_progress: {
-    color: "text-blue-400",
-    border: "border-blue-500/30",
+    color: "text-blue-700",
+    border: "border-blue-200",
     bg: "bg-blue-500/8",
     icon: Play,
   },
   awaiting_ai: {
-    color: "text-amber-400",
-    border: "border-amber-500/30",
+    color: "text-amber-700",
+    border: "border-amber-200",
     bg: "bg-amber-500/8",
     icon: Bot,
   },
   ai_working: {
-    color: "text-cyan-400",
-    border: "border-cyan-500/30",
+    color: "text-cyan-700",
+    border: "border-cyan-200",
     bg: "bg-cyan-500/8",
     icon: Loader2,
   },
   completed: {
-    color: "text-green-400",
-    border: "border-green-500/30",
+    color: "text-green-700",
+    border: "border-green-200",
     bg: "bg-green-500/8",
     icon: CheckCircle2,
   },
   blocked: {
-    color: "text-red-400",
-    border: "border-red-500/30",
+    color: "text-red-700",
+    border: "border-red-200",
     bg: "bg-red-500/8",
     icon: AlertCircle,
   },
@@ -82,11 +82,11 @@ function WorkflowGraphNode({ data }: NodeProps) {
         meta.border,
         nodeData.isActive
           ? "border-teal-400/60 shadow-[0_0_16px_rgba(45,212,191,0.2)]"
-          : "hover:border-white/30"
+          : "hover:border-ws-border"
       )}
     >
       {/* Header: order + status badge */}
-      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-white/5">
+      <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-ws-border">
         <span className="text-[9px] text-muted-foreground font-mono">
           #{nodeData.order}
         </span>
@@ -100,23 +100,23 @@ function WorkflowGraphNode({ data }: NodeProps) {
 
       {/* Title */}
       <div className="px-2.5 py-2">
-        <p className="text-[10px] font-medium text-white/90 leading-tight line-clamp-2">
+        <p className="text-[10px] font-medium text-ws-text leading-tight line-clamp-2">
           {nodeData.label}
         </p>
       </div>
 
       {/* Footer: assignee type + time */}
-      <div className="flex items-center gap-2 px-2.5 py-1.5 border-t border-white/5">
+      <div className="flex items-center gap-2 px-2.5 py-1.5 border-t border-ws-border">
         {nodeData.assigneeType === "human" ? (
-          <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-amber-400 border-amber-500/20 bg-amber-500/5">
+          <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-amber-700 border-amber-200 bg-amber-50">
             <Users className="w-2 h-2 mr-0.5" /> Human
           </Badge>
         ) : nodeData.assigneeType === "ai" ? (
-          <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-400 border-cyan-500/20 bg-cyan-500/5">
+          <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-700 border-cyan-200 bg-cyan-50">
             <Bot className="w-2 h-2 mr-0.5" /> AI
           </Badge>
         ) : (
-          <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-purple-400 border-purple-500/20 bg-purple-500/5">
+          <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-purple-700 border-purple-200 bg-purple-50">
             <Users className="w-2 h-2 mr-0.5" /> Mixed
           </Badge>
         )}

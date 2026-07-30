@@ -46,6 +46,36 @@
   --color-teal-dark: oklch(0.54 0.108 181);
   --color-charcoal: oklch(0.2 0.005 280);
   --color-warm-white: oklch(0.985 0.002 80);
+
+  /* ── Workspace surfaces (Notion-style light) ─────────────────────────────
+     Used by the /canvas workspace UI. Neutral greys carry the layout; the
+     pastel pair below is reserved for things that genuinely need attention
+     (status, alerts, department tags) so colour stays meaningful. */
+  --color-ws-bg: #ffffff;
+  --color-ws-subtle: #f7f7f5;
+  --color-ws-hover: #f1f1ef;
+  --color-ws-border: #e9e9e7;
+  --color-ws-text: #37352f;
+  --color-ws-text-soft: #5f5e5b;
+  --color-ws-text-muted: #9b9a97;
+
+  /* Pastel accents — bg / text pairs, all AA-contrast on their own bg */
+  --color-pastel-gray: #f1f1ef;
+  --color-pastel-gray-ink: #6b6a67;
+  --color-pastel-blue: #e7f1f7;
+  --color-pastel-blue-ink: #0b6e99;
+  --color-pastel-green: #e4f0ec;
+  --color-pastel-green-ink: #0f7b6c;
+  --color-pastel-yellow: #fbf3db;
+  --color-pastel-yellow-ink: #8a6416;
+  --color-pastel-orange: #faebdd;
+  --color-pastel-orange-ink: #a3560f;
+  --color-pastel-red: #fbe4e4;
+  --color-pastel-red-ink: #ad2b21;
+  --color-pastel-purple: #eee6f5;
+  --color-pastel-purple-ink: #6940a5;
+  --color-pastel-pink: #f7e3ee;
+  --color-pastel-pink-ink: #ad1a72;
 }
 
 :root {

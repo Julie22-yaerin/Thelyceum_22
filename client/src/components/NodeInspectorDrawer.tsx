@@ -75,7 +75,7 @@ function H2AChatTab({ data, nodeId }: { data: AgentData; nodeId: string }) {
             >
               {msg.role === "agent" && (
                 <Avatar className="w-6 h-6 shrink-0">
-                  <AvatarFallback className="text-[9px] bg-teal-500/20 text-teal-300">
+                  <AvatarFallback className="text-[9px] bg-teal-100 text-teal-700">
                     {data.label.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
@@ -84,15 +84,15 @@ function H2AChatTab({ data, nodeId }: { data: AgentData; nodeId: string }) {
                 className={cn(
                   "max-w-[80%] rounded-lg px-3 py-2 text-xs leading-relaxed",
                   msg.role === "user"
-                    ? "bg-teal-500/15 text-teal-200 border border-teal-500/20"
-                    : "bg-white/5 text-gray-300 border border-white/10"
+                    ? "bg-teal-100 text-teal-200 border border-teal-200"
+                    : "bg-ws-subtle text-ws-text-muted border border-ws-border"
                 )}
               >
                 {msg.text}
               </div>
               {msg.role === "user" && (
                 <Avatar className="w-6 h-6 shrink-0">
-                  <AvatarFallback className="text-[9px] bg-purple-500/20 text-purple-300">
+                  <AvatarFallback className="text-[9px] bg-purple-100 text-purple-700">
                     U
                   </AvatarFallback>
                 </Avatar>
@@ -103,18 +103,18 @@ function H2AChatTab({ data, nodeId }: { data: AgentData; nodeId: string }) {
       </ScrollArea>
 
       {/* Prompt override area */}
-      <div className="px-4 py-2 border-t border-white/5">
+      <div className="px-4 py-2 border-t border-ws-border">
         <p className="text-[10px] text-muted-foreground mb-1">System Prompt Override</p>
         <div className="flex gap-1.5">
           <Input
             value={promptOverride}
             onChange={(e) => setPromptOverride(e.target.value)}
-            className="h-7 text-[10px] bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50"
+            className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50"
           />
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 w-7 p-0 text-teal-400 hover:text-teal-300 hover:bg-teal-500/10"
+            className="h-7 w-7 p-0 text-teal-700 hover:text-teal-800 hover:bg-teal-50"
             onClick={handleApplyPrompt}
             title="Apply prompt override"
           >
@@ -124,12 +124,12 @@ function H2AChatTab({ data, nodeId }: { data: AgentData; nodeId: string }) {
       </div>
 
       {/* Chat input */}
-      <div className="px-4 py-3 border-t border-white/5 flex gap-2">
+      <div className="px-4 py-3 border-t border-ws-border flex gap-2">
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type an H2A instruction..."
-          className="h-8 text-xs bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50"
+          className="h-8 text-xs bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50"
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
         <Button
@@ -172,19 +172,19 @@ function BillingConfigTab({ data, nodeId }: { data: AgentData; nodeId: string })
       {/* Model Selector — Domain Model Configuration */}
       {agentDomain && (
         <div className="mb-5">
-          <p className="text-xs font-medium text-white/80 mb-2 flex items-center gap-1.5">
-            <BoxSelect className="w-3 h-3 text-indigo-400" />
+          <p className="text-xs font-medium text-ws-text mb-2 flex items-center gap-1.5">
+            <BoxSelect className="w-3 h-3 text-indigo-700" />
             Model Configuration
           </p>
           <ModelSelector nodeId={nodeId} domain={agentDomain} />
         </div>
       )}
 
-      <Separator className="bg-white/5" />
+      <Separator className="bg-ws-subtle" />
       {/* Connection Mode */}
       <div>
-        <p className="text-xs font-medium text-white/80 mb-2 flex items-center gap-1.5">
-          <Wifi className="w-3 h-3 text-teal-400" />
+        <p className="text-xs font-medium text-ws-text mb-2 flex items-center gap-1.5">
+          <Wifi className="w-3 h-3 text-teal-700" />
           Connection Mode
         </p>
         <div className="flex gap-2">
@@ -194,8 +194,8 @@ function BillingConfigTab({ data, nodeId }: { data: AgentData; nodeId: string })
             className={cn(
               "h-8 text-[10px]",
               connectionMode === "DIRECT_API"
-                ? "bg-teal-500/20 text-teal-300 border-teal-500/30"
-                : "bg-white/5 text-muted-foreground border-white/10"
+                ? "bg-teal-100 text-teal-700 border-teal-200"
+                : "bg-ws-subtle text-muted-foreground border-ws-border"
             )}
             onClick={() => setConnectionMode("DIRECT_API")}
           >
@@ -208,8 +208,8 @@ function BillingConfigTab({ data, nodeId }: { data: AgentData; nodeId: string })
             className={cn(
               "h-8 text-[10px]",
               connectionMode === "MCP_SERVER"
-                ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
-                : "bg-white/5 text-muted-foreground border-white/10"
+                ? "bg-cyan-100 text-cyan-700 border-cyan-200"
+                : "bg-ws-subtle text-muted-foreground border-ws-border"
             )}
             onClick={() => setConnectionMode("MCP_SERVER")}
           >
@@ -221,8 +221,8 @@ function BillingConfigTab({ data, nodeId }: { data: AgentData; nodeId: string })
 
       {connectionMode === "DIRECT_API" && (
         <div>
-          <p className="text-xs font-medium text-white/80 mb-2 flex items-center gap-1.5">
-            <Key className="w-3 h-3 text-indigo-400" />
+          <p className="text-xs font-medium text-ws-text mb-2 flex items-center gap-1.5">
+            <Key className="w-3 h-3 text-indigo-700" />
             API Key
           </p>
           <div className="flex gap-1.5">
@@ -231,12 +231,12 @@ function BillingConfigTab({ data, nodeId }: { data: AgentData; nodeId: string })
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="sk-... (masked)"
-              className="h-8 text-xs bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50 flex-1"
+              className="h-8 text-xs bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50 flex-1"
             />
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-[10px] text-muted-foreground hover:text-white"
+              className="h-8 px-2 text-[10px] text-muted-foreground hover:text-ws-text"
               onClick={() => setShowApiKey(!showApiKey)}
             >
               {showApiKey ? "Hide" : "Show"}
@@ -247,23 +247,23 @@ function BillingConfigTab({ data, nodeId }: { data: AgentData; nodeId: string })
 
       {connectionMode === "MCP_SERVER" && (
         <div>
-          <p className="text-xs font-medium text-white/80 mb-2 flex items-center gap-1.5">
-            <Wifi className="w-3 h-3 text-cyan-400" />
+          <p className="text-xs font-medium text-ws-text mb-2 flex items-center gap-1.5">
+            <Wifi className="w-3 h-3 text-cyan-700" />
             MCP Server URL
           </p>
           <Input
             value={mcpUrl}
             onChange={(e) => setMcpUrl(e.target.value)}
             placeholder="mcp://server.internal:8443"
-            className="h-8 text-xs bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50"
+            className="h-8 text-xs bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50"
           />
         </div>
       )}
 
       {/* Monthly Budget */}
       <div>
-        <p className="text-xs font-medium text-white/80 mb-2 flex items-center gap-1.5">
-          <Coins className="w-3 h-3 text-amber-400" />
+        <p className="text-xs font-medium text-ws-text mb-2 flex items-center gap-1.5">
+          <Coins className="w-3 h-3 text-amber-700" />
           Monthly Budget Limit ($)
         </p>
         <Input
@@ -271,22 +271,22 @@ function BillingConfigTab({ data, nodeId }: { data: AgentData; nodeId: string })
           value={monthlyLimit}
           onChange={(e) => setMonthlyLimit(e.target.value)}
           placeholder="500"
-          className="h-8 text-xs bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50"
+          className="h-8 text-xs bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50"
         />
       </div>
 
       {/* Current Billing Status */}
-      <div className="bg-white/[0.03] border border-white/5 rounded-lg p-3">
+      <div className="bg-ws-subtle border border-ws-border rounded-lg p-3">
         <p className="text-[10px] text-muted-foreground mb-1">Current Billing Status</p>
         <Badge
           variant="outline"
           className={cn(
             "text-[10px]",
             data.config.billingStatus === "ACTIVE"
-              ? "text-green-400 border-green-500/30"
+              ? "text-green-700 border-green-200"
               : data.config.billingStatus === "NO_KEY"
-                ? "text-red-400 border-red-500/30"
-                : "text-orange-400 border-orange-500/30"
+                ? "text-red-700 border-red-200"
+                : "text-orange-700 border-orange-200"
           )}
         >
           {data.config.billingStatus.replace("_", " ")}
@@ -318,10 +318,10 @@ function H2HDiscussionTab({ nodeId, data }: { nodeId: string; data: AgentData })
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-2 border-b border-white/5">
+      <div className="px-4 py-2 border-b border-ws-border">
         <p className="text-[10px] text-muted-foreground">
           {comments.length} comment{comments.length !== 1 ? "s" : ""} · H2H discussion about{" "}
-          <span className="text-white/70">{data.label}</span>
+          <span className="text-ws-text-soft">{data.label}</span>
         </p>
       </div>
 
@@ -339,12 +339,12 @@ function H2HDiscussionTab({ nodeId, data }: { nodeId: string; data: AgentData })
         </div>
       </ScrollArea>
 
-      <div className="px-4 py-3 border-t border-white/5 flex gap-2">
+      <div className="px-4 py-3 border-t border-ws-border flex gap-2">
         <Input
           value={commentText}
           onChange={(e) => setCommentText(e.target.value)}
           placeholder="Leave feedback for your team..."
-          className="h-8 text-xs bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50"
+          className="h-8 text-xs bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50"
           onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
         />
         <Button
@@ -361,19 +361,19 @@ function H2HDiscussionTab({ nodeId, data }: { nodeId: string; data: AgentData })
 
 function CommentCard({ comment }: { comment: H2HComment }) {
   return (
-    <div className="bg-white/[0.03] border border-white/5 rounded-lg p-3">
+    <div className="bg-ws-subtle border border-ws-border rounded-lg p-3">
       <div className="flex items-center gap-2 mb-1.5">
         <Avatar className="w-5 h-5">
-          <AvatarFallback className="text-[8px] bg-purple-500/20 text-purple-300">
+          <AvatarFallback className="text-[8px] bg-purple-100 text-purple-700">
             {comment.author.charAt(0)}
           </AvatarFallback>
         </Avatar>
-        <span className="text-[10px] font-medium text-white/70">{comment.author}</span>
+        <span className="text-[10px] font-medium text-ws-text-soft">{comment.author}</span>
         <span className="text-[9px] text-muted-foreground ml-auto">
           {formatRelativeTime(comment.timestamp)}
         </span>
       </div>
-      <p className="text-[11px] text-gray-400 leading-relaxed">{comment.text}</p>
+      <p className="text-[11px] text-ws-text-muted leading-relaxed">{comment.text}</p>
     </div>
   );
 }
@@ -403,7 +403,7 @@ export default function NodeInspectorDrawer() {
       {/* Backdrop */}
       {inspectorDrawerOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
+          className="fixed inset-0 z-40 bg-charcoal/25 backdrop-blur-sm"
           onClick={() => setInspectorDrawerOpen(false)}
         />
       )}
@@ -411,26 +411,26 @@ export default function NodeInspectorDrawer() {
       {/* Drawer */}
       <div
         className={cn(
-          "fixed right-0 top-0 h-full w-[420px] z-50 border-l border-white/10",
-          "bg-[#0f0f13] shadow-2xl transition-transform duration-300 ease-out",
+          "fixed right-0 top-0 h-full w-[420px] z-50 border-l border-ws-border",
+          "bg-ws-bg shadow-2xl transition-transform duration-300 ease-out",
           inspectorDrawerOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-ws-border">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-teal-500/15 flex items-center justify-center">
-              <Zap className="w-3.5 h-3.5 text-teal-400" />
+            <div className="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center">
+              <Zap className="w-3.5 h-3.5 text-teal-700" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white">{data.label}</h3>
+              <h3 className="text-sm font-semibold text-ws-text">{data.label}</h3>
               <p className="text-[10px] text-muted-foreground">{data.role}</p>
             </div>
           </div>
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-muted-foreground hover:text-white"
+            className="text-muted-foreground hover:text-ws-text"
             onClick={() => setInspectorDrawerOpen(false)}
           >
             <X className="w-4 h-4" />
@@ -439,25 +439,25 @@ export default function NodeInspectorDrawer() {
 
         {/* Tabs */}
         <Tabs defaultValue="h2a-chat" className="flex flex-col h-[calc(100%-52px)]">
-          <div className="px-4 pt-3 pb-0 border-b border-white/5">
-            <TabsList className="bg-white/[0.03] h-8 w-full">
+          <div className="px-4 pt-3 pb-0 border-b border-ws-border">
+            <TabsList className="bg-ws-subtle h-8 w-full">
               <TabsTrigger
                 value="h2a-chat"
-                className="text-[10px] flex-1 data-[state=active]:bg-white/10 data-[state=active]:text-white"
+                className="text-[10px] flex-1 data-[state=active]:bg-ws-hover data-[state=active]:text-ws-text"
               >
                 <Zap className="w-3 h-3 mr-1" />
                 H2A Chat
               </TabsTrigger>
               <TabsTrigger
                 value="billing"
-                className="text-[10px] flex-1 data-[state=active]:bg-white/10 data-[state=active]:text-white"
+                className="text-[10px] flex-1 data-[state=active]:bg-ws-hover data-[state=active]:text-ws-text"
               >
                 <Key className="w-3 h-3 mr-1" />
                 Config
               </TabsTrigger>
               <TabsTrigger
                 value="discussion"
-                className="text-[10px] flex-1 data-[state=active]:bg-white/10 data-[state=active]:text-white"
+                className="text-[10px] flex-1 data-[state=active]:bg-ws-hover data-[state=active]:text-ws-text"
               >
                 <MessageCircle className="w-3 h-3 mr-1" />
                 H2H ({data.commentCount})

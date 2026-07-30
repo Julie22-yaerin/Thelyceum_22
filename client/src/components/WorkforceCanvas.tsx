@@ -23,8 +23,10 @@ import {
   Briefcase,
   ClipboardList,
   Sparkles,
+  LayoutGrid,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "wouter";
 import AgentNode from "@/components/AgentNode";
 import LyceumPanel from "@/components/LyceumPanel";
 import NodeInspectorDrawer from "@/components/NodeInspectorDrawer";
@@ -76,7 +78,7 @@ function MultiplayerCursors() {
             </svg>
             {/* User label */}
             <div
-              className="absolute top-4 left-3 px-1.5 py-0.5 rounded text-[9px] font-medium text-white whitespace-nowrap"
+              className="absolute top-4 left-3 px-1.5 py-0.5 rounded text-[9px] font-medium text-ws-text whitespace-nowrap"
               style={{ backgroundColor: user.color }}
             >
               {user.name}
@@ -99,12 +101,12 @@ function WorkspaceToggleButton() {
       className={cn(
         "h-7 text-[10px] px-1.5",
         workspacePanelOpen
-          ? "text-amber-300 bg-amber-500/10"
-          : "text-muted-foreground hover:text-white"
+          ? "text-amber-700 bg-amber-50"
+          : "text-muted-foreground hover:text-ws-text"
       )}
       onClick={() => setWorkspacePanelOpen(!workspacePanelOpen)}
     >
-      <FolderOpen className={cn("w-3 h-3", workspacePanelOpen && "text-amber-400")} />
+      <FolderOpen className={cn("w-3 h-3", workspacePanelOpen && "text-amber-700")} />
     </Button>
   );
 }
@@ -113,10 +115,10 @@ function WorkspaceToggleButton() {
 
 function MCPStatusBadge({ status }: { status: MCPConnectionStatus }) {
   const colorMap: Record<MCPConnectionStatus, string> = {
-    connected: "text-green-400 border-green-500/30 bg-green-500/10",
-    connecting: "text-yellow-400 border-yellow-500/30 bg-yellow-500/10",
-    disconnected: "text-gray-500 border-gray-500/30 bg-gray-500/10",
-    error: "text-red-400 border-red-500/30 bg-red-500/10",
+    connected: "text-green-700 border-green-200 bg-green-50",
+    connecting: "text-yellow-700 border-yellow-200 bg-yellow-50",
+    disconnected: "text-ws-text-muted border-ws-border bg-ws-hover",
+    error: "text-red-700 border-red-200 bg-red-50",
   };
   const dotMap: Record<MCPConnectionStatus, string> = {
     connected: "bg-green-400",
@@ -208,21 +210,32 @@ function CommandBar({
       )}
     >
       <div className="mx-4 mt-3">
-        <div className="bg-[#0f0f13]/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl px-4 py-2.5 flex items-center justify-between">
+        <div className="bg-ws-bg/90 backdrop-blur-xl border border-ws-border rounded-xl shadow-2xl px-4 py-2.5 flex items-center justify-between">
           {/* Left: Pipeline controls */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-white/80">
-              <FlaskConical className="w-4 h-4 text-teal-400" />
+            <div className="flex items-center gap-1.5 text-ws-text">
+              <FlaskConical className="w-4 h-4 text-teal-700" />
               <span className="text-xs font-semibold tracking-tight">The Lyceum</span>
             </div>
-            <div className="h-4 w-px bg-white/10 mx-1" />
+            <div className="h-4 w-px bg-ws-hover mx-1" />
+            {/* Simple, non-technical view — departments, missions, progress.
+                wouter Link (not <a>) so we navigate client-side. */}
+            <Link
+              href="/missions"
+              className="h-7 inline-flex items-center gap-1.5 px-2.5 rounded-md text-[10px] font-medium text-ws-text-soft hover:text-ws-text hover:bg-ws-hover transition-colors"
+              title="Departments — the simple view"
+            >
+              <LayoutGrid className="w-3 h-3" />
+              Departments
+            </Link>
+            <div className="h-4 w-px bg-ws-hover mx-1" />
             <Button
               size="sm"
               className={cn(
                 "h-7 text-[10px] px-3 gap-1.5",
                 a2aPipelineRunning
-                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                  : "bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+                  ? "bg-amber-100 text-amber-700 border border-amber-200"
+                  : "bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
               )}
               onClick={runA2APipeline}
               disabled={a2aPipelineRunning}
@@ -237,19 +250,19 @@ function CommandBar({
           {/* Center: Stats */}
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <Coins className="w-3 h-3 text-amber-400" />
+              <Coins className="w-3 h-3 text-amber-700" />
               <span>
                 Burn:{" "}
-                <span className="text-white font-mono">
+                <span className="text-ws-text font-mono">
                   {(getTotalTokenBurn() / 1000).toFixed(1)}k
                 </span>
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <Users className="w-3 h-3 text-indigo-400" />
+              <Users className="w-3 h-3 text-indigo-700" />
               <span>
                 Live:{" "}
-                <span className="text-white font-mono">{multiplayerUsers.length}</span>
+                <span className="text-ws-text font-mono">{multiplayerUsers.length}</span>
               </span>
             </div>
           </div>
@@ -262,13 +275,13 @@ function CommandBar({
               className={cn(
                 "h-7 text-[10px] px-1.5",
                 showWorkCardBoard
-                  ? "text-indigo-300 bg-indigo-500/10"
-                  : "text-muted-foreground hover:text-white"
+                  ? "text-indigo-700 bg-indigo-50"
+                  : "text-muted-foreground hover:text-ws-text"
               )}
               onClick={() => setShowWorkCardBoard(!showWorkCardBoard)}
               title="Work Cards (H2H Collaboration)"
             >
-              <ClipboardList className={cn("w-3 h-3", showWorkCardBoard && "text-indigo-400")} />
+              <ClipboardList className={cn("w-3 h-3", showWorkCardBoard && "text-indigo-700")} />
             </Button>
             <Button
               variant="ghost"
@@ -276,13 +289,13 @@ function CommandBar({
               className={cn(
                 "h-7 text-[10px] px-1.5",
                 showResponsibilityPanel
-                  ? "text-amber-300 bg-amber-500/10"
-                  : "text-muted-foreground hover:text-white"
+                  ? "text-amber-700 bg-amber-50"
+                  : "text-muted-foreground hover:text-ws-text"
               )}
               onClick={() => setShowResponsibilityPanel(!showResponsibilityPanel)}
               title="Role Responsibilities"
             >
-              <Briefcase className={cn("w-3 h-3", showResponsibilityPanel && "text-amber-400")} />
+              <Briefcase className={cn("w-3 h-3", showResponsibilityPanel && "text-amber-700")} />
             </Button>
             <Button
               variant="ghost"
@@ -290,13 +303,13 @@ function CommandBar({
               className={cn(
                 "h-7 text-[10px] px-1.5",
                 lyceumPanelOpen
-                  ? "text-teal-300 bg-teal-500/10"
-                  : "text-muted-foreground hover:text-white"
+                  ? "text-teal-700 bg-teal-50"
+                  : "text-muted-foreground hover:text-ws-text"
               )}
               onClick={() => setLyceumPanelOpen(!lyceumPanelOpen)}
               title="Lyceum AI Panel"
             >
-              <FlaskConical className={cn("w-3 h-3", lyceumPanelOpen && "text-teal-400")} />
+              <FlaskConical className={cn("w-3 h-3", lyceumPanelOpen && "text-teal-700")} />
             </Button>
             <WorkspaceToggleButton />
           </div>
@@ -348,7 +361,7 @@ function CanvasContent() {
       {/* Collapse toggle */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute top-3 right-1/2 z-20 translate-x-1/2 w-16 h-5 bg-[#0f0f13]/80 border border-white/10 rounded-b-lg flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
+        className="absolute top-3 right-1/2 z-20 translate-x-1/2 w-16 h-5 bg-ws-bg/90 border border-ws-border rounded-b-lg flex items-center justify-center text-muted-foreground hover:text-ws-text transition-colors"
       >
         {collapsed ? (
           <ChevronRight className="w-3 h-3" />
@@ -368,29 +381,24 @@ function CanvasContent() {
         fitView
         fitViewOptions={{ padding: 0.2 }}
         deleteKeyCode={null}
-        className="bg-[#08080c]"
+        className="bg-ws-subtle"
         defaultEdgeOptions={{
           type: "smoothstep",
-          style: { stroke: "rgba(255,255,255,0.15)", strokeWidth: 1.5 },
-          labelStyle: { fontSize: 9, fill: "rgba(255,255,255,0.3)", fontFamily: "Inter, sans-serif" },
+          style: { stroke: "#d4d4d1", strokeWidth: 1.5 },
+          labelStyle: { fontSize: 9, fill: "#9b9a97", fontFamily: "Inter, sans-serif" },
         }}
       >
-        <Background
-          variant={BackgroundVariant.Dots}
-          gap={24}
-          size={1}
-          color="rgba(255,255,255,0.05)"
-        />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#e0e0dd" />
         <Controls
-          className="bg-[#0f0f13] border border-white/10 rounded-lg [&>button]:text-muted-foreground [&>button]:hover:text-white [&>button]:hover:bg-white/5 [&>button]:border-white/5"
+          className="bg-ws-bg border border-ws-border rounded-lg [&>button]:text-muted-foreground [&>button]:hover:text-ws-text [&>button]:hover:bg-ws-hover [&>button]:border-ws-border"
         />
         <MiniMap
-          nodeStrokeColor="rgba(255,255,255,0.2)"
-          nodeColor="#0f0f13"
+          nodeStrokeColor="#d4d4d1"
+          nodeColor="#f1f1ef"
           nodeBorderRadius={6}
-          maskColor="rgba(0,0,0,0.6)"
-          className="border border-white/10 rounded-lg"
-          style={{ background: "#0f0f13" }}
+          maskColor="rgba(55,53,47,0.08)"
+          className="border border-ws-border rounded-lg"
+          style={{ background: "#ffffff" }}
         />
 
         {/* Multiplayer cursor overlays */}
@@ -418,7 +426,7 @@ export default function WorkforceCanvas() {
         {/* Workspace Explorer - collapsible left sidebar */}
         <div
           className={cn(
-            "h-full z-20 border-r border-white/10 bg-[#0a0a0e]/95 backdrop-blur-xl transition-all duration-300 shrink-0 overflow-hidden",
+            "h-full z-20 border-r border-ws-border bg-ws-bg/95 backdrop-blur-xl transition-all duration-300 shrink-0 overflow-hidden",
             workspacePanelOpen ? "w-[340px] opacity-100" : "w-0 opacity-0"
           )}
         >
@@ -436,24 +444,24 @@ export default function WorkforceCanvas() {
 
         {/* Right side panels stack */}
         {showWorkCardBoard && !showWorkCardDetail && (
-          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-white/10 bg-[#0a0a0e]/95 backdrop-blur-xl">
+          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-ws-border bg-ws-bg/95 backdrop-blur-xl">
             <WorkCardBoard />
           </div>
         )}
         {showWorkCardDetail && (
-          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-white/10 bg-[#0a0a0e]/95 backdrop-blur-xl">
+          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-ws-border bg-ws-bg/95 backdrop-blur-xl">
             <WorkCardDetail />
           </div>
         )}
         {showResponsibilityPanel && !showWorkCardBoard && !showWorkCardDetail && (
-          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-white/10 bg-[#0a0a0e]/95 backdrop-blur-xl">
+          <div className="absolute right-0 top-0 h-full w-[340px] z-30 border-l border-ws-border bg-ws-bg/95 backdrop-blur-xl">
             <ResponsibilityPanel />
           </div>
         )}
 
         {/* Lyceum Panel - only when no other right panels are open */}
         {lyceumPanelOpen && !showWorkCardBoard && !showWorkCardDetail && !showResponsibilityPanel && (
-          <div className="absolute right-0 top-0 h-full w-[320px] z-20 border-l border-white/10 bg-[#0f0f13]/95 backdrop-blur-xl">
+          <div className="absolute right-0 top-0 h-full w-[320px] z-20 border-l border-ws-border bg-ws-bg/95 backdrop-blur-xl">
             <LyceumPanel />
           </div>
         )}

@@ -64,14 +64,14 @@ import TaskComposerPanel from "@/components/TaskComposerPanel";
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const TYPE_META: Record<DocumentType, { icon: React.ElementType; color: string }> = {
-  pdf: { icon: FileText, color: "text-red-400" },
-  doc: { icon: FileText, color: "text-blue-400" },
-  xlsx: { icon: FileSpreadsheet, color: "text-green-400" },
-  txt: { icon: FileText, color: "text-gray-400" },
-  md: { icon: FileCode, color: "text-purple-400" },
-  json: { icon: FileJson, color: "text-yellow-400" },
-  image: { icon: Image, color: "text-pink-400" },
-  code: { icon: FileCode, color: "text-cyan-400" },
+  pdf: { icon: FileText, color: "text-red-700" },
+  doc: { icon: FileText, color: "text-blue-700" },
+  xlsx: { icon: FileSpreadsheet, color: "text-green-700" },
+  txt: { icon: FileText, color: "text-ws-text-muted" },
+  md: { icon: FileCode, color: "text-purple-700" },
+  json: { icon: FileJson, color: "text-yellow-700" },
+  image: { icon: Image, color: "text-pink-700" },
+  code: { icon: FileCode, color: "text-cyan-700" },
   other: { icon: File, color: "text-muted-foreground" },
 };
 
@@ -131,8 +131,8 @@ function FolderTreeItem({
         className={cn(
           "w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-left transition-colors",
           isActive
-            ? "bg-teal-500/10 text-teal-300"
-            : "text-white/70 hover:bg-white/[0.04] hover:text-white"
+            ? "bg-teal-50 text-teal-700"
+            : "text-ws-text-soft hover:bg-ws-hover hover:text-ws-text"
         )}
         style={{ paddingLeft: `${12 + depth * 14}px` }}
       >
@@ -146,9 +146,9 @@ function FolderTreeItem({
           <span className="w-3 shrink-0" />
         )}
         {expanded ? (
-          <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <FolderOpen className="w-3.5 h-3.5 text-amber-700 shrink-0" />
         ) : (
-          <FolderIcon className="w-3.5 h-3.5 text-amber-400/70 shrink-0" />
+          <FolderIcon className="w-3.5 h-3.5 text-amber-700/70 shrink-0" />
         )}
         <span className="text-[11px] truncate flex-1">{folder.name}</span>
         {docCount > 0 && (
@@ -197,9 +197,9 @@ function FileItem({
   };
 
   return (
-    <div className="group relative flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] hover:border-white/10 transition-all">
+    <div className="group relative flex items-center gap-3 px-3 py-2.5 rounded-lg bg-ws-subtle border border-ws-border hover:bg-ws-hover hover:border-ws-border transition-all">
       {/* Icon */}
-      <div className={cn("w-8 h-8 rounded-md bg-white/[0.03] flex items-center justify-center shrink-0", meta.color)}>
+      <div className={cn("w-8 h-8 rounded-md bg-ws-subtle flex items-center justify-center shrink-0", meta.color)}>
         <Icon className="w-4 h-4" />
       </div>
 
@@ -210,23 +210,23 @@ function FileItem({
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="h-6 text-[10px] bg-white/5 border-white/10 text-white"
+              className="h-6 text-[10px] bg-ws-subtle border-ws-border text-ws-text"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleRename();
                 if (e.key === "Escape") setRenaming(false);
               }}
             />
-            <button onClick={handleRename} className="text-teal-400 hover:text-teal-300">
+            <button onClick={handleRename} className="text-teal-700 hover:text-teal-800">
               <Check className="w-3 h-3" />
             </button>
-            <button onClick={() => setRenaming(false)} className="text-muted-foreground hover:text-white">
+            <button onClick={() => setRenaming(false)} className="text-muted-foreground hover:text-ws-text">
               <X className="w-3 h-3" />
             </button>
           </div>
         ) : (
           <>
-            <p className="text-[11px] font-medium text-white/90 truncate">{doc.name}</p>
+            <p className="text-[11px] font-medium text-ws-text truncate">{doc.name}</p>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[8px] text-muted-foreground">{formatFileSize(doc.size)}</span>
               <span className="text-[8px] text-muted-foreground">·</span>
@@ -244,8 +244,8 @@ function FileItem({
             className={cn(
               "p-1 rounded transition-colors",
               analyzing
-                ? "text-amber-400 animate-pulse"
-                : "text-muted-foreground hover:text-teal-400"
+                ? "text-amber-700 animate-pulse"
+                : "text-muted-foreground hover:text-teal-800"
             )}
             title={analyzing ? "Analyzing..." : "Analyze with Muse"}
           >
@@ -253,14 +253,14 @@ function FileItem({
           </button>
           <button
             onClick={() => setRenaming(true)}
-            className="p-1 text-muted-foreground hover:text-white rounded"
+            className="p-1 text-muted-foreground hover:text-ws-text rounded"
             title="Rename"
           >
             <Pencil className="w-3 h-3" />
           </button>
           <button
             onClick={() => onDelete(doc.id)}
-            className="p-1 text-muted-foreground hover:text-red-400 rounded"
+            className="p-1 text-muted-foreground hover:text-red-800 rounded"
             title="Delete"
           >
             <Trash2 className="w-3 h-3" />
@@ -419,16 +419,16 @@ export default function WorkspaceExplorer() {
   if (!workspacePanelOpen) return null;
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0e]">
+    <div className="h-full flex flex-col bg-ws-bg">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/5">
+      <div className="px-4 py-3 border-b border-ws-border">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-amber-500/15 flex items-center justify-center">
-              <FolderOpen className="w-3 h-3 text-amber-400" />
+            <div className="w-6 h-6 rounded-md bg-amber-100 flex items-center justify-center">
+              <FolderOpen className="w-3 h-3 text-amber-700" />
             </div>
             <div>
-              <h3 className="text-xs font-semibold text-white">{company?.name || "Workspace"}</h3>
+              <h3 className="text-xs font-semibold text-ws-text">{company?.name || "Workspace"}</h3>
               <p className="text-[8px] text-muted-foreground">{workspace?.label || "Personal workspace"}</p>
             </div>
           </div>
@@ -436,7 +436,7 @@ export default function WorkspaceExplorer() {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="w-6 h-6 text-muted-foreground hover:text-white"
+              className="w-6 h-6 text-muted-foreground hover:text-ws-text"
               onClick={() => setShowInviteDialog(true)}
               title="Invite members"
             >
@@ -452,7 +452,7 @@ export default function WorkspaceExplorer() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search files..."
-            className="h-7 text-[10px] bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50 pl-7"
+            className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50 pl-7"
           />
         </div>
 
@@ -461,7 +461,7 @@ export default function WorkspaceExplorer() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 text-[9px] text-muted-foreground hover:text-white flex-1"
+            className="h-6 text-[9px] text-muted-foreground hover:text-ws-text flex-1"
             onClick={() => useWorkspaceStore.setState({ showCreateFolder: true })}
           >
             <Plus className="w-2.5 h-2.5 mr-1" />
@@ -470,7 +470,7 @@ export default function WorkspaceExplorer() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 text-[9px] text-muted-foreground hover:text-white flex-1"
+            className="h-6 text-[9px] text-muted-foreground hover:text-ws-text flex-1"
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload className="w-2.5 h-2.5 mr-1" />
@@ -489,14 +489,14 @@ export default function WorkspaceExplorer() {
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
         {/* Folder sidebar */}
-        <div className="w-[140px] border-r border-white/5 overflow-y-auto p-2 shrink-0">
+        <div className="w-[140px] border-r border-ws-border overflow-y-auto p-2 shrink-0">
           <button
             onClick={() => navigateToFolder(null)}
             className={cn(
               "w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-left transition-colors mb-0.5",
               openFolderId === null
-                ? "bg-teal-500/10 text-teal-300"
-                : "text-white/70 hover:bg-white/[0.04] hover:text-white"
+                ? "bg-teal-50 text-teal-700"
+                : "text-ws-text-soft hover:bg-ws-hover hover:text-ws-text"
             )}
           >
             <Home className="w-3 h-3 shrink-0" />
@@ -519,7 +519,7 @@ export default function WorkspaceExplorer() {
         <div
           className={cn(
             "flex-1 overflow-y-auto p-3 relative",
-            dragging && "bg-teal-500/5"
+            dragging && "bg-teal-50"
           )}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
@@ -530,7 +530,7 @@ export default function WorkspaceExplorer() {
             <div className="flex items-center gap-1 mb-3 text-[10px] text-muted-foreground">
               <button
                 onClick={() => navigateToFolder(null)}
-                className="hover:text-white transition-colors"
+                className="hover:text-ws-text transition-colors"
               >
                 Home
               </button>
@@ -539,7 +539,7 @@ export default function WorkspaceExplorer() {
                   <ChevronRight className="w-2.5 h-2.5" />
                   <button
                     onClick={() => navigateToFolder(f.id)}
-                    className="hover:text-white transition-colors"
+                    className="hover:text-ws-text transition-colors"
                   >
                     {f.name}
                   </button>
@@ -550,10 +550,10 @@ export default function WorkspaceExplorer() {
 
           {/* Drag overlay */}
           {dragging && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-teal-500/10 border-2 border-dashed border-teal-500/30 rounded-lg m-3">
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-teal-50 border-2 border-dashed border-teal-200 rounded-lg m-3">
               <div className="text-center">
-                <Upload className="w-8 h-8 text-teal-400 mx-auto mb-2" />
-                <p className="text-xs text-teal-300 font-medium">Drop files to upload</p>
+                <Upload className="w-8 h-8 text-teal-700 mx-auto mb-2" />
+                <p className="text-xs text-teal-700 font-medium">Drop files to upload</p>
               </div>
             </div>
           )}
@@ -569,16 +569,16 @@ export default function WorkspaceExplorer() {
                   <button
                     key={folder.id}
                     onClick={() => navigateToFolder(folder.id)}
-                    className="flex items-center gap-2 px-2.5 py-2 rounded-md bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] hover:border-white/10 transition-all text-left group"
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-md bg-ws-subtle border border-ws-border hover:bg-ws-hover hover:border-ws-border transition-all text-left group"
                   >
-                    <FolderIcon className="w-4 h-4 text-amber-400/70 shrink-0" />
-                    <span className="text-[10px] text-white/80 truncate flex-1">{folder.name}</span>
+                    <FolderIcon className="w-4 h-4 text-amber-700/70 shrink-0" />
+                    <span className="text-[10px] text-ws-text truncate flex-1">{folder.name}</span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         deleteFolder(folder.id);
                       }}
-                      className="text-muted-foreground/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                      className="text-muted-foreground/50 hover:text-red-800 opacity-0 group-hover:opacity-100 transition-all"
                     >
                       <Trash2 className="w-2.5 h-2.5" />
                     </button>
@@ -610,17 +610,17 @@ export default function WorkspaceExplorer() {
           ) : filteredFolders.length === 0 && !searchQuery ? (
             /* Empty state */
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center mb-3">
-                <FolderOpen className="w-5 h-5 text-amber-400" />
+              <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center mb-3">
+                <FolderOpen className="w-5 h-5 text-amber-700" />
               </div>
-              <p className="text-xs text-white/70 font-medium mb-1">This folder is empty</p>
+              <p className="text-xs text-ws-text-soft font-medium mb-1">This folder is empty</p>
               <p className="text-[9px] text-muted-foreground mb-4">
                 Upload files or create a folder to get started
               </p>
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  className="h-7 text-[9px] px-3 bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30"
+                  className="h-7 text-[9px] px-3 bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-100"
                   onClick={() => useWorkspaceStore.setState({ showCreateFolder: true })}
                 >
                   <Plus className="w-2.5 h-2.5 mr-1" />
@@ -629,7 +629,7 @@ export default function WorkspaceExplorer() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 text-[9px] text-muted-foreground hover:text-white"
+                  className="h-7 text-[9px] text-muted-foreground hover:text-ws-text"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload className="w-2.5 h-2.5 mr-1" />
@@ -641,7 +641,7 @@ export default function WorkspaceExplorer() {
             /* Search no results */
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Search className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-xs text-white/70 font-medium mb-1">No results found</p>
+              <p className="text-xs text-ws-text-soft font-medium mb-1">No results found</p>
               <p className="text-[9px] text-muted-foreground">
                 Try a different search term
               </p>
@@ -652,14 +652,14 @@ export default function WorkspaceExplorer() {
 
       {/* Create Folder inline form */}
       {showCreateFolder && (
-        <div className="px-4 py-2 border-t border-white/5 bg-white/[0.02]">
+        <div className="px-4 py-2 border-t border-ws-border bg-ws-subtle">
           <div className="flex gap-1.5 items-center">
-            <FolderIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <FolderIcon className="w-3.5 h-3.5 text-amber-700 shrink-0" />
             <Input
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
               placeholder="Folder name..."
-              className="h-7 text-[10px] bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50 flex-1"
+              className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50 flex-1"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleCreateFolder();
@@ -668,7 +668,7 @@ export default function WorkspaceExplorer() {
             />
             <Button
               size="sm"
-              className="h-7 text-[9px] px-2 bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30"
+              className="h-7 text-[9px] px-2 bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-100"
               onClick={handleCreateFolder}
               disabled={!newFolderName.trim()}
             >
@@ -676,7 +676,7 @@ export default function WorkspaceExplorer() {
             </Button>
             <button
               onClick={() => useWorkspaceStore.setState({ showCreateFolder: false })}
-              className="text-muted-foreground hover:text-white"
+              className="text-muted-foreground hover:text-ws-text"
             >
               <X className="w-3 h-3" />
             </button>

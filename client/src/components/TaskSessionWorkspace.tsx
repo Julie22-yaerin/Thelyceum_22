@@ -45,15 +45,15 @@ import ClarificationSidebar from "@/components/ClarificationSidebar";
 
 function TaskStatusBadge({ status }: { status: string }) {
   const meta: Record<string, { label: string; color: string; icon: React.ElementType }> = {
-    not_started: { label: "Not Started", color: "text-gray-400 border-gray-500/30 bg-gray-500/10", icon: Clock },
-    in_progress: { label: "In Progress", color: "text-blue-400 border-blue-500/30 bg-blue-500/10", icon: Play },
-    awaiting_ai: { label: "Awaiting AI", color: "text-amber-400 border-amber-500/30 bg-amber-500/10", icon: Bot },
-    ai_working: { label: "AI Working", color: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10", icon: Loader2 },
-    completed: { label: "Completed", color: "text-green-400 border-green-500/30 bg-green-500/10", icon: CheckCircle2 },
-    blocked: { label: "Blocked", color: "text-red-400 border-red-500/30 bg-red-500/10", icon: AlertCircle },
-    awaiting_clarification: { label: "Needs Input", color: "text-amber-400 border-amber-500/30 bg-amber-500/10", icon: HelpCircle },
-    failed: { label: "Failed", color: "text-red-400 border-red-500/30 bg-red-500/10", icon: AlertCircle },
-    awaiting_approval: { label: "Needs Approval", color: "text-amber-400 border-amber-500/30 bg-amber-500/10", icon: AlertCircle },
+    not_started: { label: "Not Started", color: "text-ws-text-muted border-ws-border bg-ws-hover", icon: Clock },
+    in_progress: { label: "In Progress", color: "text-blue-700 border-blue-200 bg-blue-50", icon: Play },
+    awaiting_ai: { label: "Awaiting AI", color: "text-amber-700 border-amber-200 bg-amber-50", icon: Bot },
+    ai_working: { label: "AI Working", color: "text-cyan-700 border-cyan-200 bg-cyan-50", icon: Loader2 },
+    completed: { label: "Completed", color: "text-green-700 border-green-200 bg-green-50", icon: CheckCircle2 },
+    blocked: { label: "Blocked", color: "text-red-700 border-red-200 bg-red-50", icon: AlertCircle },
+    awaiting_clarification: { label: "Needs Input", color: "text-amber-700 border-amber-200 bg-amber-50", icon: HelpCircle },
+    failed: { label: "Failed", color: "text-red-700 border-red-200 bg-red-50", icon: AlertCircle },
+    awaiting_approval: { label: "Needs Approval", color: "text-amber-700 border-amber-200 bg-amber-50", icon: AlertCircle },
   };
   const m = meta[status] || meta.not_started;
   const Icon = m.icon;
@@ -76,12 +76,12 @@ function TaskCardItem({ task, isActive, onSelect }: { task: SelectedTask; isActi
       className={cn(
         "w-full text-left px-2.5 py-2 rounded-lg border transition-all",
         isActive
-          ? "bg-teal-500/10 border-teal-500/30"
-          : "bg-white/[0.02] border-white/5 hover:bg-white/[0.04] hover:border-white/10"
+          ? "bg-teal-50 border-teal-200"
+          : "bg-ws-subtle border-ws-border hover:bg-ws-hover hover:border-ws-border"
       )}
     >
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-[12px] font-medium text-white/80 truncate flex-1">{task.title}</span>
+        <span className="text-[12px] font-medium text-ws-text truncate flex-1">{task.title}</span>
       </div>
       <div className="flex items-center gap-1.5">
         <TaskStatusBadge status={task.status} />
@@ -93,7 +93,7 @@ function TaskCardItem({ task, isActive, onSelect }: { task: SelectedTask; isActi
           <span>after:</span>
           {task.dependsOn.map((depId) => {
             const dep = allTasks.find((t) => t.id === depId);
-            return <span key={depId} className="text-amber-400">{dep?.title.slice(0, 12) || "..."}</span>;
+            return <span key={depId} className="text-amber-700">{dep?.title.slice(0, 12) || "..."}</span>;
           })}
         </div>
       )}
@@ -134,31 +134,31 @@ function AIRoleCard({ role, humanOutput, taskId, taskStatus, existingOutput, onT
     <div className={cn(
       "rounded-lg p-2.5 border transition-all",
       isStreaming
-        ? "bg-cyan-500/10 border-cyan-500/30"
+        ? "bg-cyan-50 border-cyan-200"
         : hasLiveOutput
-          ? "bg-green-500/5 border-green-500/10"
-          : "bg-cyan-500/5 border-cyan-500/10"
+          ? "bg-green-50 border-green-200"
+          : "bg-cyan-50 border-cyan-200"
     )}>
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
           <Bot className={cn(
             "w-3 h-3",
-            isStreaming ? "text-cyan-300 animate-pulse" : "text-cyan-400"
+            isStreaming ? "text-cyan-700 animate-pulse" : "text-cyan-700"
           )} />
-          <span className="text-[12px] font-medium text-white/80">{role.roleName}</span>
+          <span className="text-[12px] font-medium text-ws-text">{role.roleName}</span>
           {isStreaming && (
-            <span className="text-[9px] text-cyan-400 animate-pulse">streaming...</span>
+            <span className="text-[9px] text-cyan-700 animate-pulse">streaming...</span>
           )}
         </div>
-        <Badge variant="outline" className="text-[9px] h-4 px-1.5 text-cyan-400 border-cyan-500/20">
+        <Badge variant="outline" className="text-[9px] h-4 px-1.5 text-cyan-700 border-cyan-200">
           {role.domain}
         </Badge>
       </div>
 
       {/* Streaming or completed output */}
       {displayText && (
-        <div className="mb-2 bg-[#08080c] border border-white/5 rounded p-2 max-h-[120px] overflow-y-auto">
-          <p className="text-[11px] text-white/70 whitespace-pre-wrap leading-relaxed">
+        <div className="mb-2 bg-ws-subtle border border-ws-border rounded p-2 max-h-[120px] overflow-y-auto">
+          <p className="text-[11px] text-ws-text-soft whitespace-pre-wrap leading-relaxed">
             {displayText}
             {isStreaming && (
               <span className="inline-block w-1.5 h-3.5 bg-cyan-400 ml-0.5 animate-pulse" />
@@ -168,18 +168,18 @@ function AIRoleCard({ role, humanOutput, taskId, taskStatus, existingOutput, onT
       )}
 
       {role.requiresHumanOutput && !humanOutput ? (
-        <div className="flex items-center gap-1.5 text-[10px] text-amber-400">
+        <div className="flex items-center gap-1.5 text-[10px] text-amber-700">
           <Clock className="w-3 h-3" />
           Waiting for human output...
         </div>
       ) : role.requiresHumanOutput && humanOutput && !displayText ? (
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-[10px] text-green-400">
+          <div className="flex items-center gap-1.5 text-[10px] text-green-700">
             <Check className="w-3 h-3" /> Human output ready
           </div>
           <Button
             size="sm"
-            className="h-8 text-[10px] px-3 bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30"
+            className="h-8 text-[10px] px-3 bg-cyan-100 text-cyan-700 border border-cyan-200 hover:bg-cyan-100"
             onClick={handleTrigger}
             disabled={triggering}
           >
@@ -193,18 +193,18 @@ function AIRoleCard({ role, humanOutput, taskId, taskStatus, existingOutput, onT
       ) : hasLiveOutput ? (
         <div className="flex items-center gap-1.5 text-[10px]">
           {isStreaming ? (
-            <span className="text-cyan-400 flex items-center gap-1.5">
+            <span className="text-cyan-700 flex items-center gap-1.5">
               <Loader2 className="w-3 h-3 animate-spin" /> Receiving response...
             </span>
           ) : (
-            <span className="text-green-400 flex items-center gap-1.5">
+            <span className="text-green-700 flex items-center gap-1.5">
               <CheckCircle2 className="w-3 h-3" /> Complete
             </span>
           )}
         </div>
       ) : (
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          <CheckCircle2 className="w-3 h-3 text-green-400" /> AI will start automatically
+          <CheckCircle2 className="w-3 h-3 text-green-700" /> AI will start automatically
         </div>
       )}
     </div>
@@ -283,21 +283,21 @@ export default function TaskSessionWorkspace() {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
-          <p className="text-sm text-white/70 font-medium">All tasks complete!</p>
+          <CheckCircle2 className="w-8 h-8 text-green-700 mx-auto mb-2" />
+          <p className="text-sm text-ws-text-soft font-medium">All tasks complete!</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex bg-[#08080c]">
+    <div className="h-full flex bg-ws-subtle">
       {/* Left: Task List */}
-      <div className="w-[320px] border-r border-white/5 bg-[#0a0a0e] flex flex-col">
-        <div className="px-4 py-3 border-b border-white/5">
+      <div className="w-[320px] border-r border-ws-border bg-ws-bg flex flex-col">
+        <div className="px-4 py-3 border-b border-ws-border">
           <div className="flex items-center gap-2 mb-1.5">
-            <ListTodo className="w-4 h-4 text-teal-400" />
-            <h3 className="text-[12px] font-medium text-white/90">Session Tasks</h3>
+            <ListTodo className="w-4 h-4 text-teal-700" />
+            <h3 className="text-[12px] font-medium text-ws-text">Session Tasks</h3>
           </div>
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
             <span>{completedCount}/{tasks.length} done</span>
@@ -307,7 +307,7 @@ export default function TaskSessionWorkspace() {
             <span>{totalMinutes}m total</span>
           </div>
           {/* Progress bar */}
-          <div className="h-1.5 bg-white/5 rounded-full mt-2 overflow-hidden">
+          <div className="h-1.5 bg-ws-subtle rounded-full mt-2 overflow-hidden">
             <div
               className="h-full bg-teal-400 rounded-full transition-all duration-500"
               style={{ width: `${(completedCount / tasks.length) * 100}%` }}
@@ -338,10 +338,10 @@ export default function TaskSessionWorkspace() {
       {/* Right: Active Task Workspace */}
       <div className="flex-1 flex flex-col">
         {/* Task header */}
-        <div className="px-4 py-3 border-b border-white/5 bg-[#0a0a0e]">
+        <div className="px-4 py-3 border-b border-ws-border bg-ws-bg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-white">{activeTask.title}</h2>
+              <h2 className="text-sm font-semibold text-ws-text">{activeTask.title}</h2>
               <TaskStatusBadge status={activeTask.status} />
             </div>
             <span className="text-[9px] text-muted-foreground">
@@ -358,19 +358,19 @@ export default function TaskSessionWorkspace() {
             <div className="space-y-4">
               {/* Human work area */}
               {activeTask.status !== "completed" ? (
-                <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4">
+                <div className="bg-ws-subtle border border-ws-border rounded-lg p-4">
                   <div className="flex items-center gap-1.5 mb-3">
-                    <Users className="w-4 h-4 text-amber-400" />
-                    <h3 className="text-[14px] font-semibold text-white/80">Your Work</h3>
+                    <Users className="w-4 h-4 text-amber-700" />
+                    <h3 className="text-[14px] font-semibold text-ws-text">Your Work</h3>
                     {activeTask.status === "in_progress" || activeTask.status === "not_started" ? (
-                      <Badge variant="outline" className="text-[10px] text-amber-400 border-amber-500/20">Active</Badge>
+                      <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-200">Active</Badge>
                     ) : (
-                      <Badge variant="outline" className="text-[10px] text-cyan-400 border-cyan-500/20">Submitted</Badge>
+                      <Badge variant="outline" className="text-[10px] text-cyan-700 border-cyan-200">Submitted</Badge>
                     )}
                   </div>
 
                   {activeTask.status === "awaiting_ai" || activeTask.status === "ai_working" ? (
-                    <div className="flex items-center gap-2 text-[10px] text-cyan-400 bg-cyan-500/5 border border-cyan-500/10 rounded-lg p-3">
+                    <div className="flex items-center gap-2 text-[10px] text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg p-3">
                       <Bot className="w-4 h-4" />
                       Your output has been submitted. AI agents are processing...
                     </div>
@@ -380,7 +380,7 @@ export default function TaskSessionWorkspace() {
                         value={humanOutput}
                         onChange={(e) => setHumanOutput(e.target.value)}
                         placeholder="Describe your work output, findings, or deliverables here. This will be sent to the assigned AI agents as input..."
-                        className="h-40 text-[13px] bg-white/5 border-white/10 text-white resize-none"
+                        className="h-40 text-[13px] bg-ws-subtle border-ws-border text-ws-text resize-none"
                       />
                       <div className="flex justify-between items-center mt-2">
                         <p className="text-[10px] text-muted-foreground">
@@ -390,7 +390,7 @@ export default function TaskSessionWorkspace() {
                         </p>
                         <Button
                           size="sm"
-                          className="h-9 text-[11px] px-4 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+                          className="h-9 text-[11px] px-4 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
                           onClick={handleSubmitHumanOutput}
                           disabled={!humanOutput.trim() || submittingForTask !== null}
                         >
@@ -405,8 +405,8 @@ export default function TaskSessionWorkspace() {
                   )}
                 </div>
               ) : (
-                <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4">
-                  <div className="flex items-center gap-2 text-[10px] text-green-400 bg-green-500/5 border border-green-500/10 rounded-lg p-3">
+                <div className="bg-ws-subtle border border-ws-border rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-[10px] text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
                     <CheckCircle2 className="w-4 h-4" />
                     Task complete!
                   </div>
@@ -415,11 +415,11 @@ export default function TaskSessionWorkspace() {
 
               {/* AI agents assigned to this task */}
               {activeTask.assignedAIs.length > 0 && (
-                <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4">
+                <div className="bg-ws-subtle border border-ws-border rounded-lg p-4">
                   <div className="flex items-center gap-1.5 mb-3">
-                    <Bot className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-[14px] font-semibold text-white/80">AI Agents</h3>
-                    <Badge variant="outline" className="text-[10px] text-cyan-400 border-cyan-500/20">{activeTask.assignedAIs.length}</Badge>
+                    <Bot className="w-4 h-4 text-cyan-700" />
+                    <h3 className="text-[14px] font-semibold text-ws-text">AI Agents</h3>
+                    <Badge variant="outline" className="text-[10px] text-cyan-700 border-cyan-200">{activeTask.assignedAIs.length}</Badge>
                   </div>
                   <div className="space-y-2">
                     {activeTask.assignedAIs.map((ai) => (
@@ -440,8 +440,8 @@ export default function TaskSessionWorkspace() {
           </div>
 
           {/* Right: Workflow Graph */}
-          <div className="w-[420px] border-l border-white/5 bg-[#08080c]">
-            <div className="px-3 py-2 border-b border-white/5 bg-[#0a0a0e]">
+          <div className="w-[420px] border-l border-ws-border bg-ws-subtle">
+            <div className="px-3 py-2 border-b border-ws-border bg-ws-bg">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Workflow Graph</p>
               <p className="text-[9px] text-muted-foreground mt-0.5">
                 Click any node to switch tasks · Drag to rearrange

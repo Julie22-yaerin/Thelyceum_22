@@ -56,19 +56,19 @@ function RoleCard({
   onRemove: (memberId: string) => void;
 }) {
   return (
-    <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3 hover:border-white/10 transition-colors">
+    <div className="bg-ws-subtle border border-ws-border rounded-lg p-3 hover:border-ws-border transition-colors">
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-lg">{icon}</span>
           <div>
-            <p className="text-[10px] font-medium text-white/90">{roleName}</p>
+            <p className="text-[10px] font-medium text-ws-text">{roleName}</p>
             <p className="text-[7px] text-muted-foreground">{description}</p>
           </div>
         </div>
         <Button
           size="sm"
           variant="ghost"
-          className="h-5 w-5 p-0 text-muted-foreground hover:text-teal-400"
+          className="h-5 w-5 p-0 text-muted-foreground hover:text-teal-800"
           onClick={onAssign}
         >
           <Plus className="w-2.5 h-2.5" />
@@ -76,7 +76,7 @@ function RoleCard({
       </div>
 
       {managedDomain && (
-        <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-400 border-cyan-500/20 bg-cyan-500/5 mb-2">
+        <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-700 border-cyan-200 bg-cyan-50 mb-2">
           <Bot className="w-2 h-2 mr-0.5" />
           Manages: {DOMAIN_LABELS[managedDomain] || managedDomain}
         </Badge>
@@ -86,14 +86,14 @@ function RoleCard({
         <div className="space-y-1">
           <p className="text-[7px] text-muted-foreground uppercase tracking-wider">Assigned</p>
           {assignedMembers.map((m) => (
-            <div key={m.memberId} className="flex items-center justify-between text-[9px] text-white/70 bg-white/[0.02] rounded px-2 py-1">
+            <div key={m.memberId} className="flex items-center justify-between text-[9px] text-ws-text-soft bg-ws-subtle rounded px-2 py-1">
               <div className="flex items-center gap-1.5">
-                {m.isPrimary && <Star className="w-2.5 h-2.5 text-amber-400" />}
+                {m.isPrimary && <Star className="w-2.5 h-2.5 text-amber-700" />}
                 <span>{m.memberName}</span>
-                {m.isPrimary && <span className="text-[7px] text-amber-400">(Primary)</span>}
+                {m.isPrimary && <span className="text-[7px] text-amber-700">(Primary)</span>}
               </div>
               <button onClick={() => onRemove(m.memberId)}
-                className="text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100">
+                className="text-muted-foreground hover:text-red-800 opacity-0 group-hover:opacity-100">
                 <X className="w-2.5 h-2.5" />
               </button>
             </div>
@@ -134,7 +134,7 @@ function AssignMemberDialog({
 
   return (
     <div className="space-y-2">
-      <p className="text-[9px] text-white/70">Assign to: {roleName}</p>
+      <p className="text-[9px] text-ws-text-soft">Assign to: {roleName}</p>
       <div className="flex flex-wrap gap-1">
         {availableMembers.length === 0 ? (
           <p className="text-[8px] text-muted-foreground">All members already assigned</p>
@@ -146,8 +146,8 @@ function AssignMemberDialog({
               className={cn(
                 "px-2 py-1 rounded text-[9px] border transition-colors",
                 selectedMember === m.id
-                  ? "bg-teal-500/15 text-teal-300 border-teal-500/30"
-                  : "text-muted-foreground border-white/5 hover:text-white"
+                  ? "bg-teal-100 text-teal-700 border-teal-200"
+                  : "text-muted-foreground border-ws-border hover:text-ws-text"
               )}
             >
               {m.name}
@@ -156,19 +156,19 @@ function AssignMemberDialog({
         )}
       </div>
       {selectedMember && (
-        <label className="flex items-center gap-1.5 text-[9px] text-white/70 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-[9px] text-ws-text-soft cursor-pointer">
           <input type="checkbox" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)}
-            className="w-3 h-3 rounded border-white/20 bg-white/5" />
+            className="w-3 h-3 rounded border-ws-border bg-ws-subtle" />
           Set as primary (lead)
         </label>
       )}
       <div className="flex gap-1">
-        <Button size="sm" className="h-6 text-[8px] px-2 bg-teal-500/20 text-teal-300 border border-teal-500/30"
+        <Button size="sm" className="h-6 text-[8px] px-2 bg-teal-100 text-teal-700 border border-teal-200"
           onClick={() => { if (selectedMember) { onAssign(selectedMember, isPrimary); onClose(); } }}
           disabled={!selectedMember}>
           <Check className="w-2 h-2 mr-0.5" /> Assign
         </Button>
-        <Button size="sm" variant="ghost" className="h-6 text-[8px] text-muted-foreground hover:text-white"
+        <Button size="sm" variant="ghost" className="h-6 text-[8px] text-muted-foreground hover:text-ws-text"
           onClick={onClose}>Cancel</Button>
       </div>
     </div>
@@ -203,18 +203,18 @@ export default function ResponsibilityPanel() {
   if (!showResponsibilityPanel) return null;
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0e]">
+    <div className="h-full flex flex-col bg-ws-bg">
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-white/5">
+      <div className="px-3 py-2.5 border-b border-ws-border">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-amber-500/15 flex items-center justify-center">
-              <Briefcase className="w-3 h-3 text-amber-400" />
+            <div className="w-5 h-5 rounded bg-amber-100 flex items-center justify-center">
+              <Briefcase className="w-3 h-3 text-amber-700" />
             </div>
-            <h4 className="text-[10px] font-medium text-white/90">Role Responsibilities</h4>
+            <h4 className="text-[10px] font-medium text-ws-text">Role Responsibilities</h4>
           </div>
           <button onClick={() => setShowResponsibilityPanel(false)}
-            className="text-muted-foreground hover:text-white">
+            className="text-muted-foreground hover:text-ws-text">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -226,7 +226,7 @@ export default function ResponsibilityPanel() {
           {workRoles.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Briefcase className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-[10px] text-white/70 font-medium mb-1">No roles configured</p>
+              <p className="text-[10px] text-ws-text-soft font-medium mb-1">No roles configured</p>
               <p className="text-[8px] text-muted-foreground">Create work cards to initialize role definitions.</p>
             </div>
           ) : (
@@ -248,7 +248,7 @@ export default function ResponsibilityPanel() {
                     onRemove={(memberId) => removeResponsibility(memberId, role.id)}
                   />
                   {assigningRole === role.id && (
-                    <div className="mt-1 p-2 bg-white/[0.03] border border-white/5 rounded-lg">
+                    <div className="mt-1 p-2 bg-ws-subtle border border-ws-border rounded-lg">
                       <AssignMemberDialog
                         roleId={role.id}
                         roleName={role.name}

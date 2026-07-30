@@ -68,10 +68,10 @@ function BulletListEditor({
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-1.5 group">
           <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" />
-          <span className="text-[9px] text-white/70 flex-1 leading-relaxed">{item}</span>
+          <span className="text-[9px] text-ws-text-soft flex-1 leading-relaxed">{item}</span>
           <button
             onClick={() => handleRemove(i)}
-            className="text-muted-foreground/50 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+            className="text-muted-foreground/50 hover:text-red-800 opacity-0 group-hover:opacity-100 transition-all"
           >
             <Trash2 className="w-2.5 h-2.5" />
           </button>
@@ -82,7 +82,7 @@ function BulletListEditor({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={placeholder}
-          className="h-6 text-[9px] bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50 flex-1"
+          className="h-6 text-[9px] bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50 flex-1"
           onKeyDown={(e) => {
             if (e.key === "Enter") handleAdd();
           }}
@@ -90,7 +90,7 @@ function BulletListEditor({
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 w-6 p-0 text-muted-foreground hover:text-white"
+          className="h-6 w-6 p-0 text-muted-foreground hover:text-ws-text"
           onClick={handleAdd}
           disabled={!input.trim()}
         >
@@ -132,11 +132,11 @@ function AgentSelector({
         onClick={() => setOpen(!open)}
         className={cn(
           "w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors",
-          "bg-white/5 border border-white/10 hover:border-white/20",
+          "bg-ws-subtle border border-ws-border hover:border-ws-border",
           !value && "text-muted-foreground"
         )}
       >
-        <Target className="w-3 h-3 text-indigo-400 shrink-0" />
+        <Target className="w-3 h-3 text-indigo-700 shrink-0" />
         <span className="text-[10px] flex-1 truncate">
           {selected
             ? `${selected.data.label} — ${selected.data.role}`
@@ -146,12 +146,12 @@ function AgentSelector({
           <Badge
             variant="outline"
             className={cn(
-              "text-[7px] h-3.5 px-1 border-white/5",
+              "text-[7px] h-3.5 px-1 border-ws-border",
               selected.data.status === "AWAKE_WORKING"
-                ? "text-green-400"
+                ? "text-green-700"
                 : selected.data.status === "DROWSY_WARNING"
-                  ? "text-yellow-400"
-                  : "text-red-400"
+                  ? "text-yellow-700"
+                  : "text-red-700"
             )}
           >
             {selected.data.status === "AWAKE_WORKING"
@@ -169,13 +169,13 @@ function AgentSelector({
             className="fixed inset-0 z-10"
             onClick={() => setOpen(false)}
           />
-          <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-md border border-white/10 bg-[#1a1a22] shadow-2xl overflow-hidden">
+          <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-md border border-ws-border bg-ws-hover shadow-2xl overflow-hidden">
             <div className="p-1.5">
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search agents..."
-                className="h-7 text-[9px] bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50 mb-1"
+                className="h-7 text-[9px] bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50 mb-1"
                 autoFocus
               />
               <ScrollArea className="max-h-36">
@@ -194,8 +194,8 @@ function AgentSelector({
                       className={cn(
                         "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors",
                         node.id === value
-                          ? "bg-teal-500/10 text-teal-300"
-                          : "hover:bg-white/[0.04] text-white/80"
+                          ? "bg-teal-50 text-teal-700"
+                          : "hover:bg-ws-hover text-ws-text"
                       )}
                     >
                       <div
@@ -213,7 +213,7 @@ function AgentSelector({
                         {node.data.role}
                       </span>
                       {node.id === value && (
-                        <Check className="w-2.5 h-2.5 text-teal-400 shrink-0" />
+                        <Check className="w-2.5 h-2.5 text-teal-700 shrink-0" />
                       )}
                     </button>
                   ))
@@ -289,15 +289,15 @@ export default function TaskComposerPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0e]">
+    <div className="h-full flex flex-col bg-ws-bg">
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between">
+      <div className="px-3 py-2.5 border-b border-ws-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded bg-indigo-500/15 flex items-center justify-center">
-            <Send className="w-3 h-3 text-indigo-400" />
+          <div className="w-5 h-5 rounded bg-indigo-100 flex items-center justify-center">
+            <Send className="w-3 h-3 text-indigo-700" />
           </div>
           <div>
-            <h4 className="text-[10px] font-medium text-white/90">Task Composer</h4>
+            <h4 className="text-[10px] font-medium text-ws-text">Task Composer</h4>
             <p className="text-[7px] text-muted-foreground">
               {group.title} · {group.topics.join(", ")}
             </p>
@@ -305,7 +305,7 @@ export default function TaskComposerPanel() {
         </div>
         <button
           onClick={() => setShowTaskComposer(false)}
-          className="text-muted-foreground hover:text-white"
+          className="text-muted-foreground hover:text-ws-text"
         >
           <X className="w-3 h-3" />
         </button>
@@ -319,14 +319,14 @@ export default function TaskComposerPanel() {
               <FileText className="w-2.5 h-2.5" />
               Pinned Content Region
             </p>
-            <div className="bg-white/[0.03] border border-white/5 rounded-md px-2.5 py-2">
-              <p className="text-[9px] text-white/70 leading-relaxed">
+            <div className="bg-ws-subtle border border-ws-border rounded-md px-2.5 py-2">
+              <p className="text-[9px] text-ws-text-soft leading-relaxed">
                 {group.content}
               </p>
             </div>
           </div>
 
-          <Separator className="bg-white/5" />
+          <Separator className="bg-ws-subtle" />
 
           {/* Action Requirements */}
           <div>
@@ -368,17 +368,17 @@ export default function TaskComposerPanel() {
             />
           </div>
 
-          <Separator className="bg-white/5" />
+          <Separator className="bg-ws-subtle" />
 
           {/* Target Agent */}
           <AgentSelector value={targetAgentId} onChange={setTargetAgentId} />
 
           {/* Suggested agent badge */}
           {group.suggestedAgentRole && (
-            <div className="bg-teal-500/5 border border-teal-500/10 rounded-md px-2.5 py-1.5">
+            <div className="bg-teal-50 border border-teal-200 rounded-md px-2.5 py-1.5">
               <div className="flex items-center gap-1.5">
-                <Brain className="w-3 h-3 text-teal-400" />
-                <span className="text-[9px] text-teal-300">
+                <Brain className="w-3 h-3 text-teal-700" />
+                <span className="text-[9px] text-teal-700">
                   Suggested: <strong>{group.suggestedAgentRole}</strong>
                 </span>
               </div>
@@ -390,10 +390,10 @@ export default function TaskComposerPanel() {
             className={cn(
               "w-full h-8 text-[10px] transition-all",
               dispatched
-                ? "bg-green-500/20 text-green-300 border border-green-500/30"
+                ? "bg-green-100 text-green-700 border border-green-200"
                 : targetAgentId
                   ? "bg-indigo-500 hover:bg-indigo-600 text-white"
-                  : "bg-white/5 text-muted-foreground cursor-not-allowed"
+                  : "bg-ws-subtle text-muted-foreground cursor-not-allowed"
             )}
             onClick={handleDispatch}
             disabled={!targetAgentId || dispatched}

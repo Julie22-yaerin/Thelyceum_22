@@ -29,9 +29,9 @@ import {
 // ── Role Badge ───────────────────────────────────────────────────────────────
 
 const ROLE_META: Record<MemberRole, { label: string; color: string; icon: React.ElementType }> = {
-  owner: { label: "Owner", color: "text-amber-400 border-amber-500/30 bg-amber-500/10", icon: Shield },
-  admin: { label: "Admin", color: "text-purple-400 border-purple-500/30 bg-purple-500/10", icon: Shield },
-  member: { label: "Member", color: "text-blue-400 border-blue-500/30 bg-blue-500/10", icon: Users },
+  owner: { label: "Owner", color: "text-amber-700 border-amber-200 bg-amber-50", icon: Shield },
+  admin: { label: "Admin", color: "text-purple-700 border-purple-200 bg-purple-50", icon: Shield },
+  member: { label: "Member", color: "text-blue-700 border-blue-200 bg-blue-50", icon: Users },
 };
 
 // ── Member Row ───────────────────────────────────────────────────────────────
@@ -57,18 +57,18 @@ function MemberRow({
     .slice(0, 2);
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors group">
+    <div className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-ws-subtle border border-ws-border hover:bg-ws-hover transition-colors group">
       {/* Avatar */}
-      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-teal-500/20 to-indigo-500/20 flex items-center justify-center shrink-0">
-        <span className="text-[9px] font-medium text-white/80">{initials}</span>
+      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-teal-100 to-indigo-100 flex items-center justify-center shrink-0">
+        <span className="text-[9px] font-medium text-ws-text">{initials}</span>
       </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-white/90 truncate">{member.name}</span>
+          <span className="text-xs font-medium text-ws-text truncate">{member.name}</span>
           {member.role === "owner" && (
-            <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-amber-400 border-amber-500/30">
+            <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-amber-700 border-amber-200">
               Founder
             </Badge>
           )}
@@ -87,7 +87,7 @@ function MemberRow({
                 "text-[8px] px-1.5 py-0.5 rounded transition-colors",
                 member.role === role
                   ? ROLE_META[role].color + " font-medium"
-                  : "text-muted-foreground hover:text-white"
+                  : "text-muted-foreground hover:text-ws-text"
               )}
             >
               {role}
@@ -95,7 +95,7 @@ function MemberRow({
           ))}
           <button
             onClick={() => onRemove(member.id)}
-            className="text-muted-foreground/50 hover:text-red-400 ml-1 opacity-0 group-hover:opacity-100 transition-all"
+            className="text-muted-foreground/50 hover:text-red-800 ml-1 opacity-0 group-hover:opacity-100 transition-all"
           >
             <X className="w-3 h-3" />
           </button>
@@ -151,20 +151,20 @@ export default function InviteMemberDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/25 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) setShowInviteDialog(false);
       }}
     >
-      <div className="w-full max-w-md mx-4 bg-[#0f0f13] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-md mx-4 bg-ws-bg border border-ws-border rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ws-border">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center">
-              <UserPlus className="w-4 h-4 text-indigo-400" />
+            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+              <UserPlus className="w-4 h-4 text-indigo-700" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white">Invite Members</h3>
+              <h3 className="text-sm font-semibold text-ws-text">Invite Members</h3>
               <p className="text-[10px] text-muted-foreground">
                 {company?.name || "Your Company"} · {members.length} member{members.length !== 1 ? "s" : ""}
               </p>
@@ -172,15 +172,15 @@ export default function InviteMemberDialog() {
           </div>
           <button
             onClick={handleClose}
-            className="text-muted-foreground hover:text-white transition-colors"
+            className="text-muted-foreground hover:text-ws-text transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Invite Form */}
-        <div className="px-5 py-4 border-b border-white/5">
-          <p className="text-[10px] font-medium text-white/60 uppercase tracking-wider mb-3">
+        <div className="px-5 py-4 border-b border-ws-border">
+          <p className="text-[10px] font-medium text-ws-text-muted uppercase tracking-wider mb-3">
             Invite New Member
           </p>
           <div className="space-y-2.5">
@@ -191,7 +191,7 @@ export default function InviteMemberDialog() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Full name"
-                  className="h-8 text-[11px] bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50 pl-7"
+                  className="h-8 text-[11px] bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50 pl-7"
                 />
               </div>
               <div className="relative flex-1">
@@ -200,7 +200,7 @@ export default function InviteMemberDialog() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email address"
-                  className="h-8 text-[11px] bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50 pl-7"
+                  className="h-8 text-[11px] bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50 pl-7"
                 />
               </div>
             </div>
@@ -212,8 +212,8 @@ export default function InviteMemberDialog() {
                   className={cn(
                     "flex-1 h-7 text-[10px] rounded-md border transition-colors",
                     role === r
-                      ? [r === "admin" ? "border-purple-500/30 bg-purple-500/10 text-purple-300" : "border-blue-500/30 bg-blue-500/10 text-blue-300"]
-                      : "border-white/10 bg-white/5 text-muted-foreground hover:text-white"
+                      ? [r === "admin" ? "border-purple-200 bg-purple-50 text-purple-700" : "border-blue-200 bg-blue-50 text-blue-700"]
+                      : "border-ws-border bg-ws-subtle text-muted-foreground hover:text-ws-text"
                   )}
                 >
                   {r === "admin" ? "Admin" : "Member"}
@@ -225,7 +225,7 @@ export default function InviteMemberDialog() {
                 "w-full h-8 text-[11px]",
                 name.trim() && email.trim()
                   ? "bg-indigo-500 hover:bg-indigo-600 text-white"
-                  : "bg-white/5 text-muted-foreground cursor-not-allowed"
+                  : "bg-ws-subtle text-muted-foreground cursor-not-allowed"
               )}
               onClick={handleInvite}
               disabled={!name.trim() || !email.trim()}
@@ -247,7 +247,7 @@ export default function InviteMemberDialog() {
 
         {/* Member List */}
         <div className="px-5 py-3">
-          <p className="text-[10px] font-medium text-white/60 uppercase tracking-wider mb-2">
+          <p className="text-[10px] font-medium text-ws-text-muted uppercase tracking-wider mb-2">
             Team Members ({members.length})
           </p>
           <ScrollArea className="max-h-52">

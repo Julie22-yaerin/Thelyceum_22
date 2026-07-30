@@ -14,6 +14,7 @@ import Admin from "./pages/Admin";
 import Notes from "./pages/Notes";
 import TaskOnboarding from "./pages/TaskOnboarding";
 import SessionPage from "./pages/SessionPage";
+import Missions from "./pages/Missions";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import RefundPolicy from "./pages/RefundPolicy";
@@ -26,6 +27,7 @@ function Router() {
       <Route path={"/onboarding"} component={TaskOnboarding} />
       <Route path={"/session"} component={SessionPage} />
       <Route path={"/canvas"} component={WorkforceCanvasPage} />
+      <Route path={"/missions"} component={Missions} />
       <Route path={"/thank-you"} component={ThankYou} />
       <Route path={"/waiting"} component={Waiting} />
       <Route path={"/admin"} component={Admin} />

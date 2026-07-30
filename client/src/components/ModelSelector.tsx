@@ -49,20 +49,20 @@ const DOMAIN_META: Record<
   LAW: {
     label: "Law",
     icon: Gavel,
-    color: "text-purple-400",
-    accent: "border-purple-500/30 bg-purple-500/5",
+    color: "text-purple-700",
+    accent: "border-purple-200 bg-purple-50",
   },
   FINANCE: {
     label: "Finance",
     icon: DollarSign,
-    color: "text-emerald-400",
-    accent: "border-emerald-500/30 bg-emerald-500/5",
+    color: "text-emerald-700",
+    accent: "border-emerald-200 bg-emerald-50",
   },
   TECH: {
     label: "Tech",
     icon: Cpu,
-    color: "text-cyan-400",
-    accent: "border-cyan-500/30 bg-cyan-500/5",
+    color: "text-cyan-700",
+    accent: "border-cyan-200 bg-cyan-50",
   },
 };
 
@@ -191,15 +191,15 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-white/[0.02] transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-ws-subtle transition-colors"
       >
         <div className="flex items-center gap-2">
           <Icon className={cn("w-3.5 h-3.5", meta.color)} />
-          <span className="text-xs font-medium text-white/80">{meta.label} Domain</span>
+          <span className="text-xs font-medium text-ws-text">{meta.label} Domain</span>
           {!isDefaultModel && (
             <Badge
               variant="outline"
-              className="text-[8px] h-4 px-1 border-teal-500/30 text-teal-400"
+              className="text-[8px] h-4 px-1 border-teal-200 text-teal-700"
             >
               Custom
             </Badge>
@@ -224,7 +224,7 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
               disabled={loading}
               className={cn(
                 "w-full h-8 flex items-center justify-between px-2.5 rounded-md text-xs transition-colors",
-                "bg-white/5 border border-white/10 hover:border-white/20",
+                "bg-ws-subtle border border-ws-border hover:border-ws-border",
                 loading && "opacity-50 cursor-wait",
               )}
             >
@@ -234,7 +234,7 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
                   Loading models...
                 </span>
               ) : selectedModelInfo ? (
-                <span className="text-white truncate">{selectedModelInfo.name}</span>
+                <span className="text-ws-text truncate">{selectedModelInfo.name}</span>
               ) : (
                 <span className="text-muted-foreground truncate">{selectedModelId}</span>
               )}
@@ -243,7 +243,7 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
 
             {/* Dropdown */}
             {showDropdown && !loading && (
-              <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-64 rounded-md border border-white/10 bg-[#1a1a22] shadow-2xl overflow-hidden">
+              <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-64 rounded-md border border-ws-border bg-ws-hover shadow-2xl overflow-hidden">
                 <div className="overflow-y-auto max-h-64">
                   {models.length === 0 ? (
                     <div className="p-3 text-center text-[10px] text-muted-foreground">
@@ -252,7 +252,7 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
                   ) : (
                     Array.from(groups.entries()).map(([provider, providerModels]) => (
                       <div key={provider}>
-                        <div className="px-2.5 py-1.5 text-[9px] font-medium text-muted-foreground uppercase tracking-wider bg-white/[0.02]">
+                        <div className="px-2.5 py-1.5 text-[9px] font-medium text-muted-foreground uppercase tracking-wider bg-ws-subtle">
                           {provider}
                         </div>
                         {providerModels.map((model) => (
@@ -264,8 +264,8 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
                               setShowDropdown(false);
                             }}
                             className={cn(
-                              "w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-left hover:bg-white/[0.04] transition-colors",
-                              model.id === selectedModelId && "bg-teal-500/10 text-teal-300",
+                              "w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-left hover:bg-ws-hover transition-colors",
+                              model.id === selectedModelId && "bg-teal-50 text-teal-700",
                             )}
                           >
                             <span className="flex-1 truncate">{model.name}</span>
@@ -273,7 +273,7 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
                               {formatPricePer1K(model.pricing.prompt)} / {formatPricePer1K(model.pricing.completion)}
                             </span>
                             {model.id === selectedModelId && (
-                              <Check className="w-3 h-3 text-teal-400 shrink-0" />
+                              <Check className="w-3 h-3 text-teal-700 shrink-0" />
                             )}
                           </button>
                         ))}
@@ -288,19 +288,19 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
           {/* Pricing Info */}
           {selectedModelInfo && (
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-white/[0.03] border border-white/5 rounded-md px-2 py-1.5">
+              <div className="bg-ws-subtle border border-ws-border rounded-md px-2 py-1.5">
                 <p className="text-[8px] text-muted-foreground uppercase tracking-wider mb-0.5">
                   Prompt /1K
                 </p>
-                <p className="text-xs font-mono text-white/80">
+                <p className="text-xs font-mono text-ws-text">
                   {formatPricePer1K(selectedModelInfo.pricing.prompt)}
                 </p>
               </div>
-              <div className="bg-white/[0.03] border border-white/5 rounded-md px-2 py-1.5">
+              <div className="bg-ws-subtle border border-ws-border rounded-md px-2 py-1.5">
                 <p className="text-[8px] text-muted-foreground uppercase tracking-wider mb-0.5">
                   Completion /1K
                 </p>
-                <p className="text-xs font-mono text-white/80">
+                <p className="text-xs font-mono text-ws-text">
                   {formatPricePer1K(selectedModelInfo.pricing.completion)}
                 </p>
               </div>
@@ -308,17 +308,17 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
           )}
 
           {/* Cumulative Spend */}
-          <div className="flex items-center justify-between bg-white/[0.03] border border-white/5 rounded-md px-2.5 py-2">
+          <div className="flex items-center justify-between bg-ws-subtle border border-ws-border rounded-md px-2.5 py-2">
             <div className="flex items-center gap-1.5">
-              <Coins className="w-3 h-3 text-amber-400" />
+              <Coins className="w-3 h-3 text-amber-700" />
               <span className="text-[10px] text-muted-foreground">Session Spend</span>
             </div>
-            <span className="text-xs font-mono text-white/90">{formatUsd(spend)}</span>
+            <span className="text-xs font-mono text-ws-text">{formatUsd(spend)}</span>
           </div>
 
           {/* Error state */}
           {error && (
-            <div className="flex items-center gap-1.5 text-[9px] text-red-400">
+            <div className="flex items-center gap-1.5 text-[9px] text-red-700">
               <AlertCircle className="w-3 h-3 shrink-0" />
               <span>Failed to load pricing — using default rates</span>
             </div>
@@ -329,7 +329,7 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 text-[9px] flex-1 text-muted-foreground hover:text-white hover:bg-white/5"
+              className="h-7 text-[9px] flex-1 text-muted-foreground hover:text-ws-text hover:bg-ws-hover"
               onClick={() => loadModels(true)}
               disabled={refreshing}
             >
@@ -346,8 +346,8 @@ export default function ModelSelector({ nodeId, domain }: ModelSelectorProps) {
               className={cn(
                 "h-7 text-[9px] flex-1 transition-all",
                 isDefaultModel
-                  ? "bg-white/5 text-muted-foreground cursor-not-allowed"
-                  : "bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30",
+                  ? "bg-ws-subtle text-muted-foreground cursor-not-allowed"
+                  : "bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100",
               )}
               onClick={handleApply}
               disabled={isDefaultModel}

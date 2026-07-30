@@ -78,6 +78,7 @@ class FakeFirestore {
     const tx = {
       get: (ref: ReturnType<FakeCollection["doc"]>) => ref.get(),
       update: (ref: ReturnType<FakeCollection["doc"]>, data: Record<string, unknown>) => ref.update(data),
+      set: (ref: ReturnType<FakeCollection["doc"]>, data: Record<string, unknown>) => ref.set(data),
     };
     return fn(tx);
   }
@@ -118,6 +119,9 @@ const { provisionAccount, getAccount, deductCredits, InsufficientCreditsError } 
 const { recordTask, listTasks, getTask } = await import("../db/tasks.js");
 const { runTask, TASK_COST } = await import("../lib/runTask.js");
 const { createApiApp } = await import("../index.js");
+const { registerAiRole, listAiRoles, reportTokens, setTokenBudget, TokenBudgetExceededError } =
+  await import("../db/aiRoles.js");
+const { createMission, listMissions, updateStep, progressOf } = await import("../db/missions.js");
 
 const LICENSE_KEY = "test-license-key-123";
 
@@ -275,5 +279,187 @@ describe("MCP Streamable HTTP endpoint (real HTTP server, no mocked transport)",
 
     const account = await getAccount(LICENSE_KEY);
     expect(account?.creditsRemaining).toBe(500 - TASK_COST);
+  });
+});
+
+// ── AI roles registered over MCP (token attribution + budget) ───────────────
+
+describe("AI roles", () => {
+  it("registers a role, and re-registering updates it without losing usage", async () => {
+    await registerAiRole({
+      licenseKey: LICENSE_KEY,
+      name: "Newsletter Copywriter",
+      department: "marketing",
+      purpose: "Drafts the monthly newsletter",
+      client: "Claude Desktop",
+    });
+    await reportTokens(LICENSE_KEY, "Newsletter Copywriter", 1200);
+
+    // Same name again — a client reconnecting shouldn't reset its history.
+    const again = await registerAiRole({
+      licenseKey: LICENSE_KEY,
+      name: "Newsletter Copywriter",
+      department: "marketing",
+      purpose: "Drafts and edits the monthly newsletter",
+      client: "Claude Code",
+    });
+
+    expect(again.tokensUsed).toBe(1200);
+    expect(again.purpose).toBe("Drafts and edits the monthly newsletter");
+    expect((await listAiRoles(LICENSE_KEY))).toHaveLength(1);
+  });
+
+  it("accumulates tokens across reports", async () => {
+    await registerAiRole({
+      licenseKey: LICENSE_KEY,
+      name: "Analyst",
+      department: "marketing",
+      purpose: "Reads campaign numbers",
+    });
+    await reportTokens(LICENSE_KEY, "Analyst", 500);
+    const role = await reportTokens(LICENSE_KEY, "Analyst", 250);
+    expect(role.tokensUsed).toBe(750);
+  });
+
+  it("refuses token reports that would exceed the role's budget", async () => {
+    await registerAiRole({
+      licenseKey: LICENSE_KEY,
+      name: "Capped Bot",
+      department: "coding",
+      purpose: "Small jobs only",
+      tokenBudget: 1000,
+    });
+    await reportTokens(LICENSE_KEY, "Capped Bot", 900);
+    await expect(reportTokens(LICENSE_KEY, "Capped Bot", 200)).rejects.toThrow(
+      TokenBudgetExceededError
+    );
+    // The rejected report must not have been partially applied.
+    const roles = await listAiRoles(LICENSE_KEY);
+    expect(roles.find((r) => r.name === "Capped Bot")?.tokensUsed).toBe(900);
+  });
+
+  it("raising the budget lets a blocked role continue", async () => {
+    await registerAiRole({
+      licenseKey: LICENSE_KEY,
+      name: "Capped Bot",
+      department: "coding",
+      purpose: "Small jobs only",
+      tokenBudget: 1000,
+    });
+    await reportTokens(LICENSE_KEY, "Capped Bot", 1000);
+    await expect(reportTokens(LICENSE_KEY, "Capped Bot", 1)).rejects.toThrow();
+    await setTokenBudget(LICENSE_KEY, "Capped Bot", 5000);
+    const role = await reportTokens(LICENSE_KEY, "Capped Bot", 500);
+    expect(role.tokensUsed).toBe(1500);
+  });
+
+  it("does not leak roles across accounts", async () => {
+    await registerAiRole({
+      licenseKey: LICENSE_KEY,
+      name: "Mine",
+      department: "marketing",
+      purpose: "x",
+    });
+    expect(await listAiRoles("someone-elses-key")).toHaveLength(0);
+    await expect(reportTokens("someone-elses-key", "Mine", 10)).rejects.toThrow();
+  });
+});
+
+// ── Missions the whole team (and connected AI) can see ──────────────────────
+
+describe("missions", () => {
+  it("computes progress from finished steps", async () => {
+    const mission = await createMission({
+      licenseKey: LICENSE_KEY,
+      department: "marketing",
+      title: "Launch the newsletter",
+      headName: "Alex Chen",
+      steps: [
+        { title: "Pull data", ownerKind: "ai", ownerName: "Scribe" },
+        { title: "Approve copy", ownerKind: "human", ownerName: "Alex Chen" },
+        { title: "Send it", ownerKind: "ai", ownerName: "Pulse" },
+      ],
+    });
+    expect(progressOf(mission)).toBe(0);
+
+    const after = await updateStep({
+      licenseKey: LICENSE_KEY,
+      missionId: mission.id,
+      stepId: "step-1",
+      status: "done",
+      addTokens: 800,
+    });
+    expect(progressOf(after!)).toBe(33);
+    expect(after!.steps[0].tokensUsed).toBe(800);
+    expect(after!.status).toBe("active");
+  });
+
+  it("flips to 'blocked' when any step is stuck, and 'review' when all are done", async () => {
+    const mission = await createMission({
+      licenseKey: LICENSE_KEY,
+      department: "coding",
+      title: "Ship the fix",
+      headName: "Sarah Kim",
+      steps: [
+        { title: "Write it", ownerKind: "ai", ownerName: "Forge" },
+        { title: "Check it", ownerKind: "human", ownerName: "Sarah Kim" },
+      ],
+    });
+
+    const blocked = await updateStep({
+      licenseKey: LICENSE_KEY,
+      missionId: mission.id,
+      stepId: "step-1",
+      status: "blocked",
+      note: "Needs an API key",
+    });
+    expect(blocked!.status).toBe("blocked");
+    expect(blocked!.steps[0].note).toBe("Needs an API key");
+
+    await updateStep({ licenseKey: LICENSE_KEY, missionId: mission.id, stepId: "step-1", status: "done" });
+    const allDone = await updateStep({
+      licenseKey: LICENSE_KEY,
+      missionId: mission.id,
+      stepId: "step-2",
+      status: "done",
+    });
+    expect(progressOf(allDone!)).toBe(100);
+    expect(allDone!.status).toBe("review");
+  });
+
+  it("filters by department and scopes to the account", async () => {
+    await createMission({
+      licenseKey: LICENSE_KEY,
+      department: "marketing",
+      title: "M1",
+      headName: "Alex",
+    });
+    await createMission({
+      licenseKey: LICENSE_KEY,
+      department: "coding",
+      title: "C1",
+      headName: "Alex",
+    });
+
+    expect(await listMissions(LICENSE_KEY)).toHaveLength(2);
+    expect(await listMissions(LICENSE_KEY, "marketing")).toHaveLength(1);
+    expect(await listMissions("someone-elses-key")).toHaveLength(0);
+  });
+
+  it("refuses step updates from another account", async () => {
+    const mission = await createMission({
+      licenseKey: LICENSE_KEY,
+      department: "marketing",
+      title: "Private",
+      headName: "Alex",
+      steps: [{ title: "s", ownerKind: "ai", ownerName: "Scribe" }],
+    });
+    const result = await updateStep({
+      licenseKey: "someone-elses-key",
+      missionId: mission.id,
+      stepId: "step-1",
+      status: "done",
+    });
+    expect(result).toBeNull();
   });
 });

@@ -262,7 +262,7 @@ function GraphContent({
       minZoom={0.4}
       maxZoom={1.5}
       deleteKeyCode={null}
-      className="bg-[#08080c]"
+      className="bg-ws-subtle"
       defaultEdgeOptions={{
         type: "smoothstep",
         style: { stroke: "rgba(255,255,255,0.12)", strokeWidth: 1.5 },
@@ -275,7 +275,7 @@ function GraphContent({
         color="rgba(255,255,255,0.04)"
       />
       <Controls
-        className="bg-[#0f0f13] border border-white/10 rounded-lg [&>button]:text-muted-foreground [&>button]:hover:text-white [&>button]:hover:bg-white/5 [&>button]:border-white/5"
+        className="bg-ws-bg border border-ws-border rounded-lg [&>button]:text-muted-foreground [&>button]:hover:text-ws-text [&>button]:hover:bg-ws-hover [&>button]:border-ws-border"
       />
       <MiniMap
         nodeStrokeColor={(n) =>
@@ -291,7 +291,7 @@ function GraphContent({
         }}
         nodeBorderRadius={4}
         maskColor="rgba(0,0,0,0.7)"
-        className="border border-white/10 rounded-lg"
+        className="border border-ws-border rounded-lg"
         style={{ background: "#0f0f13" }}
       />
     </ReactFlow>

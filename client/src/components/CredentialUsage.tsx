@@ -64,7 +64,12 @@ export function CredentialUsage({ licenseKey }: { licenseKey: string }) {
       <CodeBlock id="mcp" code={mcpSnippet} />
 
       <p className="text-[10px] text-muted-foreground leading-relaxed mt-3">
-        Domains: LAW, FINANCE, TECH, MUSE. MCP tools: check_quota, assign_task, list_tasks, get_report.
+        Domains: LAW, FINANCE, TECH, MUSE.
+        <br />
+        MCP tools — work: <code>assign_task</code>, <code>list_tasks</code>, <code>get_report</code>;
+        your role &amp; spend: <code>register_role</code>, <code>list_roles</code>,{" "}
+        <code>report_tokens</code>, <code>check_quota</code>; team progress:{" "}
+        <code>create_mission</code>, <code>list_missions</code>, <code>update_mission_step</code>.
       </p>
     </div>
   );

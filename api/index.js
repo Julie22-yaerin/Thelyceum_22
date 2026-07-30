@@ -157,7 +157,7 @@ __export(sessions_exports, {
   updateSessionTasks: () => updateSessionTasks
 });
 async function createSession(params) {
-  const ref = collection3().doc();
+  const ref = collection5().doc();
   const session = {
     id: ref.id,
     licenseKey: params.licenseKey,
@@ -173,7 +173,7 @@ async function createSession(params) {
   return session;
 }
 async function confirmSession(sessionId, licenseKey) {
-  const ref = collection3().doc(sessionId);
+  const ref = collection5().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -187,7 +187,7 @@ async function confirmSession(sessionId, licenseKey) {
   return { ...data, ...updated };
 }
 async function updateSessionTasks(sessionId, licenseKey, tasks) {
-  const ref = collection3().doc(sessionId);
+  const ref = collection5().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -200,7 +200,7 @@ async function updateSessionTasks(sessionId, licenseKey, tasks) {
   return { ...data, ...updated, tasks };
 }
 async function updateSessionMeta(sessionId, licenseKey, meta) {
-  const ref = collection3().doc(sessionId);
+  const ref = collection5().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -210,17 +210,17 @@ async function updateSessionMeta(sessionId, licenseKey, meta) {
   return { ...data, ...updated };
 }
 async function getSession(sessionId, licenseKey) {
-  const snap = await collection3().doc(sessionId).get();
+  const snap = await collection5().doc(sessionId).get();
   if (!snap.exists) return null;
   const data = snap.data();
   return data.licenseKey === licenseKey ? data : null;
 }
 async function listSessions(licenseKey, limit = 50) {
-  const snap = await collection3().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
+  const snap = await collection5().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
   return snap.docs.map((d) => d.data());
 }
 async function deleteSession(sessionId, licenseKey) {
-  const ref = collection3().doc(sessionId);
+  const ref = collection5().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return false;
   const data = snap.data();
@@ -228,12 +228,12 @@ async function deleteSession(sessionId, licenseKey) {
   await ref.delete();
   return true;
 }
-var collection3;
+var collection5;
 var init_sessions = __esm({
   "server/db/sessions.ts"() {
     "use strict";
     init_firestore();
-    collection3 = () => getDb().collection("sessions");
+    collection5 = () => getDb().collection("sessions");
   }
 });
 
@@ -667,6 +667,148 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 init_tasks();
+
+// server/db/aiRoles.ts
+init_firestore();
+import { FieldValue as FieldValue2 } from "firebase-admin/firestore";
+var collection3 = () => getDb().collection("aiRoles");
+function roleId(licenseKey, name) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `${licenseKey.slice(0, 12)}--${slug}`;
+}
+async function registerAiRole(params) {
+  const id = roleId(params.licenseKey, params.name);
+  const ref = collection3().doc(id);
+  const existing = await ref.get();
+  const now = Date.now();
+  if (existing.exists) {
+    await ref.set(
+      {
+        department: params.department,
+        purpose: params.purpose,
+        client: params.client,
+        ...params.tokenBudget !== void 0 ? { tokenBudget: params.tokenBudget } : {},
+        lastSeenAt: now
+      },
+      { merge: true }
+    );
+    return (await ref.get()).data();
+  }
+  const role = {
+    id,
+    licenseKey: params.licenseKey,
+    name: params.name,
+    department: params.department,
+    purpose: params.purpose,
+    client: params.client,
+    tokensUsed: 0,
+    tokenBudget: params.tokenBudget ?? 0,
+    createdAt: now,
+    lastSeenAt: now
+  };
+  await ref.set(role);
+  return role;
+}
+async function listAiRoles(licenseKey) {
+  const snap = await collection3().where("licenseKey", "==", licenseKey).get();
+  return snap.docs.map((d) => d.data()).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+}
+var TokenBudgetExceededError = class extends Error {
+  constructor(roleName, used, budget) {
+    super(`Role "${roleName}" is over its token budget (${used}/${budget})`);
+    this.roleName = roleName;
+    this.used = used;
+    this.budget = budget;
+  }
+};
+async function reportTokens(licenseKey, name, tokens) {
+  const db2 = getDb();
+  const ref = collection3().doc(roleId(licenseKey, name));
+  return db2.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error(`No AI role named "${name}" \u2014 register it first.`);
+    const role = snap.data();
+    if (role.licenseKey !== licenseKey) throw new Error(`No AI role named "${name}".`);
+    const next = role.tokensUsed + tokens;
+    if (role.tokenBudget > 0 && next > role.tokenBudget) {
+      throw new TokenBudgetExceededError(name, role.tokensUsed, role.tokenBudget);
+    }
+    tx.update(ref, { tokensUsed: FieldValue2.increment(tokens), lastSeenAt: Date.now() });
+    return { ...role, tokensUsed: next };
+  });
+}
+
+// server/db/missions.ts
+init_firestore();
+var collection4 = () => getDb().collection("missions");
+function progressOf(mission) {
+  if (mission.steps.length === 0) return 0;
+  const done = mission.steps.filter((s) => s.status === "done").length;
+  return Math.round(done / mission.steps.length * 100);
+}
+async function createMission(params) {
+  const ref = collection4().doc();
+  const now = Date.now();
+  const mission = {
+    id: ref.id,
+    licenseKey: params.licenseKey,
+    department: params.department,
+    title: params.title,
+    goal: params.goal ?? "",
+    status: (params.steps?.length ?? 0) > 0 ? "active" : "planning",
+    headName: params.headName,
+    steps: (params.steps ?? []).map((s, i) => ({
+      id: `step-${i + 1}`,
+      title: s.title,
+      ownerKind: s.ownerKind,
+      ownerName: s.ownerName,
+      status: "todo",
+      tokensUsed: 0
+    })),
+    createdAt: now,
+    updatedAt: now
+  };
+  await ref.set(mission);
+  return mission;
+}
+async function listMissions(licenseKey, department) {
+  const snap = await collection4().where("licenseKey", "==", licenseKey).get();
+  return snap.docs.map((d) => d.data()).filter((m) => !department || m.department === department).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+function derivedStatus(steps, current) {
+  if (steps.length === 0) return current;
+  if (steps.every((s) => s.status === "done")) return "review";
+  if (steps.some((s) => s.status === "blocked")) return "blocked";
+  return current === "planning" ? "active" : current;
+}
+async function updateStep(params) {
+  const db2 = getDb();
+  const ref = collection4().doc(params.missionId);
+  return db2.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return null;
+    const mission = snap.data();
+    if (mission.licenseKey !== params.licenseKey) return null;
+    const steps = mission.steps.map(
+      (s) => s.id === params.stepId ? {
+        ...s,
+        status: params.status ?? s.status,
+        note: params.note ?? s.note,
+        tokensUsed: s.tokensUsed + (params.addTokens ?? 0)
+      } : s
+    );
+    const updated = {
+      ...mission,
+      steps,
+      status: derivedStatus(steps, mission.status),
+      updatedAt: Date.now()
+    };
+    tx.set(ref, updated);
+    return updated;
+  });
+}
+
+// server/mcp/http-server.ts
 function buildServer(account) {
   const server = new McpServer({ name: "the-lyceum", version: "1.0.0" });
   server.registerTool(
@@ -788,6 +930,202 @@ function buildServer(account) {
           {
             type: "text",
             text: task.status === "completed" ? task.result ?? "" : `Task failed: ${task.error}`
+          }
+        ]
+      };
+    }
+  );
+  server.registerTool(
+    "register_role",
+    {
+      title: "Register my role",
+      description: "Declare which role you (the connected AI) are filling and which department you serve. Call this first \u2014 token reporting and mission updates are attributed to this role. Calling it again with the same name updates the description without losing usage history.",
+      inputSchema: {
+        name: z.string().min(1).describe('Your role name, e.g. "Newsletter Copywriter"'),
+        department: z.string().min(1).describe('Department tag you serve, e.g. "marketing" or "coding"'),
+        purpose: z.string().min(1).describe("One line on what you do \u2014 humans will read this"),
+        client: z.string().optional().describe('Which app you are, e.g. "Claude Desktop"'),
+        tokenBudget: z.number().int().nonnegative().optional().describe("Optional cap on your own token spend; 0 or omitted = no cap")
+      }
+    },
+    async (args) => {
+      const role = await registerAiRole({ licenseKey: account.licenseKey, ...args });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Registered as "${role.name}" in ${role.department}.
+Tokens used so far: ${role.tokensUsed.toLocaleString()}` + (role.tokenBudget > 0 ? ` of ${role.tokenBudget.toLocaleString()}` : " (no cap)")
+          }
+        ]
+      };
+    }
+  );
+  server.registerTool(
+    "list_roles",
+    {
+      title: "List AI roles",
+      description: "List every AI role registered on this account, with the department each serves and how many tokens it has used. This is the token report for the whole workspace."
+    },
+    async () => {
+      const roles = await listAiRoles(account.licenseKey);
+      if (roles.length === 0) {
+        return {
+          content: [
+            { type: "text", text: "No AI roles registered yet. Use register_role first." }
+          ]
+        };
+      }
+      const total = roles.reduce((sum, r) => sum + r.tokensUsed, 0);
+      const lines = roles.map(
+        (r) => `\u2022 ${r.name} \u2014 ${r.department} \u2014 ${r.tokensUsed.toLocaleString()} tokens` + (r.tokenBudget > 0 ? ` / ${r.tokenBudget.toLocaleString()} budget` : "") + (r.client ? ` (${r.client})` : "")
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${roles.length} role(s), ${total.toLocaleString()} tokens total:
+
+${lines.join("\n")}`
+          }
+        ]
+      };
+    }
+  );
+  server.registerTool(
+    "report_tokens",
+    {
+      title: "Report token usage",
+      description: "Report tokens you have just consumed, so the workspace can track spend per AI role. Rejected if it would take the role past its own budget.",
+      inputSchema: {
+        roleName: z.string().min(1).describe("The role name you registered"),
+        tokens: z.number().int().positive().describe("Tokens consumed since your last report")
+      }
+    },
+    async ({ roleName, tokens }) => {
+      try {
+        const role = await reportTokens(account.licenseKey, roleName, tokens);
+        const pct = role.tokenBudget > 0 ? ` (${Math.round(role.tokensUsed / role.tokenBudget * 100)}% of budget)` : "";
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Recorded ${tokens.toLocaleString()} tokens for "${role.name}". Total: ${role.tokensUsed.toLocaleString()}${pct}`
+            }
+          ]
+        };
+      } catch (err) {
+        if (err instanceof TokenBudgetExceededError) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `\u26D4 Token budget reached for "${err.roleName}" (${err.used.toLocaleString()}/${err.budget.toLocaleString()}). Ask the department head to raise it in the Lyceum workspace.`
+              }
+            ]
+          };
+        }
+        return {
+          isError: true,
+          content: [{ type: "text", text: err instanceof Error ? err.message : "Failed" }]
+        };
+      }
+    }
+  );
+  server.registerTool(
+    "list_missions",
+    {
+      title: "List missions",
+      description: "See the missions the team is running, with plain progress percentages. Optionally filter to one department.",
+      inputSchema: {
+        department: z.string().optional().describe('e.g. "marketing" \u2014 omit for all departments')
+      }
+    },
+    async ({ department }) => {
+      const missions = await listMissions(account.licenseKey, department);
+      if (missions.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: department ? `No missions in ${department} yet.` : "No missions yet. Create one with create_mission."
+            }
+          ]
+        };
+      }
+      const lines = missions.map((m) => {
+        const steps = m.steps.map((s) => `    - [${s.status}] ${s.title} \u2014 ${s.ownerName} (${s.ownerKind})`).join("\n");
+        return `\u2022 ${m.title} \u2014 ${m.department} \u2014 ${progressOf(m)}% \u2014 ${m.status}
+  head: ${m.headName}
+  id: ${m.id}
+${steps}`;
+      });
+      return { content: [{ type: "text", text: lines.join("\n\n") }] };
+    }
+  );
+  server.registerTool(
+    "create_mission",
+    {
+      title: "Create a mission",
+      description: "Create a mission (a piece of work broken into steps) in a department, so the whole team can see it and track progress.",
+      inputSchema: {
+        department: z.string().min(1).describe('Department tag, e.g. "marketing"'),
+        title: z.string().min(1).describe("What needs to happen"),
+        goal: z.string().optional().describe("Why it matters"),
+        headName: z.string().min(1).describe("The person accountable for the decision"),
+        steps: z.array(
+          z.object({
+            title: z.string().min(1),
+            ownerKind: z.enum(["human", "ai"]),
+            ownerName: z.string().min(1)
+          })
+        ).optional().describe("The steps, each owned by a person or an AI")
+      }
+    },
+    async (args) => {
+      const mission = await createMission({ licenseKey: account.licenseKey, ...args });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created "${mission.title}" in ${mission.department} with ${mission.steps.length} step(s).
+id: ${mission.id}`
+          }
+        ]
+      };
+    }
+  );
+  server.registerTool(
+    "update_mission_step",
+    {
+      title: "Update a mission step",
+      description: "Move a step forward, leave a plain-language note on it, and optionally attribute tokens to it. The mission's own status is recalculated from its steps.",
+      inputSchema: {
+        missionId: z.string().min(1).describe("From list_missions"),
+        stepId: z.string().min(1).describe('From list_missions, e.g. "step-1"'),
+        status: z.enum(["todo", "doing", "done", "blocked"]).optional(),
+        note: z.string().optional().describe("What happened \u2014 humans read this"),
+        tokens: z.number().int().nonnegative().optional().describe("Tokens spent on this step")
+      }
+    },
+    async (args) => {
+      const mission = await updateStep({
+        licenseKey: account.licenseKey,
+        missionId: args.missionId,
+        stepId: args.stepId,
+        status: args.status,
+        note: args.note,
+        addTokens: args.tokens
+      });
+      if (!mission) {
+        return { isError: true, content: [{ type: "text", text: "Mission not found." }] };
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Updated. "${mission.title}" is now ${progressOf(mission)}% (${mission.status}).`
           }
         ]
       };

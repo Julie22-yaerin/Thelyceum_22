@@ -1,5 +1,6 @@
 import { type Edge, type Node } from "@xyflow/react";
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type {
   WorkRole,
   WorkCard,
@@ -446,6 +447,8 @@ interface WorkforceStore {
 
   initWorkRoles: () => void;
   addCustomRole: (role: WorkRole) => void;
+  /** Grant/revoke an AI agent's access to a department workspace. */
+  toggleRoleAgent: (roleId: string, agentId: string) => void;
 
   createWorkCard: (card: Omit<WorkCard, "id" | "createdAt" | "updatedAt" | "status">) => void;
   updateWorkCardStatus: (cardId: string, status: WorkCardStatus) => void;
@@ -460,7 +463,9 @@ interface WorkforceStore {
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
-export const useWorkforceStore = create<WorkforceStore>((set, get) => ({
+export const useWorkforceStore = create<WorkforceStore>()(
+  persist(
+    (set, get) => ({
   // ── Initial State ──────────────────────────────────────────────────────
   nodes: buildInitialNodes(),
   edges: buildInitialEdges(),
@@ -870,6 +875,21 @@ export const useWorkforceStore = create<WorkforceStore>((set, get) => ({
     set({ workRoles: [...get().workRoles, role] });
   },
 
+  toggleRoleAgent: (roleId, agentId) => {
+    set({
+      workRoles: get().workRoles.map((r) =>
+        r.id === roleId
+          ? {
+              ...r,
+              managedAgentIds: r.managedAgentIds.includes(agentId)
+                ? r.managedAgentIds.filter((id) => id !== agentId)
+                : [...r.managedAgentIds, agentId],
+            }
+          : r
+      ),
+    });
+  },
+
   createWorkCard: (cardData) => {
     const card: WorkCard = {
       ...cardData,
@@ -1064,4 +1084,17 @@ export const useWorkforceStore = create<WorkforceStore>((set, get) => ({
       ),
     });
   },
-}));
+    }),
+    {
+      name: "lyceum-workforce",
+      // Only the human-coordination layer. Agent nodes/edges/logs are
+      // rebuilt from seed on load, so persisting them would freeze stale
+      // React Flow positions and bloat localStorage for no benefit.
+      partialize: (s) => ({
+        workRoles: s.workRoles,
+        responsibilities: s.responsibilities,
+        workCards: s.workCards,
+      }),
+    }
+  )
+);

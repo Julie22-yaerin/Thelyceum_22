@@ -53,12 +53,12 @@ function ChatBubble({
         className={cn(
           "max-w-[85%] rounded-lg px-2.5 py-1.5",
           isOwn
-            ? "bg-teal-500/15 border border-teal-500/20"
-            : "bg-white/[0.04] border border-white/5"
+            ? "bg-teal-100 border border-teal-200"
+            : "bg-ws-hover border border-ws-border"
         )}
       >
         <p className="text-[8px] text-muted-foreground mb-0.5">{isOwn ? "You" : msg.authorName}</p>
-        <p className="text-[10px] text-white/80 leading-relaxed">{msg.text}</p>
+        <p className="text-[10px] text-ws-text leading-relaxed">{msg.text}</p>
         <p className="text-[7px] text-muted-foreground mt-0.5 text-right">
           {new Date(msg.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
         </p>
@@ -119,7 +119,7 @@ export default function WorkCardDetail() {
 
   if (!card || !activeRev) {
     return (
-      <div className="h-full flex items-center justify-center bg-[#0a0a0e]">
+      <div className="h-full flex items-center justify-center bg-ws-bg">
         <p className="text-[10px] text-muted-foreground">Card not found</p>
       </div>
     );
@@ -188,31 +188,31 @@ export default function WorkCardDetail() {
 
   // Status color mapping for the header
   const statusColors: Record<WorkCardStatus, string> = {
-    draft: "text-gray-400",
-    pending: "text-amber-400",
-    approved: "text-green-400",
-    rejected: "text-red-400",
-    in_progress: "text-blue-400",
-    completed: "text-teal-400",
-    archived: "text-gray-500",
+    draft: "text-ws-text-muted",
+    pending: "text-amber-700",
+    approved: "text-green-700",
+    rejected: "text-red-700",
+    in_progress: "text-blue-700",
+    completed: "text-teal-700",
+    archived: "text-ws-text-muted",
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0e]">
+    <div className="h-full flex flex-col bg-ws-bg">
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-white/5">
+      <div className="px-3 py-2.5 border-b border-ws-border">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowWorkCardDetail(null)}
-              className="text-muted-foreground hover:text-white"
+              className="text-muted-foreground hover:text-ws-text"
             >
               <ArrowLeft className="w-3 h-3" />
             </button>
             <span className="text-sm">
               {card.kind === "role_claim" ? "👑" : ROLE_ICONS[card.roleName.toLowerCase().replace(/\s+/g, "_")] || "📋"}
             </span>
-            <h4 className="text-[10px] font-medium text-white/90 truncate">{activeRev.title}</h4>
+            <h4 className="text-[10px] font-medium text-ws-text truncate">{activeRev.title}</h4>
           </div>
           <Badge variant="outline" className={cn("text-[8px] h-4 px-1.5", statusColors[card.status])}>
             {card.status.replace("_", " ")}
@@ -240,12 +240,12 @@ export default function WorkCardDetail() {
               <div>
                 <label className="text-[8px] text-muted-foreground uppercase tracking-wider">Title</label>
                 <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)}
-                  className="h-7 text-[10px] bg-white/5 border-white/10 text-white mt-1" />
+                  className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text mt-1" />
               </div>
               <div>
                 <label className="text-[8px] text-muted-foreground uppercase tracking-wider">Description</label>
                 <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)}
-                  className="h-16 text-[10px] bg-white/5 border-white/10 text-white mt-1 resize-none" />
+                  className="h-16 text-[10px] bg-ws-subtle border-ws-border text-ws-text mt-1 resize-none" />
               </div>
               <div>
                 <label className="text-[8px] text-muted-foreground uppercase tracking-wider">Tasks</label>
@@ -254,11 +254,11 @@ export default function WorkCardDetail() {
                     <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" />
                     <Input value={t} onChange={(e) => {
                       const next = [...editTasks]; next[i] = e.target.value; setEditTasks(next);
-                    }} className="h-6 text-[9px] bg-white/5 border-white/10 text-white flex-1" />
+                    }} className="h-6 text-[9px] bg-ws-subtle border-ws-border text-ws-text flex-1" />
                   </div>
                 ))}
                 <button onClick={() => setEditTasks([...editTasks, ""])}
-                  className="text-[9px] text-teal-400 hover:text-teal-300 mt-1">+ Add task</button>
+                  className="text-[9px] text-teal-700 hover:text-teal-800 mt-1">+ Add task</button>
               </div>
               <div>
                 <label className="text-[8px] text-muted-foreground uppercase tracking-wider">Deliverables</label>
@@ -267,35 +267,35 @@ export default function WorkCardDetail() {
                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
                     <Input value={d} onChange={(e) => {
                       const next = [...editDeliverables]; next[i] = e.target.value; setEditDeliverables(next);
-                    }} className="h-6 text-[9px] bg-white/5 border-white/10 text-white flex-1" />
+                    }} className="h-6 text-[9px] bg-ws-subtle border-ws-border text-ws-text flex-1" />
                   </div>
                 ))}
                 <button onClick={() => setEditDeliverables([...editDeliverables, ""])}
-                  className="text-[9px] text-indigo-400 hover:text-indigo-300 mt-1">+ Add deliverable</button>
+                  className="text-[9px] text-indigo-700 hover:text-indigo-800 mt-1">+ Add deliverable</button>
               </div>
               <div>
                 <label className="text-[8px] text-muted-foreground uppercase tracking-wider">Deadline</label>
                 <Input value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)}
-                  className="h-7 text-[10px] bg-white/5 border-white/10 text-white mt-1" />
+                  className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text mt-1" />
               </div>
               <div className="flex gap-1.5 pt-1">
-                <Button size="sm" className="h-7 text-[9px] px-3 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+                <Button size="sm" className="h-7 text-[9px] px-3 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
                   onClick={handleSubmitRevision}>
                   <Send className="w-2.5 h-2.5 mr-1" /> Submit Update
                 </Button>
-                <Button size="sm" variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-white"
+                <Button size="sm" variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-ws-text"
                   onClick={() => setEditing(false)}>Cancel</Button>
               </div>
             </div>
           ) : (
             <>
               {/* ── Revision Content ── */}
-              <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg px-3 py-2">
-                <p className="text-[8px] text-indigo-400 uppercase tracking-wider mb-1">
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+                <p className="text-[8px] text-indigo-700 uppercase tracking-wider mb-1">
                   {card.kind === "role_claim" ? `${card.creatorName}'s title` : `Revision ${activeRev.number}`}
                 </p>
                 {activeRev.description && (
-                  <p className="text-[10px] text-white/70 leading-relaxed mb-2">{activeRev.description}</p>
+                  <p className="text-[10px] text-ws-text-soft leading-relaxed mb-2">{activeRev.description}</p>
                 )}
               </div>
 
@@ -307,7 +307,7 @@ export default function WorkCardDetail() {
                     {activeRev.tasks.map((t, i) => (
                       <div key={i} className="flex items-start gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-teal-400 mt-0.5 shrink-0" />
-                        <span className="text-[10px] text-white/70">{t}</span>
+                        <span className="text-[10px] text-ws-text-soft">{t}</span>
                       </div>
                     ))}
                   </div>
@@ -322,7 +322,7 @@ export default function WorkCardDetail() {
                     {activeRev.deliverables.map((d, i) => (
                       <div key={i} className="flex items-start gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-0.5 shrink-0" />
-                        <span className="text-[10px] text-white/70">{d}</span>
+                        <span className="text-[10px] text-ws-text-soft">{d}</span>
                       </div>
                     ))}
                   </div>
@@ -338,9 +338,9 @@ export default function WorkCardDetail() {
               )}
 
               {activeRev.notes && (
-                <div className="bg-white/[0.03] rounded px-2 py-1.5">
+                <div className="bg-ws-subtle rounded px-2 py-1.5">
                   <p className="text-[8px] text-muted-foreground mb-0.5">Notes</p>
-                  <p className="text-[9px] text-white/60">{activeRev.notes}</p>
+                  <p className="text-[9px] text-ws-text-muted">{activeRev.notes}</p>
                 </div>
               )}
 
@@ -350,13 +350,13 @@ export default function WorkCardDetail() {
                   <p className="text-[8px] text-muted-foreground uppercase tracking-wider mb-1">Approvals</p>
                   <div className="space-y-1">
                     {card.approvals.map((a) => (
-                      <div key={a.reviewerId} className="flex items-center gap-2 text-[9px] text-white/70 bg-white/[0.02] rounded px-2 py-1.5">
+                      <div key={a.reviewerId} className="flex items-center gap-2 text-[9px] text-ws-text-soft bg-ws-subtle rounded px-2 py-1.5">
                         {a.decision === "approved" ? (
-                          <CheckCircle2 className="w-3 h-3 text-green-400 shrink-0" />
+                          <CheckCircle2 className="w-3 h-3 text-green-700 shrink-0" />
                         ) : a.decision === "rejected" ? (
-                          <Ban className="w-3 h-3 text-red-400 shrink-0" />
+                          <Ban className="w-3 h-3 text-red-700 shrink-0" />
                         ) : (
-                          <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                          <Clock className="w-3 h-3 text-amber-700 shrink-0" />
                         )}
                         <span className="flex-1">{a.reviewerName}</span>
                         <span className="text-muted-foreground">{a.decision}</span>
@@ -368,27 +368,27 @@ export default function WorkCardDetail() {
 
               {/* ── Approval Actions (for reviewers) ── */}
               {isReviewer && pendingApproval && card.status !== "approved" && (
-                <div className="border border-white/5 rounded-lg p-3 space-y-2">
-                  <p className="text-[9px] text-white/70 font-medium">
+                <div className="border border-ws-border rounded-lg p-3 space-y-2">
+                  <p className="text-[9px] text-ws-text-soft font-medium">
                     {card.kind === "role_claim"
                       ? `Approve ${card.creatorName} as head of ${card.roleName}?`
                       : "Your Review"}
                   </p>
                   <div className="flex gap-1.5">
-                    <Button size="sm" className="h-7 text-[9px] px-3 bg-green-500/20 text-green-300 border border-green-500/30 hover:bg-green-500/30 flex-1"
+                    <Button size="sm" className="h-7 text-[9px] px-3 bg-green-100 text-green-700 border border-green-200 hover:bg-green-100 flex-1"
                       onClick={() => setShowApproveConfirm(true)}>
                       <Check className="w-2.5 h-2.5 mr-1" /> Approve
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-[9px] text-red-400 hover:text-red-300 border border-red-500/20 flex-1"
+                    <Button size="sm" variant="ghost" className="h-7 text-[9px] text-red-700 hover:text-red-800 border border-red-200 flex-1"
                       onClick={() => setShowRejectForm(true)}>
                       <Ban className="w-2.5 h-2.5 mr-1" /> Reject
                     </Button>
                   </div>
                   {showApproveConfirm && (
-                    <div className="bg-green-500/10 border border-green-500/20 rounded px-2 py-1.5">
-                      <p className="text-[9px] text-green-300 mb-1">Confirm approval?</p>
+                    <div className="bg-green-50 border border-green-200 rounded px-2 py-1.5">
+                      <p className="text-[9px] text-green-700 mb-1">Confirm approval?</p>
                       <div className="flex gap-1">
-                        <Button size="sm" className="h-6 text-[8px] px-2 bg-green-500/20 text-green-300" onClick={handleApprove}>
+                        <Button size="sm" className="h-6 text-[8px] px-2 bg-green-100 text-green-700" onClick={handleApprove}>
                           Yes, Approve
                         </Button>
                         <Button size="sm" variant="ghost" className="h-6 text-[8px] text-muted-foreground"
@@ -400,20 +400,20 @@ export default function WorkCardDetail() {
                     <div className="space-y-1.5">
                       <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
                         placeholder="Why are you rejecting this?"
-                        className="h-14 text-[9px] bg-white/5 border-white/10 text-white resize-none" />
+                        className="h-14 text-[9px] bg-ws-subtle border-ws-border text-ws-text resize-none" />
                       <div>
                         <p className="text-[8px] text-muted-foreground mb-0.5">Suggested changes</p>
                         {rejectChanges.map((c, i) => (
                           <div key={i} className="flex items-center gap-1 mt-0.5">
                             <Input value={c} onChange={(e) => {
                               const next = [...rejectChanges]; next[i] = e.target.value; setRejectChanges(next);
-                            }} placeholder="Change suggestion" className="h-6 text-[9px] bg-white/5 border-white/10 text-white flex-1" />
+                            }} placeholder="Change suggestion" className="h-6 text-[9px] bg-ws-subtle border-ws-border text-ws-text flex-1" />
                           </div>
                         ))}
                         <button onClick={() => setRejectChanges([...rejectChanges, ""])}
-                          className="text-[8px] text-amber-400 hover:text-amber-300 mt-0.5">+ Add suggestion</button>
+                          className="text-[8px] text-amber-700 hover:text-amber-800 mt-0.5">+ Add suggestion</button>
                       </div>
-                      <Button size="sm" className="h-6 text-[8px] px-2 bg-red-500/20 text-red-300 border border-red-500/30"
+                      <Button size="sm" className="h-6 text-[8px] px-2 bg-red-100 text-red-700 border border-red-200"
                         onClick={handleReject} disabled={!rejectReason.trim()}>
                         <Ban className="w-2 h-2 mr-1" /> Submit Rejection
                       </Button>
@@ -424,7 +424,7 @@ export default function WorkCardDetail() {
 
               {/* ── Edit Button (when rejected) ── */}
               {card.status === "rejected" && card.creatorId === currentUser.id && (
-                <Button size="sm" className="w-full h-7 text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30"
+                <Button size="sm" className="w-full h-7 text-[9px] bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-100"
                   onClick={handleStartEdit}>
                   <Plus className="w-2.5 h-2.5 mr-1" /> Update & Resubmit
                 </Button>
@@ -432,7 +432,7 @@ export default function WorkCardDetail() {
             </>
           )}
 
-          <Separator className="bg-white/5" />
+          <Separator className="bg-ws-subtle" />
 
           {/* ── Chat Section ── */}
           <div>
@@ -454,9 +454,9 @@ export default function WorkCardDetail() {
             <div className="flex gap-1.5">
               <Input value={message} onChange={(e) => setMessage(e.target.value)}
                 placeholder="Type a message..."
-                className="h-7 text-[9px] bg-white/5 border-white/10 text-white flex-1"
+                className="h-7 text-[9px] bg-ws-subtle border-ws-border text-ws-text flex-1"
                 onKeyDown={(e) => e.key === "Enter" && handleSendMessage()} />
-              <Button size="sm" className="h-7 w-7 p-0 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+              <Button size="sm" className="h-7 w-7 p-0 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
                 onClick={handleSendMessage} disabled={!message.trim()}>
                 <Send className="w-2.5 h-2.5" />
               </Button>

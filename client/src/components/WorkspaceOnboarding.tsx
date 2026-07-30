@@ -210,8 +210,8 @@ export default function WorkspaceOnboarding() {
   const isSolo = mode === "founder" || otherMembers.length === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md mx-4 bg-[#0f0f13] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/25 backdrop-blur-sm">
+      <div className="w-full max-w-md mx-4 bg-ws-bg border border-ws-border rounded-2xl shadow-2xl overflow-hidden">
         {/* Progress dots */}
         {step !== "welcome" && (
           <div className="flex items-center gap-1.5 px-8 pt-6">
@@ -220,7 +220,7 @@ export default function WorkspaceOnboarding() {
                 key={s}
                 className={cn(
                   "h-1 rounded-full transition-all duration-300 flex-1",
-                  i + 1 === stepIndex ? "bg-teal-400" : i + 1 < stepIndex ? "bg-teal-400/40" : "bg-white/10"
+                  i + 1 === stepIndex ? "bg-teal-400" : i + 1 < stepIndex ? "bg-teal-400/40" : "bg-ws-hover"
                 )}
               />
             ))}
@@ -230,10 +230,10 @@ export default function WorkspaceOnboarding() {
         <div className="p-8">
           {step === "welcome" && (
             <div className="text-center">
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-teal-500/20 to-indigo-500/20 flex items-center justify-center mx-auto mb-5">
-                <Building2 className="w-7 h-7 text-teal-400" />
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-teal-100 to-indigo-100 flex items-center justify-center mx-auto mb-5">
+                <Building2 className="w-7 h-7 text-teal-700" />
               </div>
-              <h2 className="text-xl font-semibold text-white mb-2">
+              <h2 className="text-xl font-semibold text-ws-text mb-2">
                 {mode === "founder" ? "Welcome to The Lyceum" : `Welcome, ${invitedMember?.name}`}
               </h2>
               <p className="text-sm text-muted-foreground leading-relaxed mb-6 max-w-sm mx-auto">
@@ -249,9 +249,9 @@ export default function WorkspaceOnboarding() {
                     ? "You're the only one here — no approval needed"
                     : "Your teammates review and approve your role",
                 ].map((text, i) => (
-                  <div key={i} className="flex items-center gap-3 text-sm text-white/70">
-                    <div className="w-6 h-6 rounded-full bg-teal-500/10 flex items-center justify-center shrink-0">
-                      <Sparkles className="w-3 h-3 text-teal-400" />
+                  <div key={i} className="flex items-center gap-3 text-sm text-ws-text-soft">
+                    <div className="w-6 h-6 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-3 h-3 text-teal-700" />
                     </div>
                     {text}
                   </div>
@@ -266,7 +266,7 @@ export default function WorkspaceOnboarding() {
 
           {step === "identity" && (
             <div>
-              <h3 className="text-base font-semibold text-white mb-1">
+              <h3 className="text-base font-semibold text-ws-text mb-1">
                 {mode === "founder" ? "Create your company" : "Your name tag"}
               </h3>
               <p className="text-[11px] text-muted-foreground mb-5">
@@ -276,7 +276,7 @@ export default function WorkspaceOnboarding() {
               <div className="space-y-4">
                 {mode === "founder" && (
                   <div>
-                    <label className="text-[10px] font-medium text-white/60 uppercase tracking-wider mb-1.5 block">
+                    <label className="text-[10px] font-medium text-ws-text-muted uppercase tracking-wider mb-1.5 block">
                       Company Name
                     </label>
                     <div className="flex gap-2">
@@ -285,12 +285,12 @@ export default function WorkspaceOnboarding() {
                         onChange={(e) => setCompanyName(e.target.value)}
                         placeholder="e.g. Acme Corp"
                         autoFocus
-                        className="h-9 text-xs bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50"
+                        className="h-9 text-xs bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50"
                       />
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-9 text-[10px] text-muted-foreground hover:text-white shrink-0"
+                        className="h-9 text-[10px] text-muted-foreground hover:text-ws-text shrink-0"
                         onClick={() => {
                           const adj = RANDOM_ADJECTIVES[Math.floor(Math.random() * RANDOM_ADJECTIVES.length)];
                           const noun = RANDOM_NOUNS[Math.floor(Math.random() * RANDOM_NOUNS.length)];
@@ -304,11 +304,11 @@ export default function WorkspaceOnboarding() {
                 )}
 
                 <div>
-                  <label className="text-[10px] font-medium text-white/60 uppercase tracking-wider mb-1.5 block">
+                  <label className="text-[10px] font-medium text-ws-text-muted uppercase tracking-wider mb-1.5 block">
                     Your Name Tag
                   </label>
                   {mode === "member" ? (
-                    <div className="flex items-center gap-2 h-9 px-3 rounded-md bg-white/5 border border-white/10 text-white text-xs">
+                    <div className="flex items-center gap-2 h-9 px-3 rounded-md bg-ws-subtle border border-ws-border text-ws-text text-xs">
                       <User className="w-3.5 h-3.5 text-muted-foreground" />
                       {invitedMember?.name}
                     </div>
@@ -319,7 +319,7 @@ export default function WorkspaceOnboarding() {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="e.g. Alex Chen"
-                        className="h-9 text-xs bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50 pl-8"
+                        className="h-9 text-xs bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50 pl-8"
                       />
                     </div>
                   )}
@@ -330,7 +330,7 @@ export default function WorkspaceOnboarding() {
 
           {step === "title" && (
             <div>
-              <h3 className="text-base font-semibold text-white mb-1">Your title</h3>
+              <h3 className="text-base font-semibold text-ws-text mb-1">Your title</h3>
               <p className="text-[11px] text-muted-foreground mb-5">
                 A short headline for {displayName || "you"} — how the team should think of your role.
               </p>
@@ -339,14 +339,14 @@ export default function WorkspaceOnboarding() {
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Growth Lead, Founding Engineer"
                 autoFocus
-                className="h-9 text-xs bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/50"
+                className="h-9 text-xs bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/50"
               />
             </div>
           )}
 
           {step === "responsibilities" && (
             <div>
-              <h3 className="text-base font-semibold text-white mb-1">Your responsibilities</h3>
+              <h3 className="text-base font-semibold text-ws-text mb-1">Your responsibilities</h3>
               <p className="text-[11px] text-muted-foreground mb-4">
                 Pick every department you'll cover. {isSolo ? "You'll be head of each right away." : "Your team reviews these before you're confirmed as head."}
               </p>
@@ -361,16 +361,16 @@ export default function WorkspaceOnboarding() {
                       className={cn(
                         "text-left px-2.5 py-2 rounded-lg border transition-colors",
                         selected
-                          ? "bg-teal-500/15 border-teal-500/40"
-                          : "bg-white/[0.03] border-white/10 hover:border-white/20"
+                          ? "bg-teal-100 border-teal-300"
+                          : "bg-ws-subtle border-ws-border hover:border-ws-border"
                       )}
                     >
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <span className="text-sm">{ROLE_ICONS[role.icon] || "💼"}</span>
-                        <span className={cn("text-[11px] font-medium", selected ? "text-teal-300" : "text-white/80")}>
+                        <span className={cn("text-[11px] font-medium", selected ? "text-teal-700" : "text-ws-text")}>
                           {role.name}
                         </span>
-                        {selected && <Check className="w-3 h-3 text-teal-400 ml-auto" />}
+                        {selected && <Check className="w-3 h-3 text-teal-700 ml-auto" />}
                       </div>
                       <p className="text-[9px] text-muted-foreground line-clamp-2">{role.description}</p>
                     </button>
@@ -387,9 +387,9 @@ export default function WorkspaceOnboarding() {
                       placeholder="Custom responsibility name"
                       autoFocus
                       onKeyDown={(e) => e.key === "Enter" && addCustom()}
-                      className="h-8 text-[11px] bg-white/5 border-white/10 text-white flex-1"
+                      className="h-8 text-[11px] bg-ws-subtle border-ws-border text-ws-text flex-1"
                     />
-                    <Button size="sm" className="h-8 text-[10px] bg-teal-500/20 text-teal-300 border border-teal-500/30" onClick={addCustom}>
+                    <Button size="sm" className="h-8 text-[10px] bg-teal-100 text-teal-700 border border-teal-200" onClick={addCustom}>
                       Add
                     </Button>
                     <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground" onClick={() => setAddingCustom(false)}>
@@ -399,7 +399,7 @@ export default function WorkspaceOnboarding() {
                 ) : (
                   <button
                     onClick={() => setAddingCustom(true)}
-                    className="flex items-center gap-1.5 text-[11px] text-teal-400 hover:text-teal-300"
+                    className="flex items-center gap-1.5 text-[11px] text-teal-700 hover:text-teal-800"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Add a custom role
@@ -411,23 +411,23 @@ export default function WorkspaceOnboarding() {
 
           {step === "review" && (
             <div>
-              <div className="w-10 h-10 rounded-lg bg-teal-500/15 flex items-center justify-center mb-4">
-                <Briefcase className="w-5 h-5 text-teal-400" />
+              <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center mb-4">
+                <Briefcase className="w-5 h-5 text-teal-700" />
               </div>
-              <h3 className="text-base font-semibold text-white mb-1">Review your profile</h3>
+              <h3 className="text-base font-semibold text-ws-text mb-1">Review your profile</h3>
               <p className="text-[11px] text-muted-foreground mb-4">
                 {isSolo
                   ? "No one else needs to approve this — you're the only one here."
                   : `${otherMembers.length} teammate${otherMembers.length !== 1 ? "s" : ""} will review before you're confirmed as head.`}
               </p>
 
-              <div className="bg-white/[0.03] border border-white/5 rounded-lg p-3 space-y-2">
+              <div className="bg-ws-subtle border border-ws-border rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-md bg-teal-500/20 flex items-center justify-center text-[10px] font-bold text-teal-300">
+                  <div className="w-7 h-7 rounded-md bg-teal-100 flex items-center justify-center text-[10px] font-bold text-teal-700">
                     {displayName.charAt(0) || "?"}
                   </div>
                   <div>
-                    <p className="text-xs text-white/90 font-medium">{displayName || "You"}</p>
+                    <p className="text-xs text-ws-text font-medium">{displayName || "You"}</p>
                     <p className="text-[9px] text-muted-foreground">{title || "No title set"}</p>
                   </div>
                 </div>
@@ -438,7 +438,7 @@ export default function WorkspaceOnboarding() {
                     return (
                       <span
                         key={id}
-                        className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-300 border border-teal-500/20"
+                        className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200"
                       >
                         {ROLE_ICONS[role.icon] || "💼"} {role.name}
                       </span>
@@ -452,7 +452,7 @@ export default function WorkspaceOnboarding() {
           {/* Footer nav */}
           {step !== "welcome" && (
             <div className="flex gap-2 mt-6">
-              <Button variant="ghost" className="h-9 text-xs text-muted-foreground hover:text-white flex-1" onClick={goBack}>
+              <Button variant="ghost" className="h-9 text-xs text-muted-foreground hover:text-ws-text flex-1" onClick={goBack}>
                 <ArrowLeft className="w-3.5 h-3.5 mr-1" />
                 Back
               </Button>
@@ -467,7 +467,7 @@ export default function WorkspaceOnboarding() {
                 >
                   {submitting ? (
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span className="w-3 h-3 rounded-full border-2 border-ws-border border-t-white animate-spin" />
                       {isSolo ? "Launching…" : "Submitting…"}
                     </span>
                   ) : (
@@ -481,7 +481,7 @@ export default function WorkspaceOnboarding() {
                 <Button
                   className={cn(
                     "h-9 text-xs flex-1",
-                    canProceed() ? "bg-teal-500 hover:bg-teal-600 text-white" : "bg-white/5 text-muted-foreground cursor-not-allowed"
+                    canProceed() ? "bg-teal-500 hover:bg-teal-600 text-white" : "bg-ws-subtle text-muted-foreground cursor-not-allowed"
                   )}
                   onClick={goNext}
                   disabled={!canProceed()}

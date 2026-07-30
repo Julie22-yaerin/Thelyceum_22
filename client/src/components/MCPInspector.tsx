@@ -226,13 +226,13 @@ export default function MCPInspector() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-ws-border">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md bg-indigo-500/15 flex items-center justify-center">
-            <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="w-6 h-6 rounded-md bg-indigo-100 flex items-center justify-center">
+            <Terminal className="w-3.5 h-3.5 text-indigo-700" />
           </div>
           <div>
-            <h3 className="text-xs font-semibold text-white">MCP Inspector</h3>
+            <h3 className="text-xs font-semibold text-ws-text">MCP Inspector</h3>
             <p className="text-[9px] text-muted-foreground">Tool Explorer & Debugger</p>
           </div>
         </div>
@@ -243,7 +243,7 @@ export default function MCPInspector() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Tool List */}
-        <div className="w-[140px] border-r border-white/5 flex flex-col">
+        <div className="w-[140px] border-r border-ws-border flex flex-col">
           <div className="p-2">
             <div className="relative">
               <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
@@ -251,7 +251,7 @@ export default function MCPInspector() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search tools..."
-                className="h-7 pl-6 text-[10px] bg-white/5 border-white/10 text-white placeholder:text-muted-foreground/40"
+                className="h-7 pl-6 text-[10px] bg-ws-subtle border-ws-border text-ws-text placeholder:text-muted-foreground/40"
               />
             </div>
           </div>
@@ -264,8 +264,8 @@ export default function MCPInspector() {
                   className={cn(
                     "w-full text-left px-2 py-1.5 rounded-md text-[10px] transition-colors",
                     selectedTool?.name === tool.name
-                      ? "bg-indigo-500/15 text-indigo-300 border border-indigo-500/20"
-                      : "text-muted-foreground hover:text-white hover:bg-white/5"
+                      ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
+                      : "text-muted-foreground hover:text-ws-text hover:bg-ws-hover"
                   )}
                 >
                   <div className="font-medium truncate">{tool.name.replace("lyceum_", "")}</div>
@@ -279,11 +279,11 @@ export default function MCPInspector() {
               )}
             </div>
           </ScrollArea>
-          <div className="p-2 border-t border-white/5">
+          <div className="p-2 border-t border-ws-border">
             <Button
               variant="ghost"
               size="sm"
-              className="w-full h-6 text-[9px] text-muted-foreground hover:text-white"
+              className="w-full h-6 text-[9px] text-muted-foreground hover:text-ws-text"
               onClick={fetchTools}
             >
               <RefreshCw className="w-2.5 h-2.5 mr-1" />
@@ -297,10 +297,10 @@ export default function MCPInspector() {
           {selectedTool ? (
             <>
               {/* Tool Info */}
-              <div className="px-3 py-2 border-b border-white/5">
+              <div className="px-3 py-2 border-b border-ws-border">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-xs font-semibold text-white">{selectedTool.name}</span>
-                  <Badge variant="outline" className="text-[8px] px-1 py-0 text-muted-foreground border-white/10">
+                  <span className="text-xs font-semibold text-ws-text">{selectedTool.name}</span>
+                  <Badge variant="outline" className="text-[8px] px-1 py-0 text-muted-foreground border-ws-border">
                     tool
                   </Badge>
                 </div>
@@ -308,33 +308,33 @@ export default function MCPInspector() {
               </div>
 
               {/* Arguments */}
-              <div className="px-3 py-2 border-b border-white/5">
+              <div className="px-3 py-2 border-b border-ws-border">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[9px] text-muted-foreground font-medium">Arguments (JSON)</span>
                   {argsHasError && (
-                    <span className="text-[8px] text-red-400">Invalid JSON</span>
+                    <span className="text-[8px] text-red-700">Invalid JSON</span>
                   )}
                 </div>
                 <textarea
                   value={argsText}
                   onChange={(e) => setArgsText(e.target.value)}
                   className={cn(
-                    "w-full h-20 bg-white/[0.03] border rounded-md px-2.5 py-1.5 text-[10px] font-mono text-gray-300 resize-none outline-none transition-colors",
-                    argsHasError ? "border-red-500/30" : "border-white/10 focus:border-indigo-500/30"
+                    "w-full h-20 bg-ws-subtle border rounded-md px-2.5 py-1.5 text-[10px] font-mono text-ws-text-muted resize-none outline-none transition-colors",
+                    argsHasError ? "border-red-200" : "border-ws-border focus:border-indigo-200"
                   )}
                   spellCheck={false}
                 />
               </div>
 
               {/* Call Button */}
-              <div className="px-3 py-2 border-b border-white/5">
+              <div className="px-3 py-2 border-b border-ws-border">
                 <Button
                   size="sm"
                   className={cn(
                     "w-full h-7 text-[10px] gap-1.5",
                     isCalling
-                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                      : "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/30"
+                      ? "bg-amber-100 text-amber-700 border border-amber-200"
+                      : "bg-indigo-100 text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
                   )}
                   onClick={handleCallTool}
                   disabled={isCalling || mcpStatus !== "connected"}
@@ -346,10 +346,10 @@ export default function MCPInspector() {
 
               {/* Response */}
               <div className="flex-1 flex flex-col min-h-0">
-                <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/5">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-ws-border">
                   <span className="text-[9px] text-muted-foreground font-medium">Response</span>
                   {responseText && (
-                    <button onClick={handleCopyResponse} className="text-muted-foreground hover:text-white transition-colors">
+                    <button onClick={handleCopyResponse} className="text-muted-foreground hover:text-ws-text transition-colors">
                       <Copy className="w-2.5 h-2.5" />
                     </button>
                   )}
@@ -360,7 +360,7 @@ export default function MCPInspector() {
                       <pre
                         className={cn(
                           "text-[10px] font-mono leading-relaxed whitespace-pre-wrap",
-                          responseError ? "text-red-400" : "text-green-300"
+                          responseError ? "text-red-700" : "text-green-700"
                         )}
                       >
                         {formatJson(responseText, responseText)}
@@ -394,10 +394,10 @@ export default function MCPInspector() {
 
       {/* Call History Bar */}
       {callHistory.length > 0 && (
-        <div className="border-t border-white/5">
+        <div className="border-t border-ws-border">
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className="w-full flex items-center justify-between px-4 py-1.5 text-[9px] text-muted-foreground hover:text-white/70 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-1.5 text-[9px] text-muted-foreground hover:text-ws-text transition-colors"
           >
             <span className="flex items-center gap-1.5">
               <RefreshCw className="w-2.5 h-2.5" />
@@ -420,7 +420,7 @@ export default function MCPInspector() {
                       setResponseText(entry.response);
                       setResponseError(!entry.success);
                     }}
-                    className="text-indigo-400 hover:text-indigo-300 shrink-0"
+                    className="text-indigo-700 hover:text-indigo-800 shrink-0"
                   >
                     <Terminal className="w-2 h-2" />
                   </button>

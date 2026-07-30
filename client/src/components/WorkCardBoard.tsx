@@ -34,13 +34,13 @@ import { ROLE_ICONS } from "@/lib/workCollaborationTypes";
 import type { WorkCard, WorkCardStatus } from "@/lib/workCollaborationTypes";
 
 const STATUS_META: Record<WorkCardStatus, { label: string; color: string; icon: React.ElementType }> = {
-  draft: { label: "Draft", color: "text-gray-400 border-gray-500/30 bg-gray-500/10", icon: FileText },
-  pending: { label: "Pending Review", color: "text-amber-400 border-amber-500/30 bg-amber-500/10", icon: Clock },
-  approved: { label: "Approved", color: "text-green-400 border-green-500/30 bg-green-500/10", icon: CheckCircle2 },
-  rejected: { label: "Needs Revision", color: "text-red-400 border-red-500/30 bg-red-500/10", icon: Ban },
-  in_progress: { label: "In Progress", color: "text-blue-400 border-blue-500/30 bg-blue-500/10", icon: ArrowRight },
-  completed: { label: "Completed", color: "text-teal-400 border-teal-500/30 bg-teal-500/10", icon: CheckCircle2 },
-  archived: { label: "Archived", color: "text-gray-500 border-gray-500/30 bg-gray-500/10", icon: X },
+  draft: { label: "Draft", color: "text-ws-text-muted border-ws-border bg-ws-hover", icon: FileText },
+  pending: { label: "Pending Review", color: "text-amber-700 border-amber-200 bg-amber-50", icon: Clock },
+  approved: { label: "Approved", color: "text-green-700 border-green-200 bg-green-50", icon: CheckCircle2 },
+  rejected: { label: "Needs Revision", color: "text-red-700 border-red-200 bg-red-50", icon: Ban },
+  in_progress: { label: "In Progress", color: "text-blue-700 border-blue-200 bg-blue-50", icon: ArrowRight },
+  completed: { label: "Completed", color: "text-teal-700 border-teal-200 bg-teal-50", icon: CheckCircle2 },
+  archived: { label: "Archived", color: "text-ws-text-muted border-ws-border bg-ws-hover", icon: X },
 };
 
 // ── Create Work Card Form ────────────────────────────────────────────────────
@@ -109,10 +109,10 @@ function CreateWorkCardForm({ onClose }: { onClose: () => void }) {
   const role = workRoles.find((r) => r.id === selectedRole);
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0e]">
-      <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between">
-        <h4 className="text-[10px] font-medium text-white/90">New Work Card</h4>
-        <button onClick={onClose} className="text-muted-foreground hover:text-white">
+    <div className="h-full flex flex-col bg-ws-bg">
+      <div className="px-3 py-2.5 border-b border-ws-border flex items-center justify-between">
+        <h4 className="text-[10px] font-medium text-ws-text">New Work Card</h4>
+        <button onClick={onClose} className="text-muted-foreground hover:text-ws-text">
           <X className="w-3 h-3" />
         </button>
       </div>
@@ -129,8 +129,8 @@ function CreateWorkCardForm({ onClose }: { onClose: () => void }) {
                   className={cn(
                     "px-2 py-1 rounded text-[9px] border transition-colors",
                     selectedRole === r.id
-                      ? "bg-teal-500/15 text-teal-300 border-teal-500/30"
-                      : "text-muted-foreground border-white/5 hover:text-white hover:border-white/10"
+                      ? "bg-teal-100 text-teal-700 border-teal-200"
+                      : "text-muted-foreground border-ws-border hover:text-ws-text hover:border-ws-border"
                   )}
                 >
                   {ROLE_ICONS[r.icon] || "📋"} {r.name}
@@ -145,7 +145,7 @@ function CreateWorkCardForm({ onClose }: { onClose: () => void }) {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="What are you working on?"
-              className="h-7 text-[10px] bg-white/5 border-white/10 text-white mt-1"
+              className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text mt-1"
             />
           </div>
 
@@ -155,7 +155,7 @@ function CreateWorkCardForm({ onClose }: { onClose: () => void }) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe the work in detail..."
-              className="h-16 text-[10px] bg-white/5 border-white/10 text-white mt-1 resize-none"
+              className="h-16 text-[10px] bg-ws-subtle border-ws-border text-ws-text mt-1 resize-none"
             />
           </div>
 
@@ -169,16 +169,16 @@ function CreateWorkCardForm({ onClose }: { onClose: () => void }) {
                     value={t}
                     onChange={(e) => handleTaskChange(i, e.target.value)}
                     placeholder={`Task ${i + 1}`}
-                    className="h-6 text-[9px] bg-white/5 border-white/10 text-white flex-1"
+                    className="h-6 text-[9px] bg-ws-subtle border-ws-border text-ws-text flex-1"
                   />
                   {tasks.length > 1 && (
-                    <button onClick={() => handleRemoveTask(i)} className="text-muted-foreground hover:text-red-400">
+                    <button onClick={() => handleRemoveTask(i)} className="text-muted-foreground hover:text-red-800">
                       <X className="w-2.5 h-2.5" />
                     </button>
                   )}
                 </div>
               ))}
-              <button onClick={handleAddTask} className="text-[9px] text-teal-400 hover:text-teal-300">
+              <button onClick={handleAddTask} className="text-[9px] text-teal-700 hover:text-teal-800">
                 + Add task
               </button>
             </div>
@@ -194,16 +194,16 @@ function CreateWorkCardForm({ onClose }: { onClose: () => void }) {
                     value={d}
                     onChange={(e) => handleDeliverableChange(i, e.target.value)}
                     placeholder={`Deliverable ${i + 1}`}
-                    className="h-6 text-[9px] bg-white/5 border-white/10 text-white flex-1"
+                    className="h-6 text-[9px] bg-ws-subtle border-ws-border text-ws-text flex-1"
                   />
                   {deliverables.length > 1 && (
-                    <button onClick={() => handleRemoveDeliverable(i)} className="text-muted-foreground hover:text-red-400">
+                    <button onClick={() => handleRemoveDeliverable(i)} className="text-muted-foreground hover:text-red-800">
                       <X className="w-2.5 h-2.5" />
                     </button>
                   )}
                 </div>
               ))}
-              <button onClick={handleAddDeliverable} className="text-[9px] text-indigo-400 hover:text-indigo-300">
+              <button onClick={handleAddDeliverable} className="text-[9px] text-indigo-700 hover:text-indigo-800">
                 + Add deliverable
               </button>
             </div>
@@ -215,7 +215,7 @@ function CreateWorkCardForm({ onClose }: { onClose: () => void }) {
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
               placeholder="e.g. 2026-08-15 or 'End of sprint'"
-              className="h-7 text-[10px] bg-white/5 border-white/10 text-white mt-1"
+              className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text mt-1"
             />
           </div>
 
@@ -225,16 +225,16 @@ function CreateWorkCardForm({ onClose }: { onClose: () => void }) {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Additional context for reviewers..."
-              className="h-12 text-[10px] bg-white/5 border-white/10 text-white mt-1 resize-none"
+              className="h-12 text-[10px] bg-ws-subtle border-ws-border text-ws-text mt-1 resize-none"
             />
           </div>
         </div>
       </ScrollArea>
 
-      <div className="px-3 py-2 border-t border-white/5">
+      <div className="px-3 py-2 border-t border-ws-border">
         <Button
           size="sm"
-          className="w-full h-7 text-[9px] bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+          className="w-full h-7 text-[9px] bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
           onClick={handleCreate}
           disabled={!title.trim() || !selectedRole}
         >
@@ -264,7 +264,7 @@ function WorkCardItem({
   return (
     <button
       onClick={() => onSelect(card.id)}
-      className="w-full text-left bg-white/[0.02] border border-white/5 rounded-lg p-3 hover:bg-white/[0.04] hover:border-white/10 transition-all group"
+      className="w-full text-left bg-ws-subtle border border-ws-border rounded-lg p-3 hover:bg-ws-hover hover:border-ws-border transition-all group"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
@@ -272,7 +272,7 @@ function WorkCardItem({
           <span className="text-sm">{ROLE_ICONS[card.roleName.toLowerCase().replace(/\s+/g, "_")] || "📋"}</span>
           <span className="text-[9px] text-muted-foreground">{card.roleName}</span>
           {card.kind === "role_claim" && (
-            <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-amber-400 border-amber-500/30 bg-amber-500/10">
+            <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-amber-700 border-amber-200 bg-amber-50">
               <Crown className="w-2 h-2 mr-0.5" />
               Role Claim
             </Badge>
@@ -285,7 +285,7 @@ function WorkCardItem({
       </div>
 
       {/* Title */}
-      <p className="text-[11px] font-medium text-white/90 mb-1.5 line-clamp-2">{activeRev?.title || "Untitled"}</p>
+      <p className="text-[11px] font-medium text-ws-text mb-1.5 line-clamp-2">{activeRev?.title || "Untitled"}</p>
 
       {/* Tasks preview */}
       {activeRev?.tasks && activeRev.tasks.length > 0 && (
@@ -300,10 +300,10 @@ function WorkCardItem({
         <div className="flex items-center gap-2 text-[8px] text-muted-foreground">
           <span>{card.creatorName}</span>
           {pendingApprovals > 0 && (
-            <span className="text-amber-400">{pendingApprovals} pending</span>
+            <span className="text-amber-700">{pendingApprovals} pending</span>
           )}
           {rejectedApprovals > 0 && (
-            <span className="text-red-400">{rejectedApprovals} rejected</span>
+            <span className="text-red-700">{rejectedApprovals} rejected</span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -314,7 +314,7 @@ function WorkCardItem({
             </span>
           )}
           {card.approvals.filter((a) => a.decision === "approved").length > 0 && (
-            <CheckCircle2 className="w-2.5 h-2.5 text-green-400" />
+            <CheckCircle2 className="w-2.5 h-2.5 text-green-700" />
           )}
         </div>
       </div>
@@ -368,16 +368,16 @@ export default function WorkCardBoard() {
   if (showCreateForm) return <CreateWorkCardForm onClose={() => setShowCreateForm(false)} />;
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0e]">
+    <div className="h-full flex flex-col bg-ws-bg">
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-white/5">
+      <div className="px-3 py-2.5 border-b border-ws-border">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-indigo-500/15 flex items-center justify-center">
-              <Users className="w-3 h-3 text-indigo-400" />
+            <div className="w-5 h-5 rounded bg-indigo-100 flex items-center justify-center">
+              <Users className="w-3 h-3 text-indigo-700" />
             </div>
-            <h4 className="text-[10px] font-medium text-white/90">Work Cards</h4>
-            <Badge variant="outline" className="text-[8px] h-4 px-1 text-muted-foreground border-white/5">
+            <h4 className="text-[10px] font-medium text-ws-text">Work Cards</h4>
+            <Badge variant="outline" className="text-[8px] h-4 px-1 text-muted-foreground border-ws-border">
               {workCards.length}
             </Badge>
           </div>
@@ -385,7 +385,7 @@ export default function WorkCardBoard() {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="w-5 h-5 text-muted-foreground hover:text-teal-400"
+              className="w-5 h-5 text-muted-foreground hover:text-teal-800"
               onClick={() => setShowWorkflowSetup(true)}
               title="AI Workflow Generator"
             >
@@ -394,7 +394,7 @@ export default function WorkCardBoard() {
             <Button
               variant="ghost"
               size="icon-sm"
-              className="w-5 h-5 text-muted-foreground hover:text-white"
+              className="w-5 h-5 text-muted-foreground hover:text-ws-text"
               onClick={() => setShowCreateForm(true)}
               title="New work card"
             >
@@ -402,7 +402,7 @@ export default function WorkCardBoard() {
             </Button>
             <button
               onClick={() => setShowWorkCardBoard(false)}
-              className="text-muted-foreground hover:text-white"
+              className="text-muted-foreground hover:text-ws-text"
             >
               <X className="w-3 h-3" />
             </button>
@@ -418,8 +418,8 @@ export default function WorkCardBoard() {
               className={cn(
                 "px-1.5 py-0.5 rounded text-[8px] transition-colors",
                 activeFilter === status
-                  ? "bg-teal-500/15 text-teal-300"
-                  : "text-muted-foreground hover:text-white"
+                  ? "bg-teal-100 text-teal-700"
+                  : "text-muted-foreground hover:text-ws-text"
               )}
             >
               {status === "all" ? "All" : STATUS_META[status]?.label || status} ({statusCounts[status] || 0})
@@ -431,8 +431,8 @@ export default function WorkCardBoard() {
               className={cn(
                 "px-1.5 py-0.5 rounded text-[8px] transition-colors",
                 activeFilter === "role_claim"
-                  ? "bg-amber-500/15 text-amber-300"
-                  : "text-amber-400/70 hover:text-amber-300"
+                  ? "bg-amber-100 text-amber-700"
+                  : "text-amber-700/70 hover:text-amber-800"
               )}
             >
               👑 Role Claims ({roleClaimCount})
@@ -447,13 +447,13 @@ export default function WorkCardBoard() {
           {filteredCards.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Users className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-[10px] text-white/70 font-medium mb-1">No work cards yet</p>
+              <p className="text-[10px] text-ws-text-soft font-medium mb-1">No work cards yet</p>
               <p className="text-[8px] text-muted-foreground mb-3">
                 Create a work card to share what you're working on.
               </p>
               <Button
                 size="sm"
-                className="h-6 text-[9px] px-2 bg-teal-500/20 text-teal-300 border border-teal-500/30"
+                className="h-6 text-[9px] px-2 bg-teal-100 text-teal-700 border border-teal-200"
                 onClick={() => setShowCreateForm(true)}
               >
                 <Plus className="w-2.5 h-2.5 mr-1" />

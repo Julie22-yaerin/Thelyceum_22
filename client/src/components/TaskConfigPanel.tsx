@@ -145,20 +145,20 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-[480px] max-h-[85vh] bg-[#0f0f13] border border-white/10 rounded-xl shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-charcoal/25 backdrop-blur-sm">
+      <div className="w-[480px] max-h-[85vh] bg-ws-bg border border-ws-border rounded-xl shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-ws-border flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-amber-500/15 flex items-center justify-center">
-              <Sliders className="w-3 h-3 text-amber-400" />
+            <div className="w-5 h-5 rounded bg-amber-100 flex items-center justify-center">
+              <Sliders className="w-3 h-3 text-amber-700" />
             </div>
             <div>
-              <h3 className="text-[11px] font-medium text-white/90">{node.title}</h3>
+              <h3 className="text-[11px] font-medium text-ws-text">{node.title}</h3>
               <p className="text-[8px] text-muted-foreground">Node Configuration</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-white">
+          <button onClick={onClose} className="text-muted-foreground hover:text-ws-text">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -168,7 +168,7 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
             {/* Model Selection */}
             {node.allocation.assigneeType === "AI" && (
               <div>
-                <p className="text-[9px] text-white/70 font-medium mb-1.5 flex items-center gap-1">
+                <p className="text-[9px] text-ws-text-soft font-medium mb-1.5 flex items-center gap-1">
                   <Bot className="w-3 h-3" /> AI Model
                 </p>
                 <div className="flex flex-wrap gap-1">
@@ -179,8 +179,8 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
                       className={cn(
                         "px-2 py-1 rounded text-[9px] border transition-colors",
                         selectedModel === m.id
-                          ? "bg-teal-500/15 text-teal-300 border-teal-500/30"
-                          : "text-muted-foreground border-white/5 hover:text-white hover:border-white/10"
+                          ? "bg-teal-100 text-teal-700 border-teal-200"
+                          : "text-muted-foreground border-ws-border hover:text-ws-text hover:border-ws-border"
                       )}
                     >
                       {m.label}
@@ -190,11 +190,11 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
               </div>
             )}
 
-            <Separator className="bg-white/5" />
+            <Separator className="bg-ws-subtle" />
 
             {/* Quality Threshold */}
             <div>
-              <p className="text-[9px] text-white/70 font-medium mb-1.5 flex items-center gap-1">
+              <p className="text-[9px] text-ws-text-soft font-medium mb-1.5 flex items-center gap-1">
                 <Target className="w-3 h-3" /> Quality Threshold
               </p>
               <div className="flex items-center gap-3">
@@ -208,7 +208,7 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
                 />
                 <span className={cn(
                   "text-[10px] font-mono w-8 text-right",
-                  qualityThreshold >= 90 ? "text-green-400" : qualityThreshold >= 80 ? "text-amber-400" : "text-muted-foreground"
+                  qualityThreshold >= 90 ? "text-green-700" : qualityThreshold >= 80 ? "text-amber-700" : "text-muted-foreground"
                 )}>
                   {qualityThreshold}%
                 </span>
@@ -220,18 +220,18 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
               </p>
             </div>
 
-            <Separator className="bg-white/5" />
+            <Separator className="bg-ws-subtle" />
 
             {/* Success Criteria */}
             <div>
-              <p className="text-[9px] text-white/70 font-medium mb-1.5">Success Criteria</p>
+              <p className="text-[9px] text-ws-text-soft font-medium mb-1.5">Success Criteria</p>
               <div className="space-y-1">
                 {successCriteria.map((c, i) => (
                   <div key={i} className="flex items-center gap-1 group">
-                    <Check className="w-2.5 h-2.5 text-teal-400 shrink-0" />
-                    <span className="text-[9px] text-white/70 flex-1">{c}</span>
+                    <Check className="w-2.5 h-2.5 text-teal-700 shrink-0" />
+                    <span className="text-[9px] text-ws-text-soft flex-1">{c}</span>
                     <button onClick={() => handleRemoveCriterion(i)}
-                      className="text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                      className="text-muted-foreground hover:text-red-800 opacity-0 group-hover:opacity-100 transition-opacity">
                       <X className="w-2.5 h-2.5" />
                     </button>
                   </div>
@@ -242,25 +242,25 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
                   value={newCriterion}
                   onChange={(e) => setNewCriterion(e.target.value)}
                   placeholder="Add criterion..."
-                  className="h-6 text-[9px] bg-white/5 border-white/10 text-white flex-1"
+                  className="h-6 text-[9px] bg-ws-subtle border-ws-border text-ws-text flex-1"
                   onKeyDown={(e) => e.key === "Enter" && handleAddCriterion()}
                 />
-                <Button size="sm" className="h-6 text-[8px] px-2 bg-teal-500/20 text-teal-300 border border-teal-500/30"
+                <Button size="sm" className="h-6 text-[8px] px-2 bg-teal-100 text-teal-700 border border-teal-200"
                   onClick={handleAddCriterion} disabled={!newCriterion.trim()}>
                   <Plus className="w-2 h-2 mr-0.5" /> Add
                 </Button>
               </div>
             </div>
 
-            <Separator className="bg-white/5" />
+            <Separator className="bg-ws-subtle" />
 
             {/* Auditors */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[9px] text-white/70 font-medium flex items-center gap-1">
+                <p className="text-[9px] text-ws-text-soft font-medium flex items-center gap-1">
                   <Shield className="w-3 h-3" /> Auditors
                 </p>
-                <Button size="sm" variant="ghost" className="h-5 text-[8px] text-muted-foreground hover:text-white"
+                <Button size="sm" variant="ghost" className="h-5 text-[8px] text-muted-foreground hover:text-ws-text"
                   onClick={handleAddAuditor}>
                   <Plus className="w-2 h-2 mr-0.5" /> Add Auditor
                 </Button>
@@ -268,14 +268,14 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
 
               <div className="space-y-2">
                 {auditors.map((auditor, ai) => (
-                  <div key={ai} className="bg-white/[0.02] border border-white/5 rounded-lg p-2.5">
+                  <div key={ai} className="bg-ws-subtle border border-ws-border rounded-lg p-2.5">
                     <div className="flex items-center justify-between mb-1.5">
-                      <Badge variant="outline" className="text-[8px] h-4 px-1.5 text-red-400 border-red-500/20">
+                      <Badge variant="outline" className="text-[8px] h-4 px-1.5 text-red-700 border-red-200">
                         {auditor.auditorType}
                         {auditor.customAuditorName && `: ${auditor.customAuditorName}`}
                       </Badge>
                       <button onClick={() => setAuditors(auditors.filter((_, i) => i !== ai))}
-                        className="text-muted-foreground hover:text-red-400">
+                        className="text-muted-foreground hover:text-red-800">
                         <Trash2 className="w-2.5 h-2.5" />
                       </button>
                     </div>
@@ -291,26 +291,26 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
                             <Input
                               value={rule.checkDescription}
                               onChange={(e) => handleUpdateCheckRule(ai, ri, "checkDescription", e.target.value)}
-                              className="h-5 text-[8px] bg-white/5 border-white/10 text-white"
+                              className="h-5 text-[8px] bg-ws-subtle border-ws-border text-ws-text"
                             />
                             <Input
                               value={rule.instruction}
                               onChange={(e) => handleUpdateCheckRule(ai, ri, "instruction", e.target.value)}
-                              className="h-5 text-[7px] bg-white/5 border-white/10 text-muted-foreground"
+                              className="h-5 text-[7px] bg-ws-subtle border-ws-border text-muted-foreground"
                             />
                           </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                             <select
                               value={rule.severity}
                               onChange={(e) => handleUpdateCheckRule(ai, ri, "severity", e.target.value)}
-                              className="h-5 text-[7px] bg-white/10 border-white/10 text-white rounded"
+                              className="h-5 text-[7px] bg-ws-hover border-ws-border text-ws-text rounded"
                             >
                               <option value="critical">Critical</option>
                               <option value="warning">Warning</option>
                               <option value="info">Info</option>
                             </select>
                             <button onClick={() => handleRemoveCheckRule(ai, ri)}
-                              className="text-muted-foreground hover:text-red-400">
+                              className="text-muted-foreground hover:text-red-800">
                               <X className="w-2 h-2" />
                             </button>
                           </div>
@@ -318,7 +318,7 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
                       ))}
                     </div>
 
-                    <Button size="sm" variant="ghost" className="h-4 text-[7px] text-muted-foreground hover:text-white mt-1"
+                    <Button size="sm" variant="ghost" className="h-4 text-[7px] text-muted-foreground hover:text-ws-text mt-1"
                       onClick={() => handleAddCheckRule(ai)}>
                       <Plus className="w-2 h-2 mr-0.5" /> Add check rule
                     </Button>
@@ -330,10 +330,10 @@ export default function TaskConfigPanel({ node, onSave, onClose }: TaskConfigPan
         </ScrollArea>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-white/5 flex gap-2">
-          <Button size="sm" variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-white"
+        <div className="px-4 py-3 border-t border-ws-border flex gap-2">
+          <Button size="sm" variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-ws-text"
             onClick={onClose}>Cancel</Button>
-          <Button size="sm" className="h-7 text-[9px] px-4 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30 flex-1"
+          <Button size="sm" className="h-7 text-[9px] px-4 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100 flex-1"
             onClick={handleSave}>
             <Save className="w-2.5 h-2.5 mr-1" /> Save Configuration
           </Button>

@@ -47,9 +47,9 @@ export default function SessionPage() {
   // No active session — show session list with link to onboarding
   if (!hasSession) {
     return (
-      <div className="min-h-screen bg-[#08080c] flex flex-col items-center justify-center p-6">
-        <Sparkles className="w-8 h-8 text-teal-400 mb-3" />
-        <p className="text-sm text-white/70 font-medium mb-1">No active session</p>
+      <div className="min-h-screen bg-ws-subtle flex flex-col items-center justify-center p-6">
+        <Sparkles className="w-8 h-8 text-teal-700 mb-3" />
+        <p className="text-sm text-ws-text-soft font-medium mb-1">No active session</p>
         <p className="text-[10px] text-muted-foreground mb-6">
           {allSessions.length > 0
             ? "Click a session below to resume, or start a new one"
@@ -71,16 +71,16 @@ export default function SessionPage() {
                     loadSession(s.id);
                     setLocation(`/session?session=${s.id}`);
                   }}
-                  className="w-full text-left bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 hover:border-teal-500/30 rounded-lg px-3 py-2.5 transition-all group"
+                  className="w-full text-left bg-ws-subtle hover:bg-ws-hover border border-ws-border hover:border-teal-200 rounded-lg px-3 py-2.5 transition-all group"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-white/80 font-medium flex-1 truncate">{s.name}</span>
+                    <span className="text-[10px] text-ws-text font-medium flex-1 truncate">{s.name}</span>
                     <span className="text-[8px] text-muted-foreground">
                       {new Date(s.createdAt).toLocaleDateString()}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-1.5">
-                    <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                    <div className="flex-1 h-1.5 rounded-full bg-ws-subtle overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
@@ -102,7 +102,7 @@ export default function SessionPage() {
         )}
 
         <Button
-          className="h-7 text-[9px] px-3 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+          className="h-7 text-[9px] px-3 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
           onClick={() => setLocation("/onboarding")}
         >
           Start Onboarding
@@ -112,19 +112,19 @@ export default function SessionPage() {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#08080c]">
+    <div className="h-screen w-screen flex flex-col bg-ws-subtle">
       {/* Minimal header */}
-      <div className="h-10 border-b border-white/5 bg-[#0a0a0e]/80 backdrop-blur-xl flex items-center px-4 shrink-0">
+      <div className="h-10 border-b border-ws-border bg-ws-bg/80 backdrop-blur-xl flex items-center px-4 shrink-0">
         <button
           onClick={() => setLocation("/canvas")}
-          className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-white transition-colors"
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-ws-text transition-colors"
         >
           <ArrowLeft className="w-3 h-3" />
           Canvas
         </button>
         <div className="flex items-center gap-1.5 ml-auto">
-          <Sparkles className="w-3 h-3 text-teal-400" />
-          <span className="text-[10px] text-white/70 font-medium">{currentSession.name}</span>
+          <Sparkles className="w-3 h-3 text-teal-700" />
+          <span className="text-[10px] text-ws-text-soft font-medium">{currentSession.name}</span>
           <span className="text-[8px] text-muted-foreground ml-1">
             {currentSession.tasks.filter((t) => t.status === "completed").length}/{currentSession.tasks.length} tasks
           </span>

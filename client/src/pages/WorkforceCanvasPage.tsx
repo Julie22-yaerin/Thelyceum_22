@@ -3,7 +3,7 @@ import WorkspaceOnboarding from "@/components/WorkspaceOnboarding";
 
 export default function WorkforceCanvasPage() {
   return (
-    <div className="fixed inset-0 bg-[#08080c]">
+    <div className="fixed inset-0 bg-ws-subtle">
       <WorkforceCanvas />
       <WorkspaceOnboarding />
     </div>

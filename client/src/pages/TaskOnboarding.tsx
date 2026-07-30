@@ -39,18 +39,18 @@ import ClippedVideoTab from "@/components/ui/clipped-video-tab";
 // ── Category Icons ───────────────────────────────────────────────────────────
 
 const CATEGORY_META: Record<TaskCategory, { icon: React.ElementType; color: string; label: string }> = {
-  data_annotation: { icon: Zap, color: "text-amber-400", label: "Data Annotation" },
-  data_collection: { icon: Database, color: "text-blue-400", label: "Data Collection" },
-  audio_speech: { icon: Mic, color: "text-purple-400", label: "Audio & Speech" },
-  explainable_ai: { icon: Brain, color: "text-teal-400", label: "Explainable AI" },
-  content_generation: { icon: Globe, color: "text-green-400", label: "Content Gen" },
-  code_development: { icon: Code2, color: "text-cyan-400", label: "Development" },
-  market_research: { icon: TrendingUp, color: "text-indigo-400", label: "Market Research" },
-  customer_support: { icon: Headphones, color: "text-pink-400", label: "Support" },
-  qa_testing: { icon: Bug, color: "text-red-400", label: "QA Testing" },
-  design: { icon: Palette, color: "text-rose-400", label: "Design" },
-  operations: { icon: Cpu, color: "text-orange-400", label: "Operations" },
-  custom: { icon: Plus, color: "text-white/70", label: "Custom" },
+  data_annotation: { icon: Zap, color: "text-amber-700", label: "Data Annotation" },
+  data_collection: { icon: Database, color: "text-blue-700", label: "Data Collection" },
+  audio_speech: { icon: Mic, color: "text-purple-700", label: "Audio & Speech" },
+  explainable_ai: { icon: Brain, color: "text-teal-700", label: "Explainable AI" },
+  content_generation: { icon: Globe, color: "text-green-700", label: "Content Gen" },
+  code_development: { icon: Code2, color: "text-cyan-700", label: "Development" },
+  market_research: { icon: TrendingUp, color: "text-indigo-700", label: "Market Research" },
+  customer_support: { icon: Headphones, color: "text-pink-700", label: "Support" },
+  qa_testing: { icon: Bug, color: "text-red-700", label: "QA Testing" },
+  design: { icon: Palette, color: "text-rose-700", label: "Design" },
+  operations: { icon: Cpu, color: "text-orange-700", label: "Operations" },
+  custom: { icon: Plus, color: "text-ws-text-soft", label: "Custom" },
 };
 
 // ── Step Indicator ───────────────────────────────────────────────────────────
@@ -63,15 +63,15 @@ function StepIndicator({ current, steps }: { current: number; steps: string[] })
           <div className={cn(
             "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all",
             i < current
-              ? "bg-teal-500/15 text-teal-300"
+              ? "bg-teal-100 text-teal-700"
               : i === current
-                ? "bg-teal-500/25 text-teal-200 border border-teal-500/30"
-                : "text-muted-foreground bg-white/[0.03]"
+                ? "bg-teal-100 text-teal-200 border border-teal-200"
+                : "text-muted-foreground bg-ws-subtle"
           )}>
             {i < current ? <Check className="w-2.5 h-2.5" /> : <span>{i + 1}</span>}
             {step}
           </div>
-          {i < steps.length - 1 && <div className="w-6 h-px bg-white/10" />}
+          {i < steps.length - 1 && <div className="w-6 h-px bg-ws-hover" />}
         </div>
       ))}
     </div>
@@ -84,17 +84,17 @@ function PlatformSelectStep({ onNext }: { onNext: () => void }) {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white mb-2">Choose Your Platform</h1>
+        <h1 className="text-2xl font-bold text-ws-text mb-2">Choose Your Platform</h1>
         <p className="text-sm text-muted-foreground">
           Select the type of work you want to accomplish. Each platform comes with pre-configured AI agents and workflows.
         </p>
       </div>
-      <div className="rounded-xl overflow-hidden border border-white/10 bg-[#0a0a0e]">
+      <div className="rounded-xl overflow-hidden border border-ws-border bg-ws-bg">
         <ClippedVideoTab />
       </div>
       <div className="flex justify-end mt-6">
         <Button
-          className="h-8 text-[10px] px-4 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+          className="h-8 text-[10px] px-4 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
           onClick={onNext}
         >
           Continue to Task Setup
@@ -154,12 +154,12 @@ function TaskSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-lg font-bold text-white">Select Your Tasks</h1>
+          <h1 className="text-lg font-bold text-ws-text">Select Your Tasks</h1>
           <p className="text-[11px] text-muted-foreground">
             Choose from AI-suggested tasks or create your own. Set timeframes and assign AI agents.
           </p>
         </div>
-        <Badge variant="outline" className="text-[9px] text-teal-400 border-teal-500/20">
+        <Badge variant="outline" className="text-[9px] text-teal-700 border-teal-200">
           {tasks.length} selected
         </Badge>
       </div>
@@ -172,13 +172,13 @@ function TaskSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
             const meta = CATEGORY_META[task.category] || CATEGORY_META.custom;
             const Icon = meta.icon;
             return (
-              <div key={task.id} className="flex items-center gap-2 bg-teal-500/5 border border-teal-500/10 rounded-lg px-3 py-2">
+              <div key={task.id} className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2">
                 <Icon className={cn("w-3 h-3 shrink-0", meta.color)} />
-                <span className="text-[10px] text-white/80 flex-1 truncate">{task.title}</span>
-                <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-muted-foreground border-white/5">
+                <span className="text-[10px] text-ws-text flex-1 truncate">{task.title}</span>
+                <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-muted-foreground border-ws-border">
                   {task.source === "ai_suggested" ? "AI" : "Custom"}
                 </Badge>
-                <button onClick={() => removeTask(task.id)} className="text-muted-foreground hover:text-red-400">
+                <button onClick={() => removeTask(task.id)} className="text-muted-foreground hover:text-red-800">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -192,7 +192,7 @@ function TaskSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search tasks..."
-        className="h-7 text-[10px] bg-white/5 border-white/10 text-white mb-3"
+        className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text mb-3"
       />
 
       {/* AI-suggested tasks grid */}
@@ -205,11 +205,11 @@ function TaskSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
               <button
                 key={i}
                 onClick={() => handleAddSuggested(suggestion)}
-                className="text-left bg-white/[0.02] border border-white/5 rounded-lg p-2.5 hover:bg-white/[0.04] hover:border-teal-500/30 transition-all group"
+                className="text-left bg-ws-subtle border border-ws-border rounded-lg p-2.5 hover:bg-ws-hover hover:border-teal-200 transition-all group"
               >
                 <div className="flex items-center gap-1.5 mb-1">
                   <Icon className={cn("w-3 h-3", meta.color)} />
-                  <span className="text-[9px] font-medium text-white/80 truncate flex-1">{suggestion.title}</span>
+                  <span className="text-[9px] font-medium text-ws-text truncate flex-1">{suggestion.title}</span>
                   <Plus className="w-2.5 h-2.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <p className="text-[8px] text-muted-foreground line-clamp-2">{suggestion.description}</p>
@@ -223,22 +223,22 @@ function TaskSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
       {!showCustomForm ? (
         <button
           onClick={() => setShowCustomForm(true)}
-          className="w-full py-2 border border-dashed border-white/10 rounded-lg text-[10px] text-muted-foreground hover:text-white hover:border-white/20 transition-colors"
+          className="w-full py-2 border border-dashed border-ws-border rounded-lg text-[10px] text-muted-foreground hover:text-ws-text hover:border-ws-border transition-colors"
         >
           <Plus className="w-3 h-3 inline mr-1" /> Create Custom Task
         </button>
       ) : (
-        <div className="bg-white/[0.02] border border-white/10 rounded-lg p-3 space-y-2">
+        <div className="bg-ws-subtle border border-ws-border rounded-lg p-3 space-y-2">
           <Input value={customTitle} onChange={(e) => setCustomTitle(e.target.value)}
-            placeholder="Task title" className="h-7 text-[10px] bg-white/5 border-white/10 text-white" />
+            placeholder="Task title" className="h-7 text-[10px] bg-ws-subtle border-ws-border text-ws-text" />
           <Textarea value={customDesc} onChange={(e) => setCustomDesc(e.target.value)}
-            placeholder="Description" className="h-14 text-[10px] bg-white/5 border-white/10 text-white resize-none" />
+            placeholder="Description" className="h-14 text-[10px] bg-ws-subtle border-ws-border text-ws-text resize-none" />
           <div className="flex gap-1.5">
-            <Button size="sm" className="h-6 text-[8px] px-2 bg-teal-500/20 text-teal-300 border border-teal-500/30"
+            <Button size="sm" className="h-6 text-[8px] px-2 bg-teal-100 text-teal-700 border border-teal-200"
               onClick={handleAddCustom} disabled={!customTitle.trim()}>
               <Plus className="w-2 h-2 mr-0.5" /> Add
             </Button>
-            <Button size="sm" variant="ghost" className="h-6 text-[8px] text-muted-foreground hover:text-white"
+            <Button size="sm" variant="ghost" className="h-6 text-[8px] text-muted-foreground hover:text-ws-text"
               onClick={() => setShowCustomForm(false)}>Cancel</Button>
           </div>
         </div>
@@ -246,10 +246,10 @@ function TaskSelectStep({ onBack, onNext }: { onBack: () => void; onNext: () => 
 
       {/* Navigation */}
       <div className="flex justify-between mt-6">
-        <Button variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-white" onClick={onBack}>
+        <Button variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-ws-text" onClick={onBack}>
           <ArrowLeft className="w-3 h-3 mr-1" /> Back
         </Button>
-        <Button className="h-7 text-[9px] px-3 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+        <Button className="h-7 text-[9px] px-3 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
           onClick={onNext} disabled={tasks.length === 0}>
           Configure AI Agents <ArrowRight className="w-3 h-3 ml-1" />
         </Button>
@@ -276,7 +276,7 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-lg font-bold text-white">Configure AI Agents</h1>
+          <h1 className="text-lg font-bold text-ws-text">Configure AI Agents</h1>
           <p className="text-[11px] text-muted-foreground">
             Set timeframes and assign AI agents by role to each task. AI agents will process their part once human output is ready.
           </p>
@@ -290,17 +290,17 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
           const isExpanded = expandedTask === task.id;
 
           return (
-            <div key={task.id} className="bg-white/[0.02] border border-white/5 rounded-lg overflow-hidden">
+            <div key={task.id} className="bg-ws-subtle border border-ws-border rounded-lg overflow-hidden">
               {/* Task header */}
               <button
                 onClick={() => setExpandedTask(isExpanded ? null : task.id)}
                 className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
               >
                 <Icon className={cn("w-3.5 h-3.5 shrink-0", meta.color)} />
-                <span className="text-[10px] text-white/80 flex-1 truncate">{task.title}</span>
+                <span className="text-[10px] text-ws-text flex-1 truncate">{task.title}</span>
                 <div className="flex items-center gap-1.5">
                   {task.assignedAIs.length > 0 && (
-                    <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-400 border-cyan-500/20">
+                    <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-700 border-cyan-200">
                       <Bot className="w-2 h-2 mr-0.5" /> {task.assignedAIs.length}
                     </Badge>
                   )}
@@ -310,7 +310,7 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
 
               {/* Expanded config */}
               {isExpanded && (
-                <div className="px-3 pb-3 space-y-2 border-t border-white/5 pt-2">
+                <div className="px-3 pb-3 space-y-2 border-t border-ws-border pt-2">
                   {/* Timeframe */}
                   <div>
                     <label className="text-[7px] text-muted-foreground uppercase tracking-wider">Timeframe (minutes)</label>
@@ -319,7 +319,7 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
                       onChange={(e) => updateTaskTimeframe(task.id, e.target.value)}
                       type="number"
                       min={5}
-                      className="h-6 text-[9px] bg-white/5 border-white/10 text-white mt-0.5"
+                      className="h-6 text-[9px] bg-ws-subtle border-ws-border text-ws-text mt-0.5"
                     />
                   </div>
 
@@ -331,16 +331,16 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
                     {task.assignedAIs.length > 0 && (
                       <div className="space-y-1 mb-1.5">
                         {task.assignedAIs.map((ai) => (
-                          <div key={ai.roleName} className="flex items-center gap-1.5 bg-cyan-500/5 border border-cyan-500/10 rounded px-2 py-1">
-                            <Bot className="w-2.5 h-2.5 text-cyan-400" />
-                            <span className="text-[9px] text-white/70 flex-1">{ai.roleName}</span>
+                          <div key={ai.roleName} className="flex items-center gap-1.5 bg-cyan-50 border border-cyan-200 rounded px-2 py-1">
+                            <Bot className="w-2.5 h-2.5 text-cyan-700" />
+                            <span className="text-[9px] text-ws-text-soft flex-1">{ai.roleName}</span>
                             {ai.requiresHumanOutput && (
-                              <Badge variant="outline" className="text-[6px] h-3 px-1 text-amber-400 border-amber-500/20">
+                              <Badge variant="outline" className="text-[6px] h-3 px-1 text-amber-700 border-amber-200">
                                 needs human
                               </Badge>
                             )}
                             <button onClick={() => removeAITask(task.id, ai.roleName)}
-                              className="text-muted-foreground hover:text-red-400">
+                              className="text-muted-foreground hover:text-red-800">
                               <X className="w-2 h-2" />
                             </button>
                           </div>
@@ -354,7 +354,7 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
                         <button
                           key={role.roleName}
                           onClick={() => handleAssign(task.id, role)}
-                          className="px-1.5 py-0.5 rounded text-[8px] border border-white/5 text-muted-foreground hover:text-cyan-400 hover:border-cyan-500/30 transition-colors"
+                          className="px-1.5 py-0.5 rounded text-[8px] border border-ws-border text-muted-foreground hover:text-cyan-800 hover:border-cyan-200 transition-colors"
                         >
                           <Bot className="w-2 h-2 inline mr-0.5" />
                           {role.roleName}
@@ -375,11 +375,11 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
                           const dep = tasks.find((t) => t.id === depId);
                           return (
                             <span key={depId}
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] bg-amber-50 text-amber-700 border border-amber-200"
                             >
                               {dep?.title || "..."}
                               <button onClick={() => removeTaskDependency(task.id, depId)}
-                                className="hover:text-red-400">
+                                className="hover:text-red-800">
                                 <X className="w-2 h-2" />
                               </button>
                             </span>
@@ -392,7 +392,7 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
                         <button
                           key={t.id}
                           onClick={() => addTaskDependency(task.id, t.id)}
-                          className="px-1.5 py-0.5 rounded text-[7px] border border-white/5 text-muted-foreground hover:text-amber-400 hover:border-amber-500/30 transition-colors"
+                          className="px-1.5 py-0.5 rounded text-[7px] border border-ws-border text-muted-foreground hover:text-amber-800 hover:border-amber-200 transition-colors"
                         >
                           + {t.title.slice(0, 20)}
                         </button>
@@ -408,10 +408,10 @@ function AIAssignStep({ onBack, onNext }: { onBack: () => void; onNext: () => vo
 
       {/* Navigation */}
       <div className="flex justify-between mt-6">
-        <Button variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-white" onClick={onBack}>
+        <Button variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-ws-text" onClick={onBack}>
           <ArrowLeft className="w-3 h-3 mr-1" /> Back
         </Button>
-        <Button className="h-7 text-[9px] px-3 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+        <Button className="h-7 text-[9px] px-3 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
           onClick={onNext}>
           Review & Confirm <ArrowRight className="w-3 h-3 ml-1" />
         </Button>
@@ -431,7 +431,7 @@ function ConfirmStep({ onBack, onConfirm }: { onBack: () => void; onConfirm: () 
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-lg font-bold text-white">Review Your Session</h1>
+        <h1 className="text-lg font-bold text-ws-text">Review Your Session</h1>
         <p className="text-[11px] text-muted-foreground">
           Confirm your task selection, AI assignments, and workflow before entering the workspace.
         </p>
@@ -439,16 +439,16 @@ function ConfirmStep({ onBack, onConfirm }: { onBack: () => void; onConfirm: () 
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-2.5 text-center">
-          <p className="text-lg font-bold text-indigo-300">{tasks.length}</p>
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2.5 text-center">
+          <p className="text-lg font-bold text-indigo-700">{tasks.length}</p>
           <p className="text-[8px] text-muted-foreground">Tasks</p>
         </div>
-        <div className="bg-cyan-500/5 border border-cyan-500/10 rounded-lg p-2.5 text-center">
-          <p className="text-lg font-bold text-cyan-300">{aiCount}</p>
+        <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-2.5 text-center">
+          <p className="text-lg font-bold text-cyan-700">{aiCount}</p>
           <p className="text-[8px] text-muted-foreground">AI Agents</p>
         </div>
-        <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-2.5 text-center">
-          <p className="text-lg font-bold text-amber-300">{totalMinutes}m</p>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-center">
+          <p className="text-lg font-bold text-amber-700">{totalMinutes}m</p>
           <p className="text-[8px] text-muted-foreground">Total Est.</p>
         </div>
       </div>
@@ -460,15 +460,15 @@ function ConfirmStep({ onBack, onConfirm }: { onBack: () => void; onConfirm: () 
           const meta = CATEGORY_META[task.category] || CATEGORY_META.custom;
           const Icon = meta.icon;
           return (
-            <div key={task.id} className="flex items-center gap-2 bg-white/[0.02] border border-white/5 rounded-lg px-3 py-2">
+            <div key={task.id} className="flex items-center gap-2 bg-ws-subtle border border-ws-border rounded-lg px-3 py-2">
               <span className="text-[8px] text-muted-foreground w-4">{i + 1}.</span>
               <Icon className={cn("w-3 h-3 shrink-0", meta.color)} />
-              <span className="text-[10px] text-white/80 flex-1 truncate">{task.title}</span>
-              <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-muted-foreground border-white/5">
+              <span className="text-[10px] text-ws-text flex-1 truncate">{task.title}</span>
+              <Badge variant="outline" className="text-[7px] h-3.5 px-1 text-muted-foreground border-ws-border">
                 {task.timeframe}m
               </Badge>
               {task.assignedAIs.map((ai) => (
-                <Badge key={ai.roleName} variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-400 border-cyan-500/20">
+                <Badge key={ai.roleName} variant="outline" className="text-[7px] h-3.5 px-1 text-cyan-700 border-cyan-200">
                   <Bot className="w-2 h-2 mr-0.5" />{ai.roleName.split(" ")[0]}
                 </Badge>
               ))}
@@ -478,7 +478,7 @@ function ConfirmStep({ onBack, onConfirm }: { onBack: () => void; onConfirm: () 
       </div>
 
       {/* Workflow visualization */}
-      <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3 mb-4">
+      <div className="bg-ws-subtle border border-ws-border rounded-lg p-3 mb-4">
         <p className="text-[8px] text-muted-foreground uppercase tracking-wider mb-2">Workflow Flow</p>
         <div className="flex flex-wrap items-center gap-1.5">
           {tasks.map((task, i) => (
@@ -486,8 +486,8 @@ function ConfirmStep({ onBack, onConfirm }: { onBack: () => void; onConfirm: () 
               <div className={cn(
                 "px-2 py-1 rounded text-[8px] font-medium",
                 task.assignedAIs.length > 0
-                  ? "bg-cyan-500/10 text-cyan-300 border border-cyan-500/20"
-                  : "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                  ? "bg-cyan-50 text-cyan-700 border border-cyan-200"
+                  : "bg-amber-50 text-amber-700 border border-amber-200"
               )}>
                 {task.assignedAIs.length > 0 ? "🤖" : "👤"} {task.title.slice(0, 20)}
               </div>
@@ -504,10 +504,10 @@ function ConfirmStep({ onBack, onConfirm }: { onBack: () => void; onConfirm: () 
 
       {/* Navigation */}
       <div className="flex justify-between">
-        <Button variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-white" onClick={onBack}>
+        <Button variant="ghost" className="h-7 text-[9px] text-muted-foreground hover:text-ws-text" onClick={onBack}>
           <ArrowLeft className="w-3 h-3 mr-1" /> Back
         </Button>
-        <Button className="h-8 text-[10px] px-4 bg-teal-500/20 text-teal-300 border border-teal-500/30 hover:bg-teal-500/30"
+        <Button className="h-8 text-[10px] px-4 bg-teal-100 text-teal-700 border border-teal-200 hover:bg-teal-100"
           onClick={onConfirm}>
           <Play className="w-3 h-3 mr-1" /> Start Working
         </Button>
@@ -558,19 +558,19 @@ export default function TaskOnboarding() {
   );
 
   return (
-    <div className="min-h-screen bg-[#08080c]">
+    <div className="min-h-screen bg-ws-subtle">
       {/* Header */}
-      <div className="border-b border-white/5 bg-[#0a0a0e]/80 backdrop-blur-xl">
+      <div className="border-b border-ws-border bg-ws-bg/80 backdrop-blur-xl">
         <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-teal-500/15 flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+            <div className="w-6 h-6 rounded bg-teal-100 flex items-center justify-center">
+              <Sparkles className="w-3.5 h-3.5 text-teal-700" />
             </div>
-            <span className="text-xs font-semibold text-white">The Lyceum</span>
+            <span className="text-xs font-semibold text-ws-text">The Lyceum</span>
           </div>
           <button
             onClick={() => setLocation("/canvas")}
-            className="text-[10px] text-muted-foreground hover:text-white transition-colors"
+            className="text-[10px] text-muted-foreground hover:text-ws-text transition-colors"
           >
             Skip to Canvas
           </button>
