@@ -80,7 +80,7 @@ export default function SystemGraph({
               key={i}
               d={`M ${l.x1} ${l.y1} C ${l.x1} ${midY}, ${l.x2} ${midY}, ${l.x2} ${l.y2}`}
               fill="none"
-              stroke="#d4d4d1"
+              stroke="var(--ws-flow-edge)"
               strokeWidth={1.5}
             />
           );

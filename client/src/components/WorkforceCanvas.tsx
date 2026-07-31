@@ -30,6 +30,7 @@ import { Link } from "wouter";
 import AgentNode from "@/components/AgentNode";
 import LyceumPanel from "@/components/LyceumPanel";
 import NodeInspectorDrawer from "@/components/NodeInspectorDrawer";
+import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useWorkforceStore, type AgentData } from "@/store/useWorkforceStore";
@@ -312,6 +313,7 @@ function CommandBar({
               <FlaskConical className={cn("w-3 h-3", lyceumPanelOpen && "text-teal-700")} />
             </Button>
             <WorkspaceToggleButton />
+            <ThemeToggle />
           </div>
         </div>
       </div>
@@ -384,21 +386,21 @@ function CanvasContent() {
         className="bg-ws-subtle"
         defaultEdgeOptions={{
           type: "smoothstep",
-          style: { stroke: "#d4d4d1", strokeWidth: 1.5 },
-          labelStyle: { fontSize: 9, fill: "#9b9a97", fontFamily: "Inter, sans-serif" },
+          style: { stroke: "var(--ws-flow-edge)", strokeWidth: 1.5 },
+          labelStyle: { fontSize: 9, fill: "var(--ws-flow-label)", fontFamily: "Inter, sans-serif" },
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#e0e0dd" />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--ws-flow-dot)" />
         <Controls
           className="bg-ws-bg border border-ws-border rounded-lg [&>button]:text-muted-foreground [&>button]:hover:text-ws-text [&>button]:hover:bg-ws-hover [&>button]:border-ws-border"
         />
         <MiniMap
-          nodeStrokeColor="#d4d4d1"
-          nodeColor="#f1f1ef"
+          nodeStrokeColor="var(--ws-flow-edge)"
+          nodeColor="var(--ws-minimap-node)"
           nodeBorderRadius={6}
-          maskColor="rgba(55,53,47,0.08)"
+          maskColor="var(--ws-minimap-mask)"
           className="border border-ws-border rounded-lg"
-          style={{ background: "#ffffff" }}
+          style={{ background: "var(--ws-minimap-bg)" }}
         />
 
         {/* Multiplayer cursor overlays */}

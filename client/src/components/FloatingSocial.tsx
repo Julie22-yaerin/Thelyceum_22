@@ -53,7 +53,7 @@ function FeedbackForm({ onBack, onSent }: { onBack: () => void; onSent: () => vo
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 12, scale: 0.9 }}
       transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-      className="bg-white border border-border rounded-2xl shadow-xl p-3 w-[280px]"
+      className="bg-white dark:bg-card border border-border rounded-2xl shadow-xl p-3 w-[280px]"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-2">

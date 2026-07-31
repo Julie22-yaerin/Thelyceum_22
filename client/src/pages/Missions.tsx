@@ -30,6 +30,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useWorkforceStore } from "@/store/useWorkforceStore";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import {
@@ -877,6 +878,8 @@ export default function Missions() {
               ))}
             </div>
           )}
+
+          <ThemeToggle className="shrink-0" />
         </div>
       </header>
 

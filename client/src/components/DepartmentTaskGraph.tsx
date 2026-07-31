@@ -138,7 +138,7 @@ export default function DepartmentTaskGraph({
                 key={i}
                 d={`M ${l.x1} ${l.y1} C ${midX} ${l.y1}, ${midX} ${l.y2}, ${l.x2} ${l.y2}`}
                 fill="none"
-                stroke={l.dim ? "#e0e0dd" : "#c9c9c5"}
+                stroke={l.dim ? "var(--ws-flow-dot)" : "var(--ws-flow-edge)"}
                 strokeWidth={1.5}
                 strokeDasharray={l.dim ? "4 4" : undefined}
               />

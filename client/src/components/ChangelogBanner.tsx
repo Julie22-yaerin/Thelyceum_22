@@ -50,19 +50,19 @@ export default function ChangelogBanner() {
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
           className="overflow-hidden"
         >
-          <div className="relative bg-gradient-to-r from-teal-50/80 via-white to-emerald-50/80 border-b border-teal-100/50">
+          <div className="relative bg-gradient-to-r from-teal-50/80 via-white to-emerald-50/80 border-b border-teal-100/50 dark:from-teal-500/10 dark:via-transparent dark:to-emerald-500/10 dark:border-teal-500/20 dark:bg-ws-subtle">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center gap-3">
               {/* Icon */}
               <div className="shrink-0 w-6 h-6 rounded-full bg-teal-500/10 flex items-center justify-center">
-                <Sparkles className="w-3 h-3 text-teal-600" />
+                <Sparkles className="w-3 h-3 text-teal-600 dark:text-teal-400" />
               </div>
 
               {/* Content */}
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-medium text-teal-800 leading-tight">
+                <p className="text-[11px] font-medium text-teal-800 dark:text-teal-300 leading-tight">
                   Day {entry.day} of development
                 </p>
-                <p className="text-[10px] text-teal-600/70 leading-relaxed mt-0.5">
+                <p className="text-[10px] text-teal-600/70 dark:text-teal-400/80 leading-relaxed mt-0.5">
                   <span className="font-medium">{entry.title}</span>
                   {" — "}
                   {entry.description}
@@ -72,7 +72,7 @@ export default function ChangelogBanner() {
               {/* Dismiss */}
               <button
                 onClick={handleDismiss}
-                className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-teal-400 hover:text-teal-600 hover:bg-teal-100/50 transition-colors"
+                className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-teal-400 hover:text-teal-600 hover:bg-teal-100/50 dark:hover:text-teal-300 dark:hover:bg-teal-500/20 transition-colors"
                 aria-label="Dismiss update"
               >
                 <X className="w-3 h-3" />
@@ -80,7 +80,7 @@ export default function ChangelogBanner() {
             </div>
 
             {/* Subtle bottom shimmer */}
-            <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-teal-200/50 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-teal-200/50 to-transparent dark:via-teal-500/30" />
           </div>
         </motion.div>
       )}

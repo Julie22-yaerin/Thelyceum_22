@@ -31,6 +31,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useSessionStore } from "@/store/useSessionStore";
 import { useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useWorkforceStore } from "@/store/useWorkforceStore";
@@ -302,6 +303,7 @@ export default function Dashboard() {
               <ShieldCheck className="w-3.5 h-3.5" />
               Governance
             </Link>
+            <ThemeToggle />
           </nav>
         </div>
       </header>

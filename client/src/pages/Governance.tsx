@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, Copy, Check, KeyRound, RefreshCw, ShieldCheck } from "lucide-react";
 import { DecisionQueue, type DecisionCardData, type DecisionAction } from "@/components/DecisionCard";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useSessionStore } from "@/store/useSessionStore";
 
 export default function Governance() {
@@ -93,13 +94,16 @@ export default function Governance() {
             <ArrowLeft className="w-3.5 h-3.5" />
             Departments
           </Link>
-          <button
-            onClick={load}
-            className="inline-flex items-center gap-1.5 text-sm text-ws-text-soft hover:text-ws-text transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={load}
+              className="inline-flex items-center gap-1.5 text-sm text-ws-text-soft hover:text-ws-text transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh
+            </button>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

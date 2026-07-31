@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -5,7 +6,7 @@ import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ChangelogBanner from "./components/ChangelogBanner";
 import FloatingSocial from "./components/FloatingSocial";
-import { ThemeProvider } from "./contexts/ThemeContext";
+import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import WorkforceCanvasPage from "./pages/WorkforceCanvasPage";
 import ThankYou from "./pages/ThankYou";
@@ -47,9 +48,12 @@ function Router() {
 }
 
 // NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
+// - The workspace is designed light-first, and its whole palette is driven by
+//   CSS variables in index.css (ws-* tokens + Tailwind palette chips).
+//   Toggling dark just flips those variables under `.dark`.
+// - The toggle is scoped to workspace routes: the landing page stays light by
+//   design, so the `dark` class is applied to <html> only while on a
+//   workspace route (see <DarkModeScope /> below).
 
 /**
  * Routes that own the whole viewport.
@@ -62,6 +66,44 @@ function Router() {
  */
 const FULL_BLEED_ROUTES = ["/war-room"];
 
+/** Routes that are part of the product workspace and honour the light/dark toggle. */
+const WORKSPACE_ROUTES = [
+  "/canvas",
+  "/app",
+  "/missions",
+  "/agents",
+  "/governance",
+  "/notes",
+  "/admin",
+  "/war-room",
+];
+
+/**
+ * Applies the `dark` class to <html> only on workspace routes. Landing and
+ * marketing pages always stay light — the workspace palette is what the
+ * toggle is for. Kept in sync with theme changes and route changes.
+ */
+function DarkModeScope() {
+  const [location] = useLocation();
+  const { theme } = useTheme();
+
+  // useLayoutEffect: apply the class before paint so a dark workspace never
+  // flashes light on load or on client-side navigation into it.
+  useLayoutEffect(() => {
+    const isWorkspace = WORKSPACE_ROUTES.some(
+      (r) => location === r || location.startsWith(`${r}/`)
+    );
+    const root = document.documentElement;
+    if (isWorkspace && theme === "dark") {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+  }, [location, theme]);
+
+  return null;
+}
+
 function App() {
   const [location] = useLocation();
   const fullBleed = FULL_BLEED_ROUTES.some(
@@ -70,10 +112,8 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
+      <ThemeProvider defaultTheme="light" switchable applyToRoot={false}>
+        <DarkModeScope />
         <TooltipProvider>
           {!fullBleed && <ChangelogBanner />}
           <Toaster />
