@@ -40,6 +40,31 @@ import RedAlertOverlay, { type RedAlert } from "@/components/warroom/RedAlertOve
 import IntegrationHub, { CloudSetup } from "@/components/warroom/IntegrationHub";
 import PlanReview, { type Plan } from "@/components/warroom/PlanReview";
 
+interface WorkTask {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+/** Reading persisted state must never break the page — bad JSON falls back. */
+function readLocal<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocal(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Quota exceeded or storage disabled. Losing persistence is survivable;
+    // throwing here would take the whole workbench down with it.
+  }
+}
+
 // ── Live feed ────────────────────────────────────────────────────────────────
 
 interface FeedEvent {
@@ -142,8 +167,25 @@ type RightTab = "ops" | "integrations" | "cloud";
 export default function WarRoom() {
   const licenseKey = useSessionStore((s) => s.licenseKey);
 
-  const [note, setNote] = useState("");
-  const [tasks, setTasks] = useState<{ id: string; text: string; done: boolean }[]>([]);
+  /**
+   * The workbench survives a refresh.
+   *
+   * It was plain component state, so a founder who typed half a strategy note
+   * and hit reload lost it with no warning. For a surface whose whole pitch is
+   * "you live here all day", silently discarding their work on navigation is
+   * the fastest way to make them stop trusting it.
+   *
+   * localStorage rather than the server, deliberately: the note explicitly
+   * promises nothing here is sent anywhere until they hand it over, and
+   * syncing it would quietly break that promise.
+   */
+  const [note, setNote] = useState(() => readLocal("lyceum.warroom.note", ""));
+  const [tasks, setTasks] = useState<WorkTask[]>(() =>
+    readLocal<WorkTask[]>("lyceum.warroom.tasks", [])
+  );
+
+  useEffect(() => writeLocal("lyceum.warroom.note", note), [note]);
+  useEffect(() => writeLocal("lyceum.warroom.tasks", tasks), [tasks]);
   const [newTask, setNewTask] = useState("");
   const [tab, setTab] = useState<RightTab>("ops");
   const [events, setEvents] = useState<FeedEvent[]>([]);
@@ -249,6 +291,25 @@ export default function WarRoom() {
       <header className="h-12 shrink-0 border-b border-white/10 flex items-center gap-3 px-4">
         <Bot className="w-4 h-4 text-emerald-400" />
         <span className="text-[13px] font-medium">War Room</span>
+
+        {/* The war room hides global chrome to own the viewport, which also
+            removed every way out of it. A full-screen surface with no exit is
+            a trap, however good the surface is. */}
+        <nav className="hidden sm:flex items-center gap-0.5 ml-2">
+          {[
+            { href: "/app", label: "Dashboard" },
+            { href: "/agents", label: "Agents" },
+            { href: "/missions", label: "Departments" },
+          ].map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              className="px-2 py-1 rounded-md text-[12px] text-white/40 hover:text-white/80 hover:bg-white/5 transition-colors"
+            >
+              {l.label}
+            </a>
+          ))}
+        </nav>
 
         <div className="ml-4 flex-1 max-w-md relative">
           <Command className="w-3.5 h-3.5 text-white/30 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -356,7 +417,8 @@ export default function WarRoom() {
                 className="w-full min-h-[280px] p-3.5 rounded-lg bg-white/[0.03] border border-white/10 text-[13px] leading-relaxed placeholder:text-white/25 focus:outline-none focus:border-white/25 resize-y"
               />
               <p className="text-[10px] text-white/25 mt-1.5">
-                Local to this browser. Nothing here is sent to an agent unless you hand it over.
+                Saved in this browser and kept across refreshes. Nothing here is sent to an agent
+                unless you hand it over.
               </p>
             </section>
           </div>

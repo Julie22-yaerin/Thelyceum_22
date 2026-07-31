@@ -169,3 +169,121 @@
     font-family: var(--font-display);
   }
 }
+
+/* ── Pricing tiers ────────────────────────────────────────────────────────────
+   Three tiers above the deposit card. The order on screen is deliberate: the
+   real pricing is what a buyer should anchor on, and the beta deposit sits
+   below it as an entry point rather than as the product's price. */
+
+.landing-tiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  max-width: 940px;
+  margin: 0 auto 28px;
+}
+
+.landing-tier {
+  position: relative;
+  border: 1px solid var(--ws-border, #e6e6e3);
+  border-radius: 16px;
+  padding: 24px 20px 20px;
+  background: var(--ws-bg, #fff);
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-tier--highlight {
+  border-color: rgba(13, 148, 136, 0.45);
+  box-shadow: 0 1px 3px rgba(13, 148, 136, 0.08), 0 8px 24px rgba(13, 148, 136, 0.06);
+}
+
+.landing-tier__badge {
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: #0d9488;
+  color: #fff;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.landing-tier__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ws-text, #1f1f1d);
+  margin-bottom: 6px;
+}
+
+.landing-tier__price {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ws-text, #1f1f1d);
+  line-height: 1.1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.landing-tier__period {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ws-text-muted, #8a8a85);
+}
+
+.landing-tier__anchor {
+  font-size: 12px;
+  color: var(--ws-text-soft, #63635e);
+  margin: 10px 0 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ws-border, #e6e6e3);
+}
+
+.landing-tier__lines {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.landing-tier__lines li {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ws-text-soft, #63635e);
+  padding-left: 16px;
+  position: relative;
+}
+
+.landing-tier__lines li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #0d9488;
+  opacity: 0.7;
+}
+
+.landing-roi-note {
+  max-width: 700px;
+  margin: 0 auto 40px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: var(--ws-subtle, #f7f7f5);
+  border: 1px solid var(--ws-border, #e6e6e3);
+}
+
+.landing-roi-note p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ws-text-soft, #63635e);
+  margin: 0;
+}

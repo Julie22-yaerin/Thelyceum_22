@@ -397,33 +397,118 @@ export default function Home() {
 
       {/* ── Value Pitch + Pricing ─────────────────────────────────────────────── */}
       <section id="pricing" className="landing-section">
-        <motion.div {...fadeInUp} style={{ textAlign: "center", maxWidth: 600, margin: "0 auto 56px" }}>
-          <p className="landing-section__label">Enter the Live Beta</p>
-          <h2 className="landing-section__title">
-            Immediate access. Daily evolution.
-          </h2>
+        <motion.div {...fadeInUp} style={{ textAlign: "center", maxWidth: 640, margin: "0 auto 48px" }}>
+          <p className="landing-section__label">Pricing</p>
+          <h2 className="landing-section__title">Priced against what it protects.</h2>
           <p className="landing-section__desc" style={{ margin: "0 auto" }}>
-            Skip the wait. Pre-order unlocks the live beta workspace instantly —
-            you'll see new features, improvements, and fixes every single day
-            as we build in the open.
+            The Lyceum sits between your agents and every model provider. It is priced on the
+            inference spend it governs, because that is what scales with the value — not seats,
+            which have nothing to do with it.
           </p>
         </motion.div>
 
+        {/* The real product pricing. A governance layer that costs less than a
+            team lunch reads as a toy to the person who has to approve it — the
+            number is itself a claim about how seriously to take the product. */}
+        <motion.div {...fadeInUp} className="landing-tiers">
+          {[
+            {
+              name: "Team",
+              price: "$2,000",
+              period: "/month, billed annually",
+              anchor: "Governs up to $25k/mo of inference",
+              lines: [
+                "The five-stage pipeline on every call",
+                "Second Brain with per-department isolation",
+                "Audit trail and ROI reporting",
+                "Emergency brake, 1000ms SLA",
+              ],
+              highlight: true,
+            },
+            {
+              name: "Company",
+              price: "$5,000",
+              period: "/month, billed annually",
+              anchor: "Governs up to $100k/mo of inference",
+              lines: [
+                "Everything in Team",
+                "Scheduled red-team runs",
+                "Cross-workspace immunity network",
+                "SSO, and your own cloud (AWS / GCP / Azure)",
+              ],
+              highlight: false,
+            },
+            {
+              name: "Enterprise",
+              price: "From $120k",
+              period: "/year",
+              anchor: "Unmetered, self-hosted available",
+              lines: [
+                "Everything in Company",
+                "Self-host in your VPC",
+                "Custom policy and arbitration rules",
+                "Named engineer, contractual SLA",
+              ],
+              highlight: false,
+            },
+          ].map((tier) => (
+            <div
+              key={tier.name}
+              className={`landing-tier${tier.highlight ? " landing-tier--highlight" : ""}`}
+            >
+              {tier.highlight && <div className="landing-tier__badge">Most companies start here</div>}
+              <div className="landing-tier__name">{tier.name}</div>
+              <div className="landing-tier__price">
+                {tier.price}
+                <span className="landing-tier__period">{tier.period}</span>
+              </div>
+              <p className="landing-tier__anchor">{tier.anchor}</p>
+              <ul className="landing-tier__lines">
+                {tier.lines.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </motion.div>
+
+        <motion.div {...fadeInUp} className="landing-roi-note">
+          <p>
+            <strong>The arithmetic that matters.</strong> A team burning $30k/month on inference
+            typically wastes 5–10% on loops, retries and calls that should never have been made.
+            Team pays for itself at the low end of that. The dashboard separates what we can prove
+            from what we estimate, so the number survives your CFO.
+          </p>
+        </motion.div>
+
+        {/* Early access is a DEPOSIT against the above, not a substitute for it.
+            Presenting it as the price would anchor the product at $52 forever. */}
         <motion.div {...fadeInUp} className="landing-pricing">
-          <div className="landing-pricing__name">Live Beta Access</div>
+          <div className="landing-pricing__name">Live Beta — founding customer</div>
           <div className="landing-pricing__price">
             $52
-            <span className="landing-pricing__price-sub">one-time deposit</span>
+            <span className="landing-pricing__price-sub">
+              deposit, credited in full against your first year
+            </span>
           </div>
 
           <ul className="landing-pricing__perks">
             {[
-              { icon: Zap, text: "Live beta access — the deterministic proxy and audit harness" },
-              { icon: Shield, text: "Bring your own keys — swap one base URL, no SDK, no refactor" },
-              { icon: Sparkles, text: "Daily improvements, with a changelog you can actually read" },
+              {
+                icon: Zap,
+                text: "Workspace today — the full pipeline, brain, red team and audit trail",
+              },
+              {
+                icon: Shield,
+                text: "Bring your own keys — swap one base URL, no SDK, no refactor",
+              },
               {
                 icon: Crown,
-                text: "Founder Pass ($222) adds roadmap voting, governance templates (Dev / Finance / MCP), and a private support channel",
+                text: "Founding rate locked for three years when you convert to an annual plan",
+              },
+              {
+                icon: Sparkles,
+                text: "Founder Pass ($222) adds roadmap voting, governance templates and a private channel",
               },
             ].map((perk, i) => (
               <li key={i} className="landing-pricing__perk">
@@ -440,11 +525,12 @@ export default function Home() {
             style={{ width: "100%", justifyContent: "center", padding: "14px 20px" }}
             onClick={() => setWaitlistOpen(true)}
           >
-            Enter Live Beta — $52
+            Start — $52 deposit
             <ArrowRight style={{ width: 14, height: 14 }} />
           </button>
           <p className="landing-pricing__note">
-            One-time deposit. No subscription required.
+            Refundable for 30 days. If you never convert to an annual plan, you keep the beta
+            workspace and owe nothing further.
           </p>
         </motion.div>
       </section>
