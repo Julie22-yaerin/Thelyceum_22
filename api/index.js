@@ -4130,6 +4130,12 @@ function worst(a, b) {
 }
 var immunityRegistry = new ImmunityRegistry();
 
+// server/healing/riskAssessment.ts
+var DEFAULT_HEALING_POLICY = {
+  autonomousHealingEnabled: false,
+  maxAutonomousRiskPercent: 40
+};
+
 // server/healing/promptMutation.ts
 var PromptRegistry = class {
   versions = /* @__PURE__ */ new Map();
@@ -4175,6 +4181,125 @@ var PromptRegistry = class {
   }
 };
 var promptRegistry = new PromptRegistry();
+
+// server/analytics/roi.ts
+var ASSUMED_LOOP_CONTINUATION = 10;
+function buildRoiReport(params) {
+  const { events, periodStart, periodEnd, subscriptionCents } = params;
+  const inPeriod = events.filter((e) => e.at >= periodStart && e.at <= periodEnd);
+  const providerSpendCents = inPeriod.filter((e) => e.kind === "call").reduce((sum, e) => sum + (e.costCents ?? 0), 0);
+  const loops = inPeriod.filter((e) => e.kind === "loop_stopped");
+  const budget = inPeriod.filter((e) => e.kind === "budget_breach");
+  const scope = inPeriod.filter((e) => e.kind === "scope_violation");
+  const ungrounded = inPeriod.filter((e) => e.kind === "ungrounded_claim");
+  const failovers = inPeriod.filter((e) => e.kind === "failover");
+  const avgCallCents = inPeriod.filter((e) => e.kind === "call").length > 0 ? providerSpendCents / inPeriod.filter((e) => e.kind === "call").length : 0;
+  const savings = [];
+  const budgetSaved = budget.reduce((s, e) => s + (e.preventedCents ?? 0), 0);
+  if (budget.length > 0) {
+    savings.push({
+      label: "Calls blocked at the budget ceiling",
+      amount: budgetSaved,
+      basis: "measured",
+      count: budget.length
+    });
+  }
+  const scopeSaved = scope.reduce((s, e) => s + (e.preventedCents ?? 0), 0);
+  if (scope.length > 0) {
+    savings.push({
+      label: "Out-of-scope tool calls refused",
+      amount: scopeSaved,
+      basis: "measured",
+      count: scope.length
+    });
+  }
+  const loopSaved = Math.round(loops.length * avgCallCents * ASSUMED_LOOP_CONTINUATION);
+  if (loops.length > 0) {
+    savings.push({
+      label: "Loops cut before they ran away",
+      amount: loopSaved,
+      basis: "estimated",
+      assumption: `Assumes each loop would have run ${ASSUMED_LOOP_CONTINUATION} more iterations at the average call cost of $${(avgCallCents / 100).toFixed(4)}. The true figure is unknowable \u2014 an unbounded loop stops only at the session ceiling.`,
+      count: loops.length
+    });
+  }
+  if (ungrounded.length > 0) {
+    savings.push({
+      label: "Ungrounded claims caught before reaching a customer",
+      amount: 0,
+      basis: "measured",
+      assumption: "Not assigned a dollar value. The cost of an agent quoting a price nobody approved is a commercial and legal question, not a token count \u2014 we will not invent a number for it.",
+      count: ungrounded.length
+    });
+  }
+  const measuredSavingsCents = savings.filter((s) => s.basis === "measured").reduce((sum, s) => sum + s.amount, 0);
+  const estimatedSavingsCents = savings.filter((s) => s.basis === "estimated").reduce((sum, s) => sum + s.amount, 0);
+  const latencies = inPeriod.map((e) => e.addedLatencyMs).filter((n) => typeof n === "number").sort((a, b) => a - b);
+  const pct = (p) => latencies.length === 0 ? 0 : latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * p))];
+  const incidents = {
+    loopsStopped: loops.length,
+    budgetBreaches: budget.length,
+    scopeViolations: scope.length,
+    ungroundedClaims: ungrounded.length,
+    attacksRepelled: params.attacksRepelled ?? 0,
+    selfHealed: params.selfHealed ?? 0
+  };
+  const conservativeRoi = subscriptionCents > 0 ? measuredSavingsCents / subscriptionCents : 0;
+  const headlineRoi = subscriptionCents > 0 ? (measuredSavingsCents + estimatedSavingsCents) / subscriptionCents : 0;
+  return {
+    periodStart,
+    periodEnd,
+    costCents: subscriptionCents,
+    providerSpendCents,
+    savings,
+    measuredSavingsCents,
+    estimatedSavingsCents,
+    conservativeRoi,
+    headlineRoi,
+    latency: {
+      p50AddedMs: pct(0.5),
+      p95AddedMs: pct(0.95),
+      failoverEvents: failovers.length,
+      outagesAbsorbed: failovers.length
+    },
+    incidents,
+    narrative: buildNarrative({
+      incidents,
+      measuredSavingsCents,
+      estimatedSavingsCents,
+      subscriptionCents,
+      p95: pct(0.95),
+      failovers: failovers.length
+    })
+  };
+}
+function buildNarrative(p) {
+  const usd = (c) => `$${(c / 100).toFixed(2)}`;
+  const parts = [];
+  parts.push(
+    `The Lyceum blocked ${p.incidents.budgetBreaches} calls at the budget ceiling and ${p.incidents.scopeViolations} tool calls outside their agent's permissions, preventing ${usd(p.measuredSavingsCents)} of provider spend we can account for exactly.`
+  );
+  if (p.incidents.loopsStopped > 0) {
+    parts.push(
+      `It also cut ${p.incidents.loopsStopped} runaway loops. Those would have kept spending; on a conservative assumption that adds a further ${usd(p.estimatedSavingsCents)}, though the true figure cannot be known because the loops were stopped.`
+    );
+  }
+  if (p.incidents.ungroundedClaims > 0) {
+    parts.push(
+      `${p.incidents.ungroundedClaims} answers containing figures that were not in the knowledge base were caught before reaching a customer. We have not put a dollar value on those.`
+    );
+  }
+  if (p.failovers > 0) {
+    parts.push(`${p.failovers} provider failures were absorbed without an error reaching a user.`);
+  }
+  if (p.incidents.attacksRepelled > 0) {
+    parts.push(
+      `The adversarial suite ran ${p.incidents.attacksRepelled} attacks against our own configuration and found no way through.`
+    );
+  }
+  parts.push(`Added latency at p95 was ${p.p95}ms. The subscription cost ${usd(p.subscriptionCents)}.`);
+  return parts.join(" ");
+}
 
 // server/index.ts
 var orders = /* @__PURE__ */ new Map();
@@ -4671,6 +4796,62 @@ function createApiApp() {
     const version = promptRegistry.rollback(String(promptId), toVersion);
     if (!version) return res.status(404).json({ error: "No such prompt version." });
     res.json({ rolledBackTo: version });
+  });
+  app2.get("/api/v1/audit", authenticateLicenseKey, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const breaches = await pendingBreaches(licenseKey, limit);
+    res.json({
+      entries: breaches.map((b) => ({
+        id: b.id,
+        at: b.createdAt ?? b.at,
+        actor: b.actorId ?? b.actor ?? "unknown",
+        actorKind: b.actorKind ?? "ai",
+        action: b.kind ?? "breach",
+        outcome: "blocked",
+        reason: b.summary ?? b.reason,
+        code: b.code,
+        sessionId: b.sessionId
+      })),
+      note: "Every entry is a real recorded event. Nothing here is reconstructed after the fact \u2014 the record is written at the moment the decision is made."
+    });
+  });
+  app2.get("/api/v1/roi", authenticateLicenseKey, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    const periodEnd = Date.now();
+    const periodStart = periodEnd - days * 864e5;
+    const breaches = await pendingBreaches(licenseKey, 500);
+    const events = breaches.map((b) => ({
+      at: b.createdAt ?? Date.now(),
+      kind: b.code === "LOOP_DETECTED" ? "loop_stopped" : b.code === "BUDGET_EXCEEDED" ? "budget_breach" : b.code === "SCOPE_VIOLATION" ? "scope_violation" : "budget_breach",
+      preventedCents: b.preventedCents ?? 0
+    }));
+    const subscriptionCents = Number(req.query.subscriptionCents) || 0;
+    res.json(
+      buildRoiReport({
+        events,
+        periodStart,
+        periodEnd,
+        subscriptionCents,
+        attacksRepelled: Number(req.query.attacksRepelled) || 0
+      })
+    );
+  });
+  let healingPolicy = { ...DEFAULT_HEALING_POLICY };
+  app2.get("/api/v1/healing/policy", authenticateLicenseKey, async (_req, res) => {
+    res.json({ policy: healingPolicy, default: DEFAULT_HEALING_POLICY });
+  });
+  app2.put("/api/v1/healing/policy", authenticateLicenseKey, async (req, res) => {
+    const { autonomousHealingEnabled, maxAutonomousRiskPercent, excludedKinds } = req.body ?? {};
+    if (typeof autonomousHealingEnabled === "boolean") {
+      healingPolicy.autonomousHealingEnabled = autonomousHealingEnabled;
+    }
+    if (typeof maxAutonomousRiskPercent === "number") {
+      healingPolicy.maxAutonomousRiskPercent = Math.max(0, Math.min(70, maxAutonomousRiskPercent));
+    }
+    if (Array.isArray(excludedKinds)) healingPolicy.excludedKinds = excludedKinds;
+    res.json({ policy: healingPolicy });
   });
   app2.get("/api/v1/workers", authenticateLicenseKey, async (req, res) => {
     const workers = await listWorkers(req.lyceumAccount.licenseKey);

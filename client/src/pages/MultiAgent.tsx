@@ -28,9 +28,18 @@ import {
   Plus,
   Shield,
   Zap,
+  Swords,
+  Network,
+  Wrench,
+  TrendingUp,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "@/store/useSessionStore";
+import RedTeamPanel from "@/components/RedTeamPanel";
+import HivePanel from "@/components/HivePanel";
+import HealingPanel from "@/components/HealingPanel";
+import RoiPanel from "@/components/RoiPanel";
 
 // ── Types mirroring the API ──────────────────────────────────────────────────
 
@@ -87,11 +96,22 @@ const PILLARS = [
   { n: 5, name: "Unit Economics", detail: "Logs cost, latency, token burn", icon: FileText },
 ];
 
+type Tab = "setup" | "redteam" | "hive" | "healing" | "roi";
+
+const TABS: { id: Tab; label: string; icon: typeof Settings2 }[] = [
+  { id: "setup", label: "Setup", icon: Settings2 },
+  { id: "redteam", label: "Red team", icon: Swords },
+  { id: "hive", label: "Immunity", icon: Network },
+  { id: "healing", label: "Self-healing", icon: Wrench },
+  { id: "roi", label: "ROI & audit", icon: TrendingUp },
+];
+
 export default function MultiAgent() {
   const licenseKey = useSessionStore((s) => s.licenseKey);
   const [data, setData] = useState<BrainResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [openDept, setOpenDept] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("setup");
 
   useEffect(() => {
     if (!licenseKey) {
@@ -144,7 +164,13 @@ export default function MultiAgent() {
   }
 
   return (
-    <Shell>
+    <Shell tab={tab} onTab={setTab}>
+      {tab === "redteam" && <RedTeamPanel licenseKey={licenseKey} />}
+      {tab === "hive" && <HivePanel licenseKey={licenseKey} />}
+      {tab === "healing" && <HealingPanel licenseKey={licenseKey} />}
+      {tab === "roi" && <RoiPanel licenseKey={licenseKey} />}
+      {tab !== "setup" ? null : (
+      <>
       {data.ephemeralStore && (
         <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
           <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
@@ -251,6 +277,8 @@ export default function MultiAgent() {
       </section>
 
       <AddDocument licenseKey={licenseKey} departments={data.departments} />
+      </>
+      )}
     </Shell>
   );
 }
@@ -542,14 +570,44 @@ function AddDocument({
 
 // ── Layout bits ──────────────────────────────────────────────────────────────
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({
+  children,
+  tab,
+  onTab,
+}: {
+  children: React.ReactNode;
+  tab?: Tab;
+  onTab?: (t: Tab) => void;
+}) {
   return (
     <div className="min-h-screen bg-ws-canvas">
       <div className="border-b border-ws-border bg-ws-bg">
-        <div className="max-w-4xl mx-auto px-5 py-4 flex items-center gap-2">
+        <div className="max-w-4xl mx-auto px-5 pt-4 flex items-center gap-2">
           <Bot className="w-4 h-4 text-teal" />
-          <h1 className="text-sm font-semibold text-ws-text">Multi-agent setup</h1>
+          <h1 className="text-sm font-semibold text-ws-text">Agent operations</h1>
         </div>
+        {tab && onTab && (
+          <div className="max-w-4xl mx-auto px-5 flex gap-1 overflow-x-auto">
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onTab(t.id)}
+                  className={cn(
+                    "px-3 py-2.5 text-[13px] whitespace-nowrap border-b-2 -mb-px transition-colors inline-flex items-center gap-1.5",
+                    tab === t.id
+                      ? "border-teal text-ws-text font-medium"
+                      : "border-transparent text-ws-text-muted hover:text-ws-text"
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
       <div className="max-w-4xl mx-auto px-5 py-6">{children}</div>
     </div>

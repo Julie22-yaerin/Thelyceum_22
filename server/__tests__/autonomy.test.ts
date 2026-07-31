@@ -204,6 +204,9 @@ describe("self-healing", () => {
       incident: incident(),
       currentPrompt: "Return the data.",
       run: async () => '{"ok":true}', // fixed
+      // Autonomy is off by default, so it must be opted into explicitly —
+      // see the risk-gate tests below.
+      policy: { autonomousHealingEnabled: true, maxAutonomousRiskPercent: 40 },
     });
     expect(result.healed).toBe(true);
     expect(result.sandbox?.passed).toBe(true);
@@ -264,6 +267,7 @@ describe("self-healing", () => {
       incident: incident(),
       currentPrompt: "original prompt",
       run: async () => '{"ok":true}',
+      policy: { autonomousHealingEnabled: true, maxAutonomousRiskPercent: 40 },
     });
     expect(promptRegistry.active("p1")?.version).toBe(2);
 
@@ -590,5 +594,171 @@ describe("immunity — distribution safety", () => {
     for (const benign of BENIGN_CORPUS) {
       expect(immunityRegistry.screen("tenant-new", benign).blocked).toBe(false);
     }
+  });
+});
+
+// ── Risk gate: the healer does not get to decide alone ───────────────────────
+
+const { assessRisk, decideHealing, DEFAULT_HEALING_POLICY } = await import(
+  "../healing/riskAssessment.js"
+);
+const { buildRoiReport } = await import("../analytics/roi.js");
+
+describe("healing risk gate", () => {
+  const inc = (over: Partial<Incident> = {}): Incident => ({
+    id: "inc_r",
+    licenseKey: LICENSE,
+    agentId: "a1",
+    promptId: "pr1",
+    kind: "malformed_json",
+    occurrences: 5,
+    firstSeen: Date.now(),
+    lastSeen: Date.now(),
+    samples: ["broken {"],
+    wastedCents: 100,
+    status: "open",
+    ...over,
+  });
+
+  it("is OFF by default — a capability this big must be chosen", () => {
+    expect(DEFAULT_HEALING_POLICY.autonomousHealingEnabled).toBe(false);
+    expect(DEFAULT_HEALING_POLICY.maxAutonomousRiskPercent).toBe(40);
+  });
+
+  it("proposes instead of applying when autonomy is off", async () => {
+    const result = await healIncident({
+      incident: inc(),
+      currentPrompt: "Return data.",
+      run: async () => '{"ok":true}',
+    });
+    // The fix WORKS — it just isn't allowed to ship itself.
+    expect(result.sandbox?.passed).toBe(true);
+    expect(result.healed).toBe(false);
+    expect(result.disposition).toBe("proposed");
+    expect(promptRegistry.active("pr1")).toBeNull();
+  });
+
+  it("applies a low-risk fix once autonomy is on", async () => {
+    const result = await healIncident({
+      incident: inc(),
+      currentPrompt: "Return data.",
+      run: async () => '{"ok":true}',
+      policy: { autonomousHealingEnabled: true, maxAutonomousRiskPercent: 40 },
+    });
+    expect(result.disposition).toBe("applied");
+    expect(result.risk!.riskPercent).toBeLessThan(40);
+  });
+
+  it("refuses to apply a high-risk fix even with autonomy on", async () => {
+    const result = await healIncident({
+      // refusal_loop is the risky one: its repair LOOSENS when the agent refuses.
+      incident: inc({ kind: "refusal_loop", samples: ["I can't help."] }),
+      currentPrompt: "Be careful.",
+      run: async () => "Here is the answer.",
+      policy: { autonomousHealingEnabled: true, maxAutonomousRiskPercent: 40 },
+      affectedAgents: 15,
+    });
+    expect(result.risk!.riskPercent).toBeGreaterThanOrEqual(40);
+    expect(result.disposition).toBe("proposed");
+    expect(result.summary).toContain("NOT APPLIED");
+  });
+
+  it("scores blast radius — the same fix is riskier across many agents", () => {
+    const common = { incident: inc(), currentPrompt: "x", candidate: "x y", priorHeals: 0 };
+    const one = assessRisk({ ...common, affectedAgents: 1 });
+    const many = assessRisk({ ...common, affectedAgents: 20 });
+    expect(many.riskPercent).toBeGreaterThan(one.riskPercent);
+  });
+
+  it("gets more cautious each time a prompt needs healing again", () => {
+    const common = { incident: inc(), currentPrompt: "x", candidate: "x y", affectedAgents: 1 };
+    const first = assessRisk({ ...common, priorHeals: 0 });
+    const third = assessRisk({ ...common, priorHeals: 3 });
+    // Repeated healing means the diagnosis is probably wrong, not that we
+    // should keep layering repairs.
+    expect(third.riskPercent).toBeGreaterThan(first.riskPercent);
+  });
+
+  it("honours a per-kind exclusion", () => {
+    const assessment = assessRisk({
+      incident: inc(),
+      currentPrompt: "x",
+      candidate: "x y",
+      affectedAgents: 1,
+      priorHeals: 0,
+    });
+    const decision = decideHealing({
+      assessment,
+      policy: {
+        autonomousHealingEnabled: true,
+        maxAutonomousRiskPercent: 90,
+        excludedKinds: ["malformed_json"],
+      },
+      incident: inc(),
+    });
+    expect(decision.action).toBe("propose");
+  });
+});
+
+// ── ROI: measured and estimated must never be conflated ──────────────────────
+
+describe("ROI report", () => {
+  const now = Date.now();
+  const events = [
+    { at: now, kind: "call" as const, costCents: 10 },
+    { at: now, kind: "call" as const, costCents: 10 },
+    { at: now, kind: "budget_breach" as const, preventedCents: 250 },
+    { at: now, kind: "loop_stopped" as const },
+    { at: now, kind: "ungrounded_claim" as const },
+  ];
+
+  it("keeps measured and estimated apart", () => {
+    const r = buildRoiReport({
+      events,
+      periodStart: now - 1000,
+      periodEnd: now + 1000,
+      subscriptionCents: 200_000,
+    });
+    expect(r.measuredSavingsCents).toBe(250);
+    expect(r.estimatedSavingsCents).toBeGreaterThan(0);
+    expect(r.conservativeRoi).toBeLessThan(r.headlineRoi);
+
+    const estimated = r.savings.find((s) => s.basis === "estimated");
+    // An estimate without its assumption written down is a number nobody can argue with.
+    expect(estimated?.assumption).toBeTruthy();
+  });
+
+  it("assigns no dollar value to a caught invention", () => {
+    const r = buildRoiReport({
+      events,
+      periodStart: now - 1000,
+      periodEnd: now + 1000,
+      subscriptionCents: 200_000,
+    });
+    const line = r.savings.find((s) => s.label.includes("Ungrounded"));
+    expect(line?.amount).toBe(0);
+    expect(line?.count).toBe(1);
+  });
+
+  it("reports zero rather than projecting when there is no traffic", () => {
+    const r = buildRoiReport({
+      events: [],
+      periodStart: now - 1000,
+      periodEnd: now + 1000,
+      subscriptionCents: 200_000,
+    });
+    expect(r.measuredSavingsCents).toBe(0);
+    expect(r.estimatedSavingsCents).toBe(0);
+    expect(r.headlineRoi).toBe(0);
+  });
+
+  it("excludes events outside the period", () => {
+    const r = buildRoiReport({
+      events: [{ at: now - 100_000, kind: "budget_breach", preventedCents: 9999 }],
+      periodStart: now - 1000,
+      periodEnd: now + 1000,
+      subscriptionCents: 100,
+    });
+    expect(r.measuredSavingsCents).toBe(0);
   });
 });

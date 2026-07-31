@@ -42,6 +42,8 @@ import { DEFAULT_FAILOVER } from "./pillars/failover.js";
 import { runRedTeam, summarise as summariseRedTeam, corpusSummary } from "./redteam/engine.js";
 import { immunityRegistry } from "./hive/immunity.js";
 import { promptRegistry, healIncident } from "./healing/promptMutation.js";
+import { DEFAULT_HEALING_POLICY, type HealingPolicy } from "./healing/riskAssessment.js";
+import { buildRoiReport, type UsageEvent } from "./analytics/roi.js";
 
 // ── Lemon Squeezy payment tracking ──────────────────────────────────────────
 // In-memory order store, keyed by the `ref` we attach to each checkout link.
@@ -696,6 +698,91 @@ export function createApiApp(): express.Express {
     const version = promptRegistry.rollback(String(promptId), toVersion);
     if (!version) return res.status(404).json({ error: "No such prompt version." });
     res.json({ rolledBackTo: version });
+  });
+
+  // ── Audit trail ──────────────────────────────────────────────────────────
+  // Backed by the evidence graph, which already records every proxied call and
+  // every breach. This exposes it as a flat, filterable log because that is
+  // the shape an auditor asks for.
+
+  app.get("/api/v1/audit", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const licenseKey = req.lyceumAccount!.licenseKey;
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const breaches = await pendingBreaches(licenseKey, limit);
+    res.json({
+      entries: breaches.map((b: any) => ({
+        id: b.id,
+        at: b.createdAt ?? b.at,
+        actor: b.actorId ?? b.actor ?? "unknown",
+        actorKind: b.actorKind ?? "ai",
+        action: b.kind ?? "breach",
+        outcome: "blocked",
+        reason: b.summary ?? b.reason,
+        code: b.code,
+        sessionId: b.sessionId,
+      })),
+      note:
+        "Every entry is a real recorded event. Nothing here is reconstructed after the fact — " +
+        "the record is written at the moment the decision is made.",
+    });
+  });
+
+  // ── ROI ──────────────────────────────────────────────────────────────────
+
+  app.get("/api/v1/roi", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const licenseKey = req.lyceumAccount!.licenseKey;
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    const periodEnd = Date.now();
+    const periodStart = periodEnd - days * 86_400_000;
+
+    // Derived from the evidence graph rather than a separate counter, so the
+    // ROI number and the audit trail can never disagree.
+    const breaches = await pendingBreaches(licenseKey, 500);
+    const events: UsageEvent[] = breaches.map((b: any) => ({
+      at: b.createdAt ?? Date.now(),
+      kind:
+        b.code === "LOOP_DETECTED"
+          ? ("loop_stopped" as const)
+          : b.code === "BUDGET_EXCEEDED"
+            ? ("budget_breach" as const)
+            : b.code === "SCOPE_VIOLATION"
+              ? ("scope_violation" as const)
+              : ("budget_breach" as const),
+      preventedCents: b.preventedCents ?? 0,
+    }));
+
+    const subscriptionCents = Number(req.query.subscriptionCents) || 0;
+    res.json(
+      buildRoiReport({
+        events,
+        periodStart,
+        periodEnd,
+        subscriptionCents,
+        attacksRepelled: Number(req.query.attacksRepelled) || 0,
+      })
+    );
+  });
+
+  // ── Healing policy ───────────────────────────────────────────────────────
+  // Autonomous healing is OFF until an operator turns it on here.
+
+  let healingPolicy: HealingPolicy = { ...DEFAULT_HEALING_POLICY };
+
+  app.get("/api/v1/healing/policy", authenticateLicenseKey, async (_req: AuthedRequest, res: express.Response) => {
+    res.json({ policy: healingPolicy, default: DEFAULT_HEALING_POLICY });
+  });
+
+  app.put("/api/v1/healing/policy", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const { autonomousHealingEnabled, maxAutonomousRiskPercent, excludedKinds } = req.body ?? {};
+    if (typeof autonomousHealingEnabled === "boolean") {
+      healingPolicy.autonomousHealingEnabled = autonomousHealingEnabled;
+    }
+    if (typeof maxAutonomousRiskPercent === "number") {
+      // Clamped: a workspace cannot set the ceiling to 100 and call it a policy.
+      healingPolicy.maxAutonomousRiskPercent = Math.max(0, Math.min(70, maxAutonomousRiskPercent));
+    }
+    if (Array.isArray(excludedKinds)) healingPolicy.excludedKinds = excludedKinds;
+    res.json({ policy: healingPolicy });
   });
 
   app.get("/api/v1/workers", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {

@@ -26,6 +26,13 @@
  */
 
 import type { FailureKind, Incident } from "./incidents.js";
+import {
+  assessRisk,
+  decideHealing,
+  DEFAULT_HEALING_POLICY,
+  type HealingPolicy,
+  type RiskAssessment,
+} from "./riskAssessment.js";
 
 export interface PromptVersion {
   id: string;
@@ -271,6 +278,15 @@ export interface HealResult {
   newVersion?: PromptVersion;
   /** Money the failing calls were burning, now stopped. */
   savedCents: number;
+  /** The healer's assessment of its own change. Always present when a fix exists. */
+  risk?: RiskAssessment;
+  /**
+   * What happened to the tested fix:
+   *   applied  — risk was under the ceiling and autonomy was on
+   *   proposed — fix is prepared and waiting for a person
+   *   none     — no fix could be generated or it failed the sandbox
+   */
+  disposition: "applied" | "proposed" | "none";
 }
 
 /**
@@ -282,9 +298,18 @@ export async function healIncident(params: {
   currentPrompt: string;
   run: SandboxRunner;
   budgetMs?: number;
+  /** Operator settings. Autonomous healing is OFF unless this says otherwise. */
+  policy?: HealingPolicy;
+  /** How many agents run on this prompt — the blast radius of a bad fix. */
+  affectedAgents?: number;
 }): Promise<HealResult> {
   const { incident, currentPrompt } = params;
-  const base = { incidentId: incident.id, savedCents: incident.wastedCents };
+  const policy = params.policy ?? DEFAULT_HEALING_POLICY;
+  const base = {
+    incidentId: incident.id,
+    savedCents: incident.wastedCents,
+    disposition: "none" as const,
+  };
 
   try {
     const candidate = mutatePrompt(currentPrompt, incident.kind);
@@ -322,17 +347,51 @@ export async function healIncident(params: {
       };
     }
 
+    // The fix works. Whether it may be applied without a person is a separate
+    // question, and the healer does not get to answer it for itself.
+    const priorHeals = promptRegistry
+      .history(incident.promptId)
+      .filter((v) => v.origin === "healer").length;
+
+    const risk = assessRisk({
+      incident,
+      currentPrompt,
+      candidate,
+      affectedAgents: params.affectedAgents ?? 1,
+      priorHeals,
+    });
+
+    const decision = decideHealing({ assessment: risk, policy, incident });
+
+    if (decision.action !== "apply") {
+      return {
+        ...base,
+        healed: false,
+        disposition: "proposed",
+        candidate,
+        sandbox,
+        risk,
+        summary:
+          `${incident.kind} on ${incident.agentId}, ${incident.occurrences} times. ` +
+          `A fix was generated and passed ${sandbox.ranCases} sandbox case(s). NOT APPLIED — ${decision.reason} ` +
+          `$${(incident.wastedCents / 100).toFixed(2)} is still being wasted until someone applies it.`,
+      };
+    }
+
     const newVersion = promptRegistry.hotSwap(incident.promptId, candidate, incident.id);
     return {
       ...base,
       healed: true,
+      disposition: "applied",
       candidate,
       sandbox,
       newVersion,
+      risk,
       summary:
         `${incident.kind} on ${incident.agentId}, ${incident.occurrences} times. ` +
         `Patched the prompt, verified against ${sandbox.ranCases} recorded failure(s) in ${sandbox.elapsedMs}ms, ` +
-        `swapped to v${newVersion.version}. Stopped $${(incident.wastedCents / 100).toFixed(2)} of waste. ` +
+        `swapped to v${newVersion.version} at ${risk.riskPercent}% assessed risk. ` +
+        `Stopped $${(incident.wastedCents / 100).toFixed(2)} of waste. ` +
         `Roll back with: rollback("${incident.promptId}", ${newVersion.version - 1}).`,
     };
   } catch (err) {
