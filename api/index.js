@@ -512,7 +512,7 @@ __export(sessions_exports, {
   updateSessionTasks: () => updateSessionTasks
 });
 async function createSession(params) {
-  const ref = collection8().doc();
+  const ref = collection9().doc();
   const session = {
     id: ref.id,
     licenseKey: params.licenseKey,
@@ -528,7 +528,7 @@ async function createSession(params) {
   return session;
 }
 async function confirmSession(sessionId, licenseKey) {
-  const ref = collection8().doc(sessionId);
+  const ref = collection9().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -542,7 +542,7 @@ async function confirmSession(sessionId, licenseKey) {
   return { ...data, ...updated };
 }
 async function updateSessionTasks(sessionId, licenseKey, tasks) {
-  const ref = collection8().doc(sessionId);
+  const ref = collection9().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -555,7 +555,7 @@ async function updateSessionTasks(sessionId, licenseKey, tasks) {
   return { ...data, ...updated, tasks };
 }
 async function updateSessionMeta(sessionId, licenseKey, meta) {
-  const ref = collection8().doc(sessionId);
+  const ref = collection9().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -565,17 +565,17 @@ async function updateSessionMeta(sessionId, licenseKey, meta) {
   return { ...data, ...updated };
 }
 async function getSession(sessionId, licenseKey) {
-  const snap = await collection8().doc(sessionId).get();
+  const snap = await collection9().doc(sessionId).get();
   if (!snap.exists) return null;
   const data = snap.data();
   return data.licenseKey === licenseKey ? data : null;
 }
 async function listSessions(licenseKey, limit = 50) {
-  const snap = await collection8().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
+  const snap = await collection9().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
   return snap.docs.map((d) => d.data());
 }
 async function deleteSession(sessionId, licenseKey) {
-  const ref = collection8().doc(sessionId);
+  const ref = collection9().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return false;
   const data = snap.data();
@@ -583,12 +583,12 @@ async function deleteSession(sessionId, licenseKey) {
   await ref.delete();
   return true;
 }
-var collection8;
+var collection9;
 var init_sessions = __esm({
   "server/db/sessions.ts"() {
     "use strict";
     init_firestore();
-    collection8 = () => getDb().collection("sessions");
+    collection9 = () => getDb().collection("sessions");
   }
 });
 
@@ -4301,6 +4301,243 @@ function buildNarrative(p) {
   return parts.join(" ");
 }
 
+// server/plans/lifecycle.ts
+init_firestore();
+var collection8 = () => getDb().collection("plans");
+async function createPlan(params) {
+  const ref = collection8().doc();
+  const now = Date.now();
+  const plan = {
+    id: ref.id,
+    licenseKey: params.licenseKey,
+    agentId: params.agentId,
+    agentName: params.agentName,
+    department: params.department,
+    goal: params.goal,
+    // A plan with no questions still starts here rather than at "planned":
+    // the agent must explicitly say it has nothing to ask, which is a
+    // different claim from never having considered it.
+    status: "clarifying",
+    questions: params.questions.map((q, i) => ({
+      id: `q${i + 1}`,
+      question: q.question,
+      whyItMatters: q.whyItMatters
+    })),
+    steps: [],
+    revisions: [],
+    version: 1,
+    createdAt: now,
+    updatedAt: now
+  };
+  await ref.set(plan);
+  return plan;
+}
+async function getPlan(licenseKey, planId) {
+  const snap = await collection8().doc(planId).get();
+  if (!snap.exists) return null;
+  const plan = snap.data();
+  return plan.licenseKey === licenseKey ? plan : null;
+}
+async function listPlans(licenseKey) {
+  const snap = await collection8().where("licenseKey", "==", licenseKey).get();
+  return (snap.docs ?? []).map((d) => d.data()).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+async function save(plan) {
+  const updated = { ...plan, updatedAt: Date.now() };
+  await collection8().doc(plan.id).set(updated, { merge: true });
+  return updated;
+}
+async function answerQuestions(params) {
+  const plan = await getPlan(params.licenseKey, params.planId);
+  if (!plan) return null;
+  const byId = new Map(params.answers.map((a) => [a.id, a.answer]));
+  const questions = plan.questions.map(
+    (q) => byId.has(q.id) ? { ...q, answer: byId.get(q.id), answeredAt: Date.now() } : q
+  );
+  return save({ ...plan, questions });
+}
+function readyToPlan(plan) {
+  return plan.questions.every((q) => typeof q.answer === "string" && q.answer.trim().length > 0);
+}
+async function submitPlan(params) {
+  const plan = await getPlan(params.licenseKey, params.planId);
+  if (!plan) return { plan: null, error: "No such plan." };
+  if (plan.status === "clarifying" && !readyToPlan(plan)) {
+    return {
+      plan: null,
+      error: "Unanswered clarifying questions. The agent must not plan around a guess."
+    };
+  }
+  if (plan.status === "approved" || plan.status === "executing") {
+    return { plan: null, error: "This plan is already approved \u2014 submit a new one instead." };
+  }
+  if (params.steps.length === 0) {
+    return { plan: null, error: "A plan with no steps cannot be approved." };
+  }
+  const steps = params.steps.map((s, i) => ({
+    ...s,
+    id: `s${i + 1}`,
+    order: i + 1,
+    status: "pending"
+  }));
+  return {
+    plan: await save({
+      ...plan,
+      steps,
+      status: "planned",
+      // A revised plan is a new version. Approval granted to v1 does not carry
+      // to v2 — otherwise "approve, then quietly rewrite" is an open door.
+      version: plan.status === "revising" ? plan.version + 1 : plan.version
+    })
+  };
+}
+async function approvePlan(params) {
+  const plan = await getPlan(params.licenseKey, params.planId);
+  if (!plan) return { plan: null, error: "No such plan." };
+  if (plan.status !== "planned") {
+    return { plan: null, error: `Cannot approve a plan that is "${plan.status}".` };
+  }
+  if (plan.version !== params.version) {
+    return {
+      plan: null,
+      error: `This plan has been revised since you read it (you approved v${params.version}, it is now v${plan.version}). Re-read it before approving.`
+    };
+  }
+  return {
+    plan: await save({
+      ...plan,
+      status: "approved",
+      approvedBy: params.by,
+      approvedAt: Date.now()
+    })
+  };
+}
+async function requestRevision(params) {
+  const plan = await getPlan(params.licenseKey, params.planId);
+  if (!plan) return { plan: null, error: "No such plan." };
+  if (!["planned", "approved"].includes(plan.status)) {
+    return { plan: null, error: `Cannot revise a plan that is "${plan.status}".` };
+  }
+  if (!params.note.trim()) {
+    return { plan: null, error: "Say what needs to change \u2014 a rejection with no reason cannot be acted on." };
+  }
+  return {
+    plan: await save({
+      ...plan,
+      status: "revising",
+      // Approval is revoked by asking for changes. An approved-then-revised
+      // plan that stayed approved would be the exact loophole this prevents.
+      approvedBy: void 0,
+      approvedAt: void 0,
+      revisions: [...plan.revisions, { at: Date.now(), by: params.by, note: params.note.trim() }]
+    })
+  };
+}
+async function beginExecution(params) {
+  const plan = await getPlan(params.licenseKey, params.planId);
+  if (!plan) return { plan: null, error: "No such plan." };
+  if (plan.status !== "approved") {
+    return {
+      plan: null,
+      error: `Refusing to execute: this plan is "${plan.status}", not approved. There is no path from a goal to an action that skips approval.`
+    };
+  }
+  return { plan: await save({ ...plan, status: "executing" }) };
+}
+async function haltPlan(params) {
+  const plan = await getPlan(params.licenseKey, params.planId);
+  if (!plan) return null;
+  const steps = plan.steps.map(
+    (s) => s.status === "pending" || s.status === "running" ? { ...s, status: "skipped", result: params.reason } : s
+  );
+  return save({ ...plan, steps, status: "halted" });
+}
+function planSummary(plan) {
+  const done = plan.steps.filter((s) => ["done", "skipped"].includes(s.status)).length;
+  return {
+    totalCents: plan.steps.reduce((sum, s) => sum + s.estimatedCents, 0),
+    highRiskSteps: plan.steps.filter((s) => s.risk === "high").length,
+    irreversibleSteps: plan.steps.filter((s) => s.irreversible).length,
+    progress: plan.steps.length === 0 ? 0 : Math.round(done / plan.steps.length * 100),
+    needsHuman: ["clarifying", "planned", "revising"].includes(plan.status)
+  };
+}
+
+// server/plans/escalation.ts
+var DANGER_RULES = [
+  {
+    danger: "data_exfiltration",
+    pattern: /\b(?:send|upload|post|export|sync|forward)\b[^.\n]{0,60}\b(?:all|entire|every|full|whole)\b[^.\n]{0,40}\b(?:customer|user|client|contact|record|database|table)s?\b/i,
+    explanation: "The agent is preparing to move a bulk customer or user dataset to somewhere outside this system."
+  },
+  {
+    danger: "data_exfiltration",
+    pattern: /\b(?:curl|fetch|axios|requests\.(?:post|put))\b[^\n]{0,80}https?:\/\/(?!(?:localhost|127\.0\.0\.1))/i,
+    explanation: "The agent is preparing to send data to an external address that was not in the approved plan."
+  },
+  {
+    danger: "infrastructure_attack",
+    pattern: /\b(?:nmap|sqlmap|metasploit|hydra|nikto|masscan)\b|\bport\s?scan\b|\bbrute[\s-]?forc\w+\b|\b(?:ddos|dos)\s+(?:attack|the)\b/i,
+    explanation: "The agent is preparing to run a network attack or scanning tool. This is never part of legitimate work here."
+  },
+  {
+    danger: "infrastructure_attack",
+    pattern: /\b(?:union\s+select|drop\s+table|;\s*--|or\s+1\s*=\s*1)\b/i,
+    explanation: "The agent's output contains SQL injection syntax."
+  },
+  {
+    danger: "credential_access",
+    pattern: /\b(?:read|print|dump|reveal|show|exfiltrate)\b[^.\n]{0,40}\b(?:api[_\s-]?key|secret|credential|password|token|\.env|private[_\s-]?key)s?\b/i,
+    explanation: "The agent is preparing to read or reveal credentials."
+  },
+  {
+    danger: "destructive_operation",
+    pattern: /\b(?:rm\s+-rf|drop\s+database|truncate\s+table|delete\s+from\s+\w+\s*(?:;|$))/i,
+    explanation: "The agent is preparing an operation that destroys data irreversibly."
+  },
+  {
+    danger: "financial_movement",
+    pattern: /\b(?:transfer|wire|send|withdraw|charge)\b[^.\n]{0,40}\b(?:funds|money|payment|balance|\$[\d,]+)\b/i,
+    explanation: "The agent is preparing to move money."
+  },
+  {
+    danger: "impersonation",
+    pattern: /\b(?:sign|send|post|publish)\b[^.\n]{0,40}\bas\s+(?:the\s+)?(?:ceo|cto|founder|owner|admin)\b/i,
+    explanation: "The agent is preparing to act under someone else's identity."
+  }
+];
+function scanForDanger(intent) {
+  for (const rule of DANGER_RULES) {
+    const match = intent.match(rule.pattern);
+    if (match) {
+      return {
+        danger: rule.danger,
+        evidence: match[0].slice(0, 200),
+        explanation: rule.explanation
+      };
+    }
+  }
+  return null;
+}
+var DEFAULT_ESCALATION = {
+  officerMayDecide: false,
+  humanThresholdPercent: 40,
+  brakeSlaMs: 1e3
+};
+async function engageBrake(params) {
+  const started = Date.now();
+  const sla = (params.policy ?? DEFAULT_ESCALATION).brakeSlaMs;
+  let stopped = { agents: 0, plans: 0 };
+  try {
+    stopped = await params.stopAll();
+  } catch {
+    const elapsedMs2 = Date.now() - started;
+    return { engaged: false, elapsedMs: elapsedMs2, withinSla: false, stopped };
+  }
+  const elapsedMs = Date.now() - started;
+  return { engaged: true, elapsedMs, withinSla: elapsedMs <= sla, stopped };
+}
+
 // server/index.ts
 var orders = /* @__PURE__ */ new Map();
 var BETA_SLOT_BASELINE = Number(process.env.BETA_SLOT_BASELINE ?? 84);
@@ -4852,6 +5089,210 @@ function createApiApp() {
     }
     if (Array.isArray(excludedKinds)) healingPolicy.excludedKinds = excludedKinds;
     res.json({ policy: healingPolicy });
+  });
+  app2.get("/api/v1/plans", authenticateLicenseKey, async (req, res) => {
+    const plans = await listPlans(req.lyceumAccount.licenseKey);
+    res.json({ plans: plans.map((p) => ({ ...p, summary: planSummary(p) })) });
+  });
+  app2.get("/api/v1/plans/:id", authenticateLicenseKey, async (req, res) => {
+    const plan = await getPlan(req.lyceumAccount.licenseKey, req.params.id);
+    if (!plan) return res.status(404).json({ error: "No such plan." });
+    res.json({ plan, summary: planSummary(plan) });
+  });
+  app2.post("/api/v1/plans", authenticateLicenseKey, async (req, res) => {
+    const { agentId, agentName, department, goal, questions } = req.body ?? {};
+    if (!goal || !agentId) {
+      return res.status(400).json({ error: "goal and agentId are required" });
+    }
+    const plan = await createPlan({
+      licenseKey: req.lyceumAccount.licenseKey,
+      agentId: String(agentId),
+      agentName: String(agentName ?? agentId),
+      department: String(department ?? "dev_ops"),
+      goal: String(goal),
+      questions: Array.isArray(questions) ? questions : []
+    });
+    res.status(201).json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/answers", authenticateLicenseKey, async (req, res) => {
+    const plan = await answerQuestions({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id,
+      answers: req.body?.answers ?? []
+    });
+    if (!plan) return res.status(404).json({ error: "No such plan." });
+    res.json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/steps", authenticateLicenseKey, async (req, res) => {
+    const { plan, error } = await submitPlan({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id,
+      steps: req.body?.steps ?? []
+    });
+    if (!plan) return res.status(400).json({ error });
+    res.json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/approve", authenticateLicenseKey, async (req, res) => {
+    const { plan, error } = await approvePlan({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id,
+      by: req.lyceumAccount.email ?? "operator",
+      version: Number(req.body?.version)
+    });
+    if (!plan) return res.status(409).json({ error });
+    res.json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/revise", authenticateLicenseKey, async (req, res) => {
+    const { plan, error } = await requestRevision({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id,
+      by: req.lyceumAccount.email ?? "operator",
+      note: String(req.body?.note ?? "")
+    });
+    if (!plan) return res.status(400).json({ error });
+    res.json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/execute", authenticateLicenseKey, async (req, res) => {
+    const { plan, error } = await beginExecution({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id
+    });
+    if (!plan) return res.status(409).json({ error });
+    res.json({ plan });
+  });
+  const activeAlerts = /* @__PURE__ */ new Map();
+  let escalationPolicy = { ...DEFAULT_ESCALATION };
+  app2.get("/api/v1/warroom/alert", authenticateLicenseKey, async (req, res) => {
+    res.json({ alert: activeAlerts.get(req.lyceumAccount.licenseKey) ?? null });
+  });
+  app2.post("/api/v1/warroom/intent", authenticateLicenseKey, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const intent = String(req.body?.intent ?? "");
+    const danger = scanForDanger(intent);
+    if (danger) {
+      const alert = {
+        id: `alert_${Date.now().toString(36)}`,
+        agentId: String(req.body?.agentId ?? "unknown"),
+        agentName: String(req.body?.agentName ?? req.body?.agentId ?? "An agent"),
+        planId: req.body?.planId,
+        stepTitle: req.body?.stepTitle,
+        danger,
+        raisedAt: Date.now()
+      };
+      activeAlerts.set(licenseKey, alert);
+      return res.status(423).json({ blocked: true, alert });
+    }
+    res.json({ blocked: false });
+  });
+  app2.post("/api/v1/warroom/alert/:id/continue", authenticateLicenseKey, async (req, res) => {
+    activeAlerts.delete(req.lyceumAccount.licenseKey);
+    res.json({ cleared: true, by: req.lyceumAccount.email ?? "operator" });
+  });
+  app2.post("/api/v1/warroom/alert/:id/brake", authenticateLicenseKey, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const result = await engageBrake({
+      licenseKey,
+      reason: "Operator pulled the emergency brake from a red alert.",
+      policy: escalationPolicy,
+      stopAll: async () => {
+        const plans = await listPlans(licenseKey);
+        const running = plans.filter((p) => ["executing", "approved"].includes(p.status));
+        for (const p of running) {
+          await haltPlan({ licenseKey, planId: p.id, reason: "Emergency brake." });
+        }
+        const workers = await listWorkers(licenseKey);
+        return { agents: workers.length, plans: running.length };
+      }
+    });
+    activeAlerts.delete(licenseKey);
+    res.json(result);
+  });
+  app2.get("/api/v1/warroom/escalation", authenticateLicenseKey, async (_req, res) => {
+    res.json({ policy: escalationPolicy, default: DEFAULT_ESCALATION });
+  });
+  app2.put("/api/v1/warroom/escalation", authenticateLicenseKey, async (req, res) => {
+    const { officerMayDecide, humanThresholdPercent } = req.body ?? {};
+    if (typeof officerMayDecide === "boolean") escalationPolicy.officerMayDecide = officerMayDecide;
+    if (typeof humanThresholdPercent === "number") {
+      escalationPolicy.humanThresholdPercent = Math.max(0, Math.min(70, humanThresholdPercent));
+    }
+    res.json({ policy: escalationPolicy });
+  });
+  app2.get("/api/v1/warroom/feed", authenticateLicenseKey, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const limit = Math.min(Number(req.query.limit) || 60, 200);
+    const breaches = await pendingBreaches(licenseKey, limit);
+    const account = req.lyceumAccount;
+    const events = breaches.map((b, i) => ({
+      id: b.id ?? `ev${i}`,
+      at: b.createdAt ?? Date.now(),
+      actor: b.actorId ?? "system",
+      text: b.summary ?? b.code ?? "blocked",
+      level: "block"
+    }));
+    res.json({
+      events,
+      metrics: {
+        savedCents: breaches.reduce((s, b) => s + (b.preventedCents ?? 0), 0),
+        budgetRemainingCents: (account.creditsRemaining ?? 0) * 10,
+        // Labelled as an estimate in the UI. 6 minutes per blocked action is a
+        // stated assumption, not a measurement, and the panel says so.
+        hoursReclaimed: Math.round(breaches.length * 6 / 60 * 10) / 10,
+        blocked: breaches.length
+      }
+    });
+  });
+  const OAUTH_PROVIDERS = [
+    { id: "gmail", name: "Gmail", blurb: "Read and draft mail", envPrefix: "GOOGLE", scopes: ["gmail.readonly", "gmail.compose"] },
+    { id: "slack", name: "Slack", blurb: "Read channels, post with approval", envPrefix: "SLACK", scopes: ["channels:history", "chat:write"] },
+    { id: "notion", name: "Notion", blurb: "Read and write pages", envPrefix: "NOTION", scopes: ["read_content", "update_content"] },
+    { id: "github", name: "GitHub", blurb: "Issues, PRs, code search", envPrefix: "GITHUB", scopes: ["repo", "read:org"] }
+  ];
+  const connections = /* @__PURE__ */ new Map();
+  app2.get("/api/v1/integrations", authenticateLicenseKey, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const mine = connections.get(licenseKey) ?? /* @__PURE__ */ new Map();
+    res.json({
+      integrations: OAUTH_PROVIDERS.map((p) => {
+        const live = mine.get(p.id);
+        const configured = !!(process.env[`${p.envPrefix}_CLIENT_ID`] && process.env[`${p.envPrefix}_CLIENT_SECRET`]);
+        return {
+          id: p.id,
+          name: p.name,
+          blurb: p.blurb,
+          auth: "oauth",
+          scopes: p.scopes,
+          state: live ? "connected" : configured ? "available" : "unavailable",
+          blockedReason: configured ? void 0 : `No OAuth app registered for ${p.name} yet. This needs ${p.envPrefix}_CLIENT_ID and ${p.envPrefix}_CLIENT_SECRET set on the server \u2014 an operator task, not something you can do from here.`,
+          connectedAs: live?.connectedAs,
+          connectedAt: live?.connectedAt
+        };
+      })
+    });
+  });
+  app2.post("/api/v1/integrations/:id/authorize", authenticateLicenseKey, async (req, res) => {
+    const provider = OAUTH_PROVIDERS.find((p) => p.id === req.params.id);
+    if (!provider) return res.status(404).json({ error: "Unknown integration." });
+    const clientId = process.env[`${provider.envPrefix}_CLIENT_ID`];
+    if (!clientId) {
+      return res.status(409).json({
+        error: `${provider.name} has no OAuth app configured on this server, so there is no authorize URL to send you to.`
+      });
+    }
+    res.json({ authorizeUrl: null, error: "OAuth callback handler not yet implemented." });
+  });
+  app2.delete("/api/v1/integrations/:id", authenticateLicenseKey, async (req, res) => {
+    connections.get(req.lyceumAccount.licenseKey)?.delete(req.params.id);
+    res.json({ disconnected: true });
+  });
+  const cloudConfigs = /* @__PURE__ */ new Map();
+  app2.get("/api/v1/cloud", authenticateLicenseKey, async (req, res) => {
+    res.json({
+      config: cloudConfigs.get(req.lyceumAccount.licenseKey) ?? {
+        provider: "lyceum",
+        verified: true
+      }
+    });
   });
   app2.get("/api/v1/workers", authenticateLicenseKey, async (req, res) => {
     const workers = await listWorkers(req.lyceumAccount.licenseKey);

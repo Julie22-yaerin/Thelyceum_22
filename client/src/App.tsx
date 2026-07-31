@@ -14,6 +14,7 @@ import Admin from "./pages/Admin";
 import Notes from "./pages/Notes";
 import Dashboard from "./pages/Dashboard";
 import MultiAgent from "./pages/MultiAgent";
+import WarRoom from "./pages/WarRoom";
 import Missions from "./pages/Missions";
 import Governance from "./pages/Governance";
 import Terms from "./pages/Terms";
@@ -29,6 +30,7 @@ function Router() {
       <Route path={"/app"} component={Dashboard} />
       <Route path={"/missions"} component={Missions} />
       <Route path={"/agents"} component={MultiAgent} />
+      <Route path={"/war-room"} component={WarRoom} />
       <Route path={"/governance"} component={Governance} />
       <Route path={"/thank-you"} component={ThankYou} />
       <Route path={"/waiting"} component={Waiting} />
