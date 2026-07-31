@@ -1,0 +1,13 @@
+{
+  "global_sla": {
+    "proxy_added_latency_ms_p95": 120,
+    "failover_switch_budget_ms": 100,
+    "availability_target": "99.5%"
+  },
+  "budget_defaults": {
+    "max_cents_per_session": 500,
+    "max_tool_calls": 50,
+    "max_tokens_per_minute": 120000,
+    "max_calls_per_minute": 120
+  }
+}

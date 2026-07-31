@@ -1,0 +1,14 @@
+{
+  "note": "Read-only across departments. Breach codes come from server/lib/circuitBreaker.ts.",
+  "breach_codes": {
+    "BUDGET_EXCEEDED":    "Session hit its money ceiling.",
+    "TOOL_CALL_LIMIT":    "Session hit its tool-call cap.",
+    "TOKEN_VELOCITY":     "Tokens per minute over the ceiling.",
+    "CALL_RATE":          "Requests per minute over the ceiling.",
+    "LOOP_DETECTED":      "Identical payload repeated — agent is looping.",
+    "RESTRICTED_PAYLOAD": "Payload matched a deny rule.",
+    "UNAUTHORIZED_MCP":   "Agent reached for an MCP server outside its scope.",
+    "SCOPE_VIOLATION":    "Agent invoked a tool outside its department whitelist.",
+    "UNGROUNDED_CLAIM":   "Output asserted a fact absent from retrieved context."
+  }
+}

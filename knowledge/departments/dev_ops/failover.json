@@ -1,0 +1,14 @@
+{
+  "fallback_chain": [
+    { "provider": "openai",     "model": "gpt-4o",            "priority": 1 },
+    { "provider": "anthropic",  "model": "claude-sonnet-5",   "priority": 2 },
+    { "provider": "openrouter", "model": "meta-llama/llama-3.3-70b-instruct", "priority": 3 }
+  ],
+  "trip_conditions": {
+    "http_5xx": true,
+    "http_429": true,
+    "latency_over_ms": 2000,
+    "network_error": true
+  },
+  "switch_budget_ms": 100
+}

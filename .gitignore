@@ -116,3 +116,6 @@ client/public/__manus__/version.json
 .freebuff/
 .vercel
 .env*
+
+# graphify knowledge-graph output — regenerate with /graphify, don't version 3MB of it
+graphify-out/
