@@ -17,6 +17,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getDb } from "../db/firestore.js";
+import { guardIngest, type IngestVerdict } from "../security/ingestGuard.js";
 
 export type DepartmentId = "dev_ops" | "finance" | "sales_outreach" | "qa_compliance";
 
@@ -42,8 +43,30 @@ export interface BrainDocument {
   alwaysInclude: boolean;
   /** Where it came from: seeded template, human upload, or librarian filing. */
   origin: "template" | "upload" | "librarian";
+  /**
+   * What the ingest guard did to this document. Present whenever it was
+   * changed or flagged — an operator must be able to see why what is stored
+   * differs from what they pasted.
+   */
+  ingest?: {
+    action: IngestVerdict["action"];
+    findings: IngestVerdict["findings"];
+    removed: IngestVerdict["removed"];
+    at: number;
+  };
   createdAt: number;
   updatedAt: number;
+}
+
+/** Thrown when a document is refused because it carries an injection payload. */
+export class IngestBlockedError extends Error {
+  readonly code = "INGEST_BLOCKED";
+  constructor(readonly verdict: IngestVerdict) {
+    super(
+      `Refused to store this document: ${verdict.findings[0]?.explanation ?? "it contains instructions aimed at the assistant."}`
+    );
+    this.name = "IngestBlockedError";
+  }
 }
 
 const collection = () => getDb().collection("brainDocuments");
@@ -169,6 +192,42 @@ export async function putDocument(params: {
   alwaysInclude?: boolean;
   origin?: BrainDocument["origin"];
 }): Promise<BrainDocument> {
+  const origin = params.origin ?? "upload";
+
+  /**
+   * Screen the body before it can become grounding.
+   *
+   * This lives in putDocument rather than in the API route on purpose: it is
+   * the single chokepoint every write goes through — the route, the librarian,
+   * the seeder, and anything added later. A guard placed on one caller is a
+   * guard that the next caller forgets.
+   *
+   * The template is exempt: it ships in the repo, is reviewed like code, and
+   * legitimately contains sentences about rules that would trip the detector.
+   */
+  const guarded =
+    origin === "template"
+      ? null
+      : guardIngest(params.body, {
+          // A person pasting their own document gets it flagged and stored;
+          // automated filing gets it refused. An operator who cannot file
+          // their own material will paste it somewhere we cannot see at all.
+          source: origin === "librarian" ? "automated" : "human",
+        });
+
+  if (guarded?.action === "block") throw new IngestBlockedError(guarded);
+
+  const body = guarded ? guarded.cleanText : params.body;
+  const ingest =
+    guarded && guarded.action !== "allow"
+      ? {
+          action: guarded.action,
+          findings: guarded.findings,
+          removed: guarded.removed,
+          at: Date.now(),
+        }
+      : undefined;
+
   const existing = await getDocument(params.licenseKey, params.path);
   const now = Date.now();
 
@@ -176,9 +235,10 @@ export async function putDocument(params: {
     const updated: BrainDocument = {
       ...existing,
       title: params.title,
-      body: params.body,
+      body,
       alwaysInclude: params.alwaysInclude ?? existing.alwaysInclude,
       origin: params.origin ?? existing.origin,
+      ingest: ingest ?? existing.ingest,
       updatedAt: now,
     };
     await collection().doc(existing.id).set(updated, { merge: true });
@@ -191,9 +251,10 @@ export async function putDocument(params: {
     licenseKey: params.licenseKey,
     path: params.path,
     title: params.title,
-    body: params.body,
+    body,
     alwaysInclude: params.alwaysInclude ?? false,
-    origin: params.origin ?? "upload",
+    origin,
+    ingest,
     createdAt: now,
     updatedAt: now,
   };

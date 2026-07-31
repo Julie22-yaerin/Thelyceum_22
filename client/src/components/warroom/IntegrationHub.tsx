@@ -1,53 +1,56 @@
 /**
  * Integration hub — connect external tools as MCP servers, from this web app.
  *
- * The requirement was: never send the user to a desktop app or a CLI to wire up
- * an integration. That is right, and this does it — but with one deliberate
- * refusal.
+ * The connect flow is real end-to-end:
  *
- * A card here NEVER shows "Connected" unless a connection actually exists.
- * OAuth against Gmail or Slack requires a registered application with that
- * provider and a server-side secret; until those are configured, the honest
- * state is "not set up yet", and the card says exactly what is missing and who
- * has to do it. A green badge that means nothing is the single most corrosive
- * thing a governance product can ship — the entire value proposition is that
- * our status displays are true.
+ *   1. You see the card ("the shell").
+ *   2. Clicking Connect opens a CONSENT MODAL that lists exactly what the
+ *      connection may do — in plain language, shown BEFORE anything opens.
+ *   3. "Continue" opens the provider's auth page (a real consent URL when the
+ *      server has OAuth apps registered; an identical-flow sandbox page
+ *      otherwise).
+ *   4. After you authorise there, this hub polls and flips the card to
+ *      connected. You never leave the workspace for more than a popup.
  *
- * So there are three real states, and the UI never blurs them:
- *   unavailable  we have no OAuth app for this provider yet
- *   available    ready to connect; clicking starts the real flow
- *   connected    a live credential exists and was verified
+ * Statuses are honest: "connected" means a connection was completed through
+ * the callback, never a guess. The mode badge (Real / Sandbox) states exactly
+ * what kind of connection it is, because a governance product that blurs that
+ * line is lying about the one thing it sells.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  AlertCircle,
   Check,
   ChevronRight,
   Cloud,
+  ExternalLink,
   KeyRound,
-  Link2,
   Loader2,
   Plug,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type ConnectionState = "unavailable" | "available" | "connecting" | "connected" | "error";
+export type ConnectionState = "available" | "connecting" | "connected" | "error";
 
 export interface Integration {
   id: string;
   name: string;
+  emoji?: string;
   blurb: string;
   /** How this provider authenticates. Drives which flow the card starts. */
   auth: "oauth" | "api_key";
+  mode: "real" | "sandbox";
   state: ConnectionState;
-  /** Present when unavailable — what is missing, in the operator's terms. */
   blockedReason?: string;
   /** Scopes this will request. Shown BEFORE connecting, never after. */
   scopes?: string[];
+  /** Plain-language labels for each scope, from the server. */
+  scopeLabels?: Record<string, string>;
   connectedAs?: string;
   connectedAt?: number;
+  connectedMode?: "real" | "sandbox";
   error?: string;
 }
 
@@ -63,31 +66,119 @@ const ICON: Record<string, string> = {
 export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
+  const [consentFor, setConsentFor] = useState<Integration | null>(null);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
   const [keyEntry, setKeyEntry] = useState<string | null>(null);
   const [keyValue, setKeyValue] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const load = () => {
-    fetch("/api/v1/integrations", { headers: { Authorization: `Bearer ${licenseKey}` } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setIntegrations(d.integrations))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  /**
+   * Load the list, and surface a failure instead of rendering an empty one.
+   *
+   * Swallowing the error here produced the worst possible outcome: a rate-limit
+   * lockout or an expired key showed up as "no integrations available", so the
+   * operator concluded the product was broken rather than that they needed to
+   * wait or re-authenticate. An empty state and a failure state look identical
+   * to the user and must never be conflated.
+   */
+  const load = async () => {
+    try {
+      const res = await fetch("/api/v1/integrations", {
+        headers: { Authorization: `Bearer ${licenseKey}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setLoadError(
+          res.status === 429
+            ? (body.error as string) ?? "Too many requests — wait a minute and reload."
+            : res.status === 401
+              ? "Your license key was rejected. Re-enter it to continue."
+              : (body.error as string) ?? `Couldn't load integrations (HTTP ${res.status}).`
+        );
+        return;
+      }
+      const d = await res.json();
+      setLoadError(null);
+      setIntegrations(d.integrations);
+    } catch {
+      setLoadError("Couldn't reach the server. Check your connection and reload.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(load, [licenseKey]);
+  useEffect(() => {
+    void load();
+    // Surface "cancelled" returns from the sandbox consent page.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connect") === "cancelled") {
+      const provider = params.get("provider");
+      setBanner(`${provider ? provider[0].toUpperCase() + provider.slice(1) : "The"} connection was cancelled.`);
+      // Clean the URL so a refresh doesn't re-show it.
+      window.history.replaceState({}, "", window.location.pathname + window.location.search.replace(/[?&]connect=[^&]*&?/, "&"));
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [licenseKey]);
 
-  const connect = async (int: Integration) => {
-    if (int.state === "unavailable") return;
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setConnectingId(null);
+  };
 
+  /**
+   * Poll the list while a connection popup is open; when the callback completes
+   * server-side, the card flips to connected and we stop.
+   */
+  const pollUntilConnected = (id: string) => {
+    stopPolling();
+    setConnectingId(id);
+    const startedAt = Date.now();
+    pollRef.current = setInterval(async () => {
+      if (Date.now() - startedAt > 180_000) {
+        stopPolling();
+        setBanner("The connection is taking longer than expected. The window may have been blocked.");
+        return;
+      }
+      try {
+        const res = await fetch("/api/v1/integrations", {
+          headers: { Authorization: `Bearer ${licenseKey}` },
+        });
+        if (!res.ok) return;
+        const list = (await res.json()).integrations as Integration[];
+        setIntegrations(list);
+        const found = list.find((i) => i.id === id);
+        if (found?.state === "connected") {
+          stopPolling();
+          setBanner(`${found.name} connected.`);
+        }
+      } catch {
+        // transient — keep polling
+      }
+    }, 1500);
+  };
+
+  const openConsent = (int: Integration) => {
     if (int.auth === "api_key") {
       setKeyEntry(int.id);
       return;
     }
+    setConsentFor(int);
+  };
 
-    // OAuth: ask the server for the authorize URL it built (state token,
-    // redirect URI and scopes all server-side — the browser never assembles
-    // an OAuth URL, because a client-built one can be tampered with).
+  /** The user approved the scope list — start the actual authorization. */
+  const continueToProvider = async () => {
+    if (!consentFor) return;
+    const int = consentFor;
+    setConsentFor(null);
     setBusy(int.id);
     try {
       const res = await fetch(`/api/v1/integrations/${int.id}/authorize`, {
@@ -96,7 +187,27 @@ export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
       });
       if (!res.ok) return;
       const { authorizeUrl } = await res.json();
-      if (authorizeUrl) window.location.href = authorizeUrl;
+      if (authorizeUrl) {
+        // Open the provider's auth page in a popup; the workspace stays put.
+        //
+        // `noopener,noreferrer` blocks the opened window from touching
+        // `window.opener` — otherwise a compromised provider page could call
+        // `window.opener.location = "phishing-site"` and silently redirect
+        // the user (reverse tabnabbing). window.open() still returns a
+        // usable handle; only `win.opener` is null inside the popup, which
+        // is exactly the security guarantee we want.
+        const win = window.open(
+          authorizeUrl,
+          "_blank",
+          "noopener,noreferrer,width=520,height=680"
+        );
+        if (!win) {
+          // Popup blocked — fall back to a full-page trip and come back.
+          window.location.href = authorizeUrl;
+          return;
+        }
+        pollUntilConnected(int.id);
+      }
     } finally {
       setBusy(null);
     }
@@ -134,6 +245,24 @@ export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
     }
   };
 
+  if (loadError) {
+    return (
+      <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 p-3">
+        <p className="text-[12px] text-amber-100 mb-2">{loadError}</p>
+        <button
+          onClick={() => {
+            setLoading(true);
+            setLoadError(null);
+            void load();
+          }}
+          className="h-7 px-2.5 rounded-md bg-white/10 hover:bg-white/20 text-[12px] text-white/90 transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-[12px] text-white/40 py-4">
@@ -145,8 +274,19 @@ export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
 
   return (
     <div className="space-y-2">
+      {banner && (
+        <div className="flex items-center gap-2 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-[12px] text-teal-200">
+          <Check className="w-3.5 h-3.5 shrink-0" />
+          <span className="flex-1">{banner}</span>
+          <button onClick={() => setBanner(null)} className="text-teal-200/60 hover:text-teal-200">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {integrations.map((int) => {
         const isBusy = busy === int.id;
+        const isConnecting = connectingId === int.id;
         return (
           <div
             key={int.id}
@@ -154,15 +294,15 @@ export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
               "rounded-lg border p-3 transition-colors",
               int.state === "connected"
                 ? "border-emerald-800/50 bg-emerald-950/20"
-                : int.state === "unavailable"
-                  ? "border-white/5 bg-white/[0.02]"
+                : isConnecting
+                  ? "border-teal-500/40 bg-teal-950/20"
                   : "border-white/10 bg-white/[0.03] hover:border-white/20"
             )}
           >
             <div className="flex items-center gap-2.5">
-              <span className="text-lg shrink-0">{ICON[int.id] ?? "🔌"}</span>
+              <span className="text-lg shrink-0">{int.emoji ?? ICON[int.id] ?? "🔌"}</span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <p className="text-[13px] font-medium text-white/90">{int.name}</p>
                   {int.state === "connected" && (
                     <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">
@@ -170,14 +310,22 @@ export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
                       connected
                     </span>
                   )}
-                  {int.state === "unavailable" && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-white/40">
-                      not set up
+                  {int.state === "connected" && int.connectedMode && (
+                    <span
+                      className={cn(
+                        "text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider",
+                        int.connectedMode === "real"
+                          ? "bg-white/10 text-white/60"
+                          : "bg-amber-500/15 text-amber-300"
+                      )}
+                    >
+                      {int.connectedMode}
                     </span>
                   )}
-                  {int.state === "error" && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-300">
-                      error
+                  {isConnecting && (
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300">
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                      awaiting auth
                     </span>
                   )}
                 </div>
@@ -197,18 +345,16 @@ export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
                 >
                   {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                 </button>
-              ) : int.state === "unavailable" ? (
-                <AlertCircle className="w-3.5 h-3.5 text-white/20 shrink-0" />
               ) : (
                 <button
-                  onClick={() => connect(int)}
-                  disabled={isBusy}
+                  onClick={() => openConsent(int)}
+                  disabled={isBusy || isConnecting}
                   className="shrink-0 h-7 px-2.5 rounded-md bg-white/10 hover:bg-white/20 text-[12px] text-white/90 transition-colors inline-flex items-center gap-1"
                 >
                   {isBusy ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : int.auth === "oauth" ? (
-                    <Link2 className="w-3 h-3" />
+                    <Plug className="w-3 h-3" />
                   ) : (
                     <KeyRound className="w-3 h-3" />
                   )}
@@ -217,25 +363,15 @@ export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
               )}
             </div>
 
-            {/* Why it can't be connected — named plainly, with the fix. */}
-            {int.state === "unavailable" && int.blockedReason && (
-              <p className="text-[11px] text-amber-300/70 mt-2 leading-relaxed pl-8">
-                {int.blockedReason}
-              </p>
-            )}
-
-            {/* Scopes shown BEFORE connecting. After the fact is not consent. */}
-            {int.state === "available" && int.scopes && int.scopes.length > 0 && (
+            {/* Scope summary on an available card — the details live in the modal. */}
+            {int.state !== "connected" && int.scopes && int.scopes.length > 0 && (
               <div className="mt-2 pl-8">
                 <p className="text-[10px] uppercase tracking-wider text-white/30 mb-1">
-                  Will request
+                  Will request {int.scopes.length} permission{int.scopes.length > 1 ? "s" : ""}
                 </p>
                 <div className="flex flex-wrap gap-1">
                   {int.scopes.map((s) => (
-                    <span
-                      key={s}
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-white/50"
-                    >
+                    <span key={s} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-white/50">
                       {s}
                     </span>
                   ))}
@@ -277,9 +413,83 @@ export default function IntegrationHub({ licenseKey }: { licenseKey: string }) {
       })}
 
       <p className="text-[10px] text-white/30 leading-relaxed pt-1">
-        A card reads "connected" only when a credential exists and was verified against the
-        provider. Nothing here shows a status it cannot back up.
+        A card reads "connected" only when a connection was completed through the provider's auth
+        flow. Nothing here shows a status it cannot back up.
       </p>
+
+      {/* ── Consent modal ── */}
+      {consentFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#121216] shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{consentFor.emoji ?? ICON[consentFor.id] ?? "🔌"}</span>
+                <div>
+                  <h3 className="text-[15px] font-semibold text-white">
+                    Connect {consentFor.name}
+                  </h3>
+                  <p className="text-[11px] text-white/40">
+                    {consentFor.mode === "real" ? "Official OAuth connection" : "Sandbox connection"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <p className="text-[12px] text-white/60 leading-relaxed mb-4">
+                {consentFor.name} will be able to do the following with your Lyceum agents.
+                You can disconnect any time.
+              </p>
+
+              <div className="space-y-2 mb-4">
+                {(consentFor.scopes ?? []).map((s) => {
+                  const label = consentFor.scopeLabels?.[s] ?? s;
+                  return (
+                    <div key={s} className="flex items-start gap-2.5 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-teal shrink-0 mt-[1px]" />
+                      <div className="min-w-0">
+                        <p className="text-[12px] text-white/85">{label}</p>
+                        <p className="text-[10px] font-mono text-white/35">{s}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {consentFor.mode === "sandbox" && (
+                <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2.5 mb-4">
+                  <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                    <strong className="text-amber-100">Sandbox mode.</strong> No {consentFor.name} OAuth
+                    app is registered on this server yet, so this walks the real consent flow without
+                    touching a live account. The page that opens is this server's consent screen.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConsentFor(null)}
+                  className="flex-1 h-9 rounded-lg border border-white/10 text-[12px] font-medium text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={continueToProvider}
+                  disabled={busy === consentFor.id}
+                  className="flex-1 h-9 rounded-lg bg-teal hover:bg-teal-dark text-white text-[12px] font-medium inline-flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors"
+                >
+                  {busy === consentFor.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  )}
+                  Continue to {consentFor.name}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

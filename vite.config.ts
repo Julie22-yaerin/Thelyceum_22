@@ -150,6 +150,34 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
+/**
+ * Production-only guard: refuse to build if any VITE_OPENROUTER_KEY_*
+ * is set, because those keys would be inlined into the browser bundle
+ * and extractable by anyone who loads the page. The non-VITE_ variants
+ * (OPENROUTER_KEY_*) are read server-side only.
+ *
+ * We do NOT block in dev — local development often needs the client-side
+ * keys to test the OpenRouter flow without bouncing through the server.
+ */
+function blockClientSideOpenRouterKeys(): Plugin {
+  return {
+    name: "block-client-side-openrouter-keys",
+    apply: "build",
+    buildStart() {
+      const offenders = Object.keys(process.env).filter(
+        (k) => k.startsWith("VITE_OPENROUTER_KEY_") && process.env[k]
+      );
+      if (offenders.length) {
+        throw new Error(
+          `[security] Refusing to build with client-side OpenRouter keys set: ${offenders.join(
+            ", "
+          )}. Use the non-VITE_ variants (OPENROUTER_KEY_*) which are read server-side only.`
+        );
+      }
+    },
+  };
+}
+
 function vitePluginStorageProxy(): Plugin {
   return {
     name: "manus-storage-proxy",
@@ -203,7 +231,7 @@ function vitePluginStorageProxy(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector(), vitePluginStorageProxy()];
+const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector(), blockClientSideOpenRouterKeys(), vitePluginStorageProxy()];
 
 export default defineConfig({
   plugins,

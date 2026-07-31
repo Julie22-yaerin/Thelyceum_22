@@ -234,7 +234,14 @@ export default function Home() {
               >
                 <button
                   className="hero__btn-primary"
-                  onClick={() => setWaitlistOpen(true)}
+                  onClick={() => {
+                    // Label semantics: "See Features" should reveal the features
+                    // section, not open a checkout form. (UX review — Feb 2026)
+                    const el = document.getElementById("features");
+                    if (!el) return;
+                    const top = el.getBoundingClientRect().top + window.scrollY - 80;
+                    window.scrollTo({ top, behavior: "smooth" });
+                  }}
                 >
                   See Features
                   <ArrowRight style={{ width: 14, height: 14 }} />

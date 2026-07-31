@@ -375,9 +375,23 @@ describe("guarantees", () => {
         content: `turn ${i}: ` + "lorem ipsum dolor sit amet ".repeat(200),
       })),
     };
-    const v = await breaker.checkBefore(ctx({ payload: big }));
-    expect(v.allowed).toBe(true);
-    expect(v.evaluatedInMs).toBeLessThan(100);
+    // Measured over several runs, asserting on the MEDIAN.
+    //
+    // A single wall-clock sample is a scheduling measurement, not a
+    // measurement of this code: under a loaded machine (the full suite running
+    // in parallel) one run drifted to 207ms while the same call took 3ms in
+    // isolation. A flaky SLA test gets muted, and a muted test protects
+    // nothing — so this measures the algorithm's cost, which is what the 100ms
+    // claim is actually about, and still fails if the evaluator genuinely
+    // becomes slow.
+    const samples: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const v = await breaker.checkBefore(ctx({ payload: big }));
+      expect(v.allowed).toBe(true);
+      samples.push(v.evaluatedInMs);
+    }
+    samples.sort((a, b) => a - b);
+    expect(samples[Math.floor(samples.length / 2)]).toBeLessThan(100);
   });
 
   it("never calls out to a model — no fetch happens during evaluation", async () => {

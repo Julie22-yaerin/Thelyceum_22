@@ -119,3 +119,7 @@ client/public/__manus__/version.json
 
 # graphify knowledge-graph output — regenerate with /graphify, don't version 3MB of it
 graphify-out/
+
+# Reference material, not part of the product
+Anthropic-Cybersecurity-Skills-main/
+Anthropic-Cybersecurity-Skills-main.zip

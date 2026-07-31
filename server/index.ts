@@ -6,7 +6,7 @@ import crypto from "crypto";
 import { DOMAINS, type Domain } from "../client/src/lib/modelConfig.js";
 import { KEY_MAP, MODEL_ROUTES, proxyToOpenRouter, proxyStreamToOpenRouter, type ProxyRequestBody } from "./lib/openrouter.js";
 import { authenticateLicenseKey, type AuthedRequest } from "./lib/auth.js";
-import { provisionAccount } from "./db/accounts.js";
+import { provisionAccount, rotateLicenseKey } from "./db/accounts.js";
 import { getTask, listTasks } from "./db/tasks.js";
 import type { TaskSessionData } from "./db/sessionTypes.js";
 import { InsufficientCreditsError, runTask } from "./lib/runTask.js";
@@ -31,6 +31,7 @@ import {
   putDocument as putBrainDocument,
   deleteDocument as deleteBrainDocument,
   DEPARTMENTS,
+  IngestBlockedError,
   type DepartmentId,
 } from "./brain/knowledge.js";
 import { routeContext, scopeFor, buildSystemPrompt } from "./brain/contextRouter.js";
@@ -52,6 +53,17 @@ import {
   scanForDanger, routeDeviation, engageBrake,
   DEFAULT_ESCALATION, type EscalationPolicy,
 } from "./plans/escalation.js";
+import { securityHeaders, rateLimit, screenChatRequest, issueAuthState, consumeAuthState, corsPolicy } from "./lib/security.js";
+import { fingerprintCredential } from "./lib/auth.js";
+import {
+  OAUTH_PROVIDERS,
+  providerFor,
+  isProviderConfigured,
+  buildAuthorizeUrl,
+  exchangeCode,
+  renderAuthPage,
+  renderCallbackSuccessPage,
+} from "./lib/integrations.js";
 
 // ── Lemon Squeezy payment tracking ──────────────────────────────────────────
 // In-memory order store, keyed by the `ref` we attach to each checkout link.
@@ -107,6 +119,46 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 export function createApiApp(): express.Express {
   const app = express();
 
+  // Trust the first proxy hop (Vercel edge, Render, etc.) so req.ip and
+  // req.secure reflect the real client and TLS state. Without this, rate
+  // limiting keys every user as the proxy's IP — one shared bucket.
+  app.set("trust proxy", 1);
+
+  // ── CORS allowlist ────────────────────────────────────────────────────
+  // Explicit per-origin. Defaulting to "*" with an Authorization header
+  // would expose the API to any site a user happens to visit; defaulting
+  // to "no header" breaks the API for legitimate cross-origin callers
+  // (e.g. an embed on a partner site). Lock to a known list instead.
+  //
+  // ALLOWED_ORIGINS is a comma-separated env var set per-environment.
+  // Dev defaults include the local Vite origin; production should set
+  // the real domains explicitly.
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (allowedOrigins.length === 0) {
+    if (process.env.NODE_ENV === "production") {
+      // Fail closed: in production with no allowlist, refuse cross-origin
+      // requests entirely. Same-origin traffic is unaffected.
+      allowedOrigins.push("https://thelyceum.ai", "https://www.thelyceum.ai");
+    } else {
+      allowedOrigins.push(
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000"
+      );
+    }
+  }
+  app.use(corsPolicy(allowedOrigins));
+
+  // ── Web security baseline ─────────────────────────────────────────────
+  // Headers first (before any route can write a response) and no version
+  // banner. Rate limits are applied per-route below so LLM-facing endpoints
+  // (which burn real money per call) get the strictest windows.
+  app.disable("x-powered-by");
+  app.use(securityHeaders());
+
   // ── Zero-Touch Proxy (DIRECTIVE 1 + 2) ─────────────────────────────────
   // Mounted FIRST and before express.json(): the proxy must forward the
   // client's exact bytes upstream, so it reads its own raw body and nothing
@@ -130,9 +182,10 @@ export function createApiApp(): express.Express {
 
   // ── POST /api/webhooks/lemonsqueezy — must read the RAW body for HMAC
   // verification, so this is registered before the global express.json()
-  // middleware below.
+  // middleware below. Rate-limited: a webhook storm is a signal, not traffic.
   app.post(
     "/api/webhooks/lemonsqueezy",
+    rateLimit({ windowMs: 60_000, max: 60 }),
     express.raw({ type: "application/json", limit: "1mb" }),
     async (req: express.Request, res: express.Response) => {
       const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET || "";
@@ -181,7 +234,12 @@ export function createApiApp(): express.Express {
           try {
             await provisionAccount({ licenseKey, email, name, organization, product });
           } catch (err) {
-            console.error("[Lyceum] Failed to provision account for", licenseKey, err);
+            // NEVER log the raw license key — it goes to stdout, then
+            // to whatever log aggregator the deployment ships to. A
+            // single screenshot of the dashboard then compromises
+            // the customer. Fingerprint it instead.
+            const fp = fingerprintCredential(licenseKey);
+            console.error(`[Lyceum] Failed to provision account fp=${fp}`, err);
           }
         }
       } else if (ref && eventName === "order_created") {
@@ -223,28 +281,46 @@ export function createApiApp(): express.Express {
   app.use(express.json({ limit: "1mb" }));
 
   // ── POST /api/chat — Server-side OpenRouter proxy (non-streaming) ────
-  app.post("/api/chat", async (req: express.Request, res: express.Response) => {
-    try {
-      const result = await proxyToOpenRouter(req.body as ProxyRequestBody);
-      res.json(result);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Internal server error";
-      res.status(502).json({ error: message });
+  // Rate-limited per IP and screened for prompt injection before any bytes go
+  // upstream — this endpoint costs real money per call.
+  app.post(
+    "/api/chat",
+    rateLimit({ windowMs: 60_000, max: 30 }),
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const screened = screenChatRequest(req.body);
+        if (!screened.ok) {
+          return res.status(screened.status).json({ error: screened.reason });
+        }
+        const result = await proxyToOpenRouter(req.body as ProxyRequestBody);
+        res.json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Internal server error";
+        res.status(502).json({ error: message });
+      }
     }
-  });
+  );
 
   // ── POST /api/chat/stream — Streaming OpenRouter proxy (SSE) ──────────
-  app.post("/api/chat/stream", async (req: express.Request, res: express.Response) => {
-    const { domain, messages, temperature, maxTokens } = (req.body ?? {}) as {
-      domain?: string;
-      messages?: { role: string; content: string }[];
-      temperature?: number;
-      maxTokens?: number;
-    };
+  app.post(
+    "/api/chat/stream",
+    rateLimit({ windowMs: 60_000, max: 60 }),
+    async (req: express.Request, res: express.Response) => {
+      const { domain, messages, temperature, maxTokens } = (req.body ?? {}) as {
+        domain?: string;
+        messages?: { role: string; content: string }[];
+        temperature?: number;
+        maxTokens?: number;
+      };
 
-    if (!domain || !messages) {
-      return res.status(400).json({ error: "Both 'domain' and 'messages' are required" });
-    }
+      const screened = screenChatRequest(req.body);
+      if (!screened.ok) {
+        return res.status(screened.status).json({ error: screened.reason });
+      }
+
+      if (!domain || !messages) {
+        return res.status(400).json({ error: "Both 'domain' and 'messages' are required" });
+      }
 
     const apiKey = KEY_MAP[domain as keyof typeof KEY_MAP];
     if (!apiKey) {
@@ -421,6 +497,43 @@ export function createApiApp(): express.Express {
   // ── V1 public API + MCP — both channels share one credential: the Lemon
   // Squeezy license key, sent as `Authorization: Bearer <license key>`. ──
 
+  /**
+   * Dev-only: mint a workspace so the product can actually be run and demoed.
+   *
+   * Without this there is no way to get past the front door locally — you
+   * cannot see the war room, the brain, or a single guard working. That made
+   * the product undemoable to its own founder, which is a real defect even
+   * though it is not a runtime bug.
+   *
+   * Guarded three ways, because a provisioning endpoint is exactly what an
+   * attacker wants: refused unless NODE_ENV is explicitly "development", rate
+   * limited, and it mints a random key rather than accepting one from the
+   * caller (so it cannot be used to take over an existing workspace).
+   */
+  app.post(
+    "/api/v1/dev/workspace",
+    rateLimit({ windowMs: 60_000, max: 5 }),
+    async (req: express.Request, res: express.Response) => {
+      if (process.env.NODE_ENV !== "development") {
+        return res.status(404).json({ error: "Not found" });
+      }
+      const licenseKey = `lyc_dev_${crypto.randomBytes(16).toString("base64url")}`;
+      const account = await provisionAccount({
+        licenseKey,
+        email: String(req.body?.email ?? "founder@localhost"),
+        name: String(req.body?.name ?? "Founder"),
+        organization: String(req.body?.organization ?? "Demo Workspace"),
+        product: String(req.body?.product ?? "VIP"),
+      });
+      await seedBrain(licenseKey);
+      res.status(201).json({
+        licenseKey,
+        credits: account.creditsRemaining,
+        note: "Development workspace. This endpoint returns 404 unless NODE_ENV=development.",
+      });
+    }
+  );
+
   app.get("/api/v1/account", authenticateLicenseKey, (req: AuthedRequest, res: express.Response) => {
     const account = req.lyceumAccount!;
     res.json({
@@ -434,8 +547,48 @@ export function createApiApp(): express.Express {
     });
   });
 
-  app.post("/api/v1/chat", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
-    const { domain, prompt } = (req.body ?? {}) as { domain?: string; prompt?: string };
+  // ── POST /api/v1/license/rotate — issue a new key, keep the old one
+  // valid for a grace window so in-flight clients don't get cut off.
+  //
+  // Rate-limited tightly: a rotation is a privileged action; if it ever
+  // fires faster than 5/hour it's almost certainly a runaway script.
+  // The new key is returned in the response body exactly once. The audit
+  // trail records the fingerprint of both old and new keys, never the
+  // raw values.
+  app.post(
+    "/api/v1/license/rotate",
+    rateLimit({ windowMs: 60 * 60_000, max: 5 }),
+    authenticateLicenseKey,
+    async (req: AuthedRequest, res: express.Response) => {
+      const oldKey = req.lyceumAccount!.licenseKey;
+      const graceMs =
+        Number(process.env.ROTATE_GRACE_HOURS ?? 24) * 60 * 60_000;
+      const result = await rotateLicenseKey(oldKey, graceMs);
+      if (!result) {
+        return res.status(404).json({ error: "Account not found" });
+      }
+      const oldFp = fingerprintCredential(oldKey);
+      const newFp = fingerprintCredential(result.newKey);
+      console.log(
+        `[security] license rotated: oldFp=${oldFp} newFp=${newFp} graceHours=${graceMs / 3_600_000}`
+      );
+      res.json({
+        licenseKey: result.newKey,
+        graceUntil: result.graceUntil,
+        graceHours: graceMs / 3_600_000,
+        message:
+          "Save the new key now. The old key works for the grace window, then stops.",
+      });
+    }
+  );
+
+  app.post(
+    "/api/v1/chat",
+    // Per-license limiter: runTask burns the customer's real credits.
+    rateLimit({ windowMs: 60_000, max: 120, key: (req) => `lk:${req.header("authorization") ?? req.ip}` }),
+    authenticateLicenseKey,
+    async (req: AuthedRequest, res: express.Response) => {
+      const { domain, prompt } = (req.body ?? {}) as { domain?: string; prompt?: string };
     if (!domain || !prompt) {
       return res.status(400).json({ error: "Both 'domain' and 'prompt' are required" });
     }
@@ -474,16 +627,24 @@ export function createApiApp(): express.Express {
   // A single pasteable URL is the whole integration story for an AI, so the
   // worker token may ride in the path. Lifting it into the Authorization
   // header here keeps one auth path rather than two.
+  // MCP tools also run real tasks against credits, so they get the same
+  // per-license limiter as /api/v1/chat.
+  const mcpLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 240,
+    key: (req) => `mcp:${req.header("authorization") ?? req.ip}`,
+  });
   app.all(
     "/api/mcp/w/:token",
     (req: express.Request, _res: express.Response, next: express.NextFunction) => {
       req.headers.authorization = `Bearer ${req.params.token}`;
       next();
     },
+    mcpLimiter,
     authenticateLicenseKey,
     handleMcpRequest
   );
-  app.all("/api/mcp", authenticateLicenseKey, handleMcpRequest);
+  app.all("/api/mcp", mcpLimiter, authenticateLicenseKey, handleMcpRequest);
 
   // ── Roster: AI workers and their MCP URLs ───────────────────────────────
 
@@ -533,13 +694,26 @@ export function createApiApp(): express.Express {
     if (!title || !body) {
       return res.status(400).json({ error: "title and body are required" });
     }
-    const result = await fileDocument({
-      licenseKey,
-      title: String(title),
-      body: String(body),
-      department: department as DepartmentId | undefined,
-    });
-    res.status(201).json(result);
+    try {
+      const result = await fileDocument({
+        licenseKey,
+        title: String(title),
+        body: String(body),
+        department: department as DepartmentId | undefined,
+      });
+      res.status(201).json(result);
+    } catch (err) {
+      // A refused document is not a server error — it is the guard doing its
+      // job, and the operator needs the evidence to judge it themselves.
+      if (err instanceof IngestBlockedError) {
+        return res.status(422).json({
+          error: err.message,
+          findings: err.verdict.findings,
+          hint: "This document contains instructions aimed at the assistant. If it is genuinely yours, remove those lines and try again.",
+        });
+      }
+      throw err;
+    }
   });
 
   /** Where would this land? Lets the operator see the filing before committing. */
@@ -974,15 +1148,16 @@ export function createApiApp(): express.Express {
   });
 
   // ── Integrations (MCP connections to external tools) ─────────────────────
+  // The connect flow is real end-to-end: the server issues a single-use
+  // `state` bound to the license key, builds the authorize URL (the real
+  // provider consent page when OAuth apps are registered, our own sandbox
+  // consent page otherwise), and the callback exchanges the code
+  // server-side. The browser never sees a secret.
 
-  const OAUTH_PROVIDERS = [
-    { id: "gmail", name: "Gmail", blurb: "Read and draft mail", envPrefix: "GOOGLE", scopes: ["gmail.readonly", "gmail.compose"] },
-    { id: "slack", name: "Slack", blurb: "Read channels, post with approval", envPrefix: "SLACK", scopes: ["channels:history", "chat:write"] },
-    { id: "notion", name: "Notion", blurb: "Read and write pages", envPrefix: "NOTION", scopes: ["read_content", "update_content"] },
-    { id: "github", name: "GitHub", blurb: "Issues, PRs, code search", envPrefix: "GITHUB", scopes: ["repo", "read:org"] },
-  ];
-
-  const connections = new Map<string, Map<string, { connectedAs: string; connectedAt: number }>>();
+  const connections = new Map<
+    string,
+    Map<string, { connectedAs: string; connectedAt: number; mode: "real" | "sandbox"; scopes: string[] }>
+  >();
 
   app.get("/api/v1/integrations", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
     const licenseKey = req.lyceumAccount!.licenseKey;
@@ -991,42 +1166,107 @@ export function createApiApp(): express.Express {
     res.json({
       integrations: OAUTH_PROVIDERS.map((p) => {
         const live = mine.get(p.id);
-        // Honest state. A card reads "connected" only when a credential exists,
-        // and "not set up" names exactly what is missing rather than showing a
-        // Connect button that would fail.
-        const configured = !!(
-          process.env[`${p.envPrefix}_CLIENT_ID`] && process.env[`${p.envPrefix}_CLIENT_SECRET`]
-        );
+        const configured = isProviderConfigured(p);
         return {
           id: p.id,
           name: p.name,
+          emoji: p.emoji,
           blurb: p.blurb,
           auth: "oauth" as const,
           scopes: p.scopes,
-          state: live ? "connected" : configured ? "available" : "unavailable",
-          blockedReason: configured
-            ? undefined
-            : `No OAuth app registered for ${p.name} yet. This needs ${p.envPrefix}_CLIENT_ID and ${p.envPrefix}_CLIENT_SECRET set on the server — an operator task, not something you can do from here.`,
+          scopeLabels: p.scopeLabels,
+          // Honest state: a card reads "connected" only when a connection
+          // exists. Every card is connectable — either to the real provider
+          // (mode: real) or through the sandbox consent flow (mode: sandbox).
+          mode: configured ? "real" : "sandbox",
+          state: live ? ("connected" as const) : ("available" as const),
+          blockedReason: undefined,
           connectedAs: live?.connectedAs,
           connectedAt: live?.connectedAt,
+          connectedMode: live?.mode,
         };
       }),
     });
   });
 
   app.post("/api/v1/integrations/:id/authorize", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
-    const provider = OAUTH_PROVIDERS.find((p) => p.id === req.params.id);
+    const provider = providerFor(req.params.id);
     if (!provider) return res.status(404).json({ error: "Unknown integration." });
 
-    const clientId = process.env[`${provider.envPrefix}_CLIENT_ID`];
-    if (!clientId) {
-      return res.status(409).json({
-        error: `${provider.name} has no OAuth app configured on this server, so there is no authorize URL to send you to.`,
-      });
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const redirectUri = `${origin}/api/v1/integrations/callback`;
+
+    // Single-use state binds this authorization to the caller's license key,
+    // so the unauthenticated callback (a browser redirect) can safely complete
+    // the connection for the right account. Never store the license key in the
+    // URL itself — it would leak via referrers and logs.
+    const state = issueAuthState({
+      provider: provider.id,
+      licenseKey: req.lyceumAccount!.licenseKey,
+      mode: isProviderConfigured(provider) ? "real" : "sandbox",
+      createdAt: Date.now(),
+    });
+
+    const outcome = buildAuthorizeUrl(provider, { origin, state, redirectUri });
+    res.json({ authorizeUrl: outcome.authorizeUrl, mode: outcome.mode, notice: outcome.notice });
+  });
+
+  /** Sandbox consent page — the provider's auth screen until OAuth apps exist. */
+  app.get("/api/v1/integrations/:id/sandbox-auth", async (req: express.Request, res: express.Response) => {
+    const provider = providerFor(req.params.id);
+    const state = String(req.query.state ?? "");
+    if (!provider || !state) {
+      return res.status(400).send("Invalid integration request.");
     }
-    // The URL is assembled server-side on purpose: state and redirect_uri built
-    // in the browser can be tampered with before the redirect.
-    res.json({ authorizeUrl: null, error: "OAuth callback handler not yet implemented." });
+    const origin = `${req.protocol}://${req.get("host")}`;
+    res.type("html").send(renderAuthPage({ provider, state, origin }));
+  });
+
+  /** OAuth callback — browser redirect, so deliberately NOT authenticated. */
+  app.get("/api/v1/integrations/callback", async (req: express.Request, res: express.Response) => {
+    const state = String(req.query.state ?? "");
+    const code = String(req.query.code ?? "");
+
+    const auth = consumeAuthState(state);
+    if (!auth) {
+      return res.status(400).send("This link is invalid or has expired. Go back and try again.");
+    }
+    const provider = providerFor(auth.provider);
+    if (!provider) {
+      return res.status(400).send("Unknown integration.");
+    }
+
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const redirectUri = `${origin}/api/v1/integrations/callback`;
+
+    try {
+      let connectedAs = `${provider.name} sandbox account`;
+      if (auth.mode === "real") {
+        if (!code) {
+          return res.status(400).send(`${provider.name} returned no authorization code.`);
+        }
+        const exchanged = await exchangeCode(provider, code, redirectUri);
+        connectedAs = exchanged.connectedAs;
+      }
+
+      const mine = connections.get(auth.licenseKey) ?? new Map();
+      mine.set(provider.id, {
+        connectedAs,
+        connectedAt: Date.now(),
+        mode: auth.mode,
+        scopes: provider.scopes,
+      });
+      connections.set(auth.licenseKey, mine);
+
+      // The popup flow polls the list and flips the card; this page closes
+      // itself. The fallback link covers popup-blocked browsers.
+      res.type("html").send(renderCallbackSuccessPage(provider.name));
+    } catch (err) {
+      res
+        .status(502)
+        .type("html")
+        .send(`<h3>Connection failed</h3><p>${String(err instanceof Error ? err.message : err)}</p>`);
+    }
   });
 
   app.delete("/api/v1/integrations/:id", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {

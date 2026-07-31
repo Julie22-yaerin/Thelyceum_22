@@ -91,9 +91,14 @@ const STOP_WORDS = new Set([
 ]);
 
 export function tokenise(text: string): string[] {
-  return (text.toLowerCase().match(/[a-z0-9$%.]+/g) ?? []).filter(
-    (t) => t.length > 1 && !STOP_WORDS.has(t)
-  );
+  return (text.toLowerCase().match(/[a-z0-9$%.]+/g) ?? [])
+    // A period is kept only between digits, so "2.5" survives but "tier."
+    // becomes "tier". Without this, any keyword that happens to end a sentence
+    // never matched anything — which silently degraded both retrieval scoring
+    // here and the librarian's filing, in a way that looked like bad ranking
+    // rather than a tokeniser bug.
+    .map((t) => t.replace(/(?<!\d)\.|\.(?!\d)/g, ""))
+    .filter((t) => t.length > 1 && !STOP_WORDS.has(t));
 }
 
 /**

@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ChangelogBanner from "./components/ChangelogBanner";
 import FloatingSocial from "./components/FloatingSocial";
@@ -51,7 +51,23 @@ function Router() {
 //   to keep consistent foreground/background color across components
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
+/**
+ * Routes that own the whole viewport.
+ *
+ * The war room is `h-screen overflow-hidden` so its two panes scroll
+ * independently and the page itself never does. Any chrome rendered above it —
+ * the changelog banner, the floating social widget — pushes it down and makes
+ * the whole document scroll, which defeats the layout and hides the top bar.
+ * These surfaces opt out of global chrome rather than fighting it with z-index.
+ */
+const FULL_BLEED_ROUTES = ["/war-room"];
+
 function App() {
+  const [location] = useLocation();
+  const fullBleed = FULL_BLEED_ROUTES.some(
+    (r) => location === r || location.startsWith(`${r}/`)
+  );
+
   return (
     <ErrorBoundary>
       <ThemeProvider
@@ -59,10 +75,10 @@ function App() {
         // switchable
       >
         <TooltipProvider>
-          <ChangelogBanner />
+          {!fullBleed && <ChangelogBanner />}
           <Toaster />
           <Router />
-          <FloatingSocial />
+          {!fullBleed && <FloatingSocial />}
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

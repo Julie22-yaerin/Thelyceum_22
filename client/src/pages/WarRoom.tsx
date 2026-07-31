@@ -150,6 +150,8 @@ export default function WarRoom() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [openPlan, setOpenPlan] = useState<string | null>(null);
   const [alert, setAlert] = useState<RedAlert | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const misses = useRef(0);
   const [metrics, setMetrics] = useState<{
     savedCents: number;
     budgetRemainingCents: number;
@@ -179,8 +181,17 @@ export default function WarRoom() {
           const d = await alertRes.json();
           setAlert(d.alert ?? null);
         }
+        misses.current = 0;
+        setFeedError(null);
       } catch {
-        /* transient — the next tick retries */
+        // One failed tick is usually transient, so don't shout on the first
+        // one. But a feed that has been dead for a while while the operator
+        // believes it is live is the worst state this panel can be in — they
+        // would read "nothing is happening" as "everything is fine".
+        misses.current += 1;
+        if (misses.current >= 3) {
+          setFeedError("Live feed disconnected — this is not showing current activity.");
+        }
       }
     };
     void tick();
@@ -444,6 +455,13 @@ export default function WarRoom() {
                       tone={metrics.blocked > 0 ? "warn" : "neutral"}
                     />
                   </section>
+                )}
+
+                {feedError && (
+                  <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-100 leading-relaxed">{feedError}</p>
+                  </div>
                 )}
 
                 <LiveRadar events={events} />

@@ -597,7 +597,7 @@ import express2 from "express";
 import { createServer } from "http";
 import path2 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
-import crypto5 from "crypto";
+import crypto8 from "crypto";
 
 // client/src/lib/modelConfig.ts
 var DOMAINS = ["LAW", "FINANCE", "TECH", "MUSE", "KIMI"];
@@ -739,8 +739,12 @@ async function proxyStreamToOpenRouter(body) {
   }
 }
 
+// server/lib/auth.ts
+import crypto3 from "node:crypto";
+
 // server/db/accounts.ts
 init_firestore();
+import crypto from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 var TIER_CREDITS = {
   vip: 2e3,
@@ -786,6 +790,47 @@ async function getAccount(licenseKey) {
   const snap = await collection().doc(licenseKey).get();
   return snap.exists ? snap.data() : null;
 }
+async function rotateLicenseKey(oldKey, graceMs) {
+  const db2 = getDb();
+  const oldRef = collection().doc(oldKey);
+  const existing = await oldRef.get();
+  if (!existing.exists) return null;
+  const account = existing.data();
+  const newKey = "lyc_" + crypto.randomBytes(24).toString("base64url");
+  const graceUntil = Date.now() + graceMs;
+  const now = Date.now();
+  const newAccount = {
+    ...account,
+    licenseKey: newKey,
+    createdAt: account.createdAt ?? now,
+    rotatedFrom: oldKey,
+    rotationGraceUntil: void 0,
+    rotatedAt: void 0
+  };
+  await db2.runTransaction(async (tx) => {
+    tx.set(collection().doc(newKey), newAccount);
+    tx.update(oldRef, {
+      rotatedTo: newKey,
+      rotatedAt: now,
+      rotationGraceUntil: graceUntil
+    });
+  });
+  return { newKey, graceUntil };
+}
+async function resolveRotatedKey(oldKey) {
+  const snap = await collection().doc(oldKey).get();
+  if (!snap.exists) return null;
+  const data = snap.data();
+  if (!data.rotatedTo || !data.rotationGraceUntil) return null;
+  if (Date.now() > data.rotationGraceUntil) return null;
+  const replacement = await getAccount(data.rotatedTo);
+  if (!replacement) return null;
+  return {
+    account: replacement,
+    rotatedFrom: oldKey,
+    graceUntil: data.rotationGraceUntil
+  };
+}
 var InsufficientCreditsError = class extends Error {
   constructor(remaining, requested) {
     super(`Insufficient credits: have ${remaining}, need ${requested}`);
@@ -813,10 +858,10 @@ async function deductCredits(licenseKey, amount) {
 
 // server/db/workers.ts
 init_firestore();
-import crypto from "crypto";
+import crypto2 from "crypto";
 var collection2 = () => getDb().collection("workers");
 function generateWorkerToken() {
-  return `lyw_${crypto.randomBytes(18).toString("base64url")}`;
+  return `lyw_${crypto2.randomBytes(18).toString("base64url")}`;
 }
 async function createWorker(params) {
   const ref = collection2().doc();
@@ -885,6 +930,40 @@ async function rotateWorkerToken(licenseKey, workerId) {
 }
 
 // server/lib/auth.ts
+function fingerprintCredential(value) {
+  const salt = process.env.LYCEUM_FINGERPRINT_SALT ?? "";
+  return crypto3.createHash("sha256").update(`${salt}:${value}`).digest("hex").slice(0, 12);
+}
+var FAILED_AUTH_BUCKET_MS = 15 * 6e4;
+var FAILED_AUTH_THRESHOLD = 20;
+var FAILED_AUTH_BLOCK_MS = 60 * 6e4;
+var failedAuthByIp = /* @__PURE__ */ new Map();
+var authSweeper = setInterval(() => {
+  const now = Date.now();
+  for (const [ip, rec] of Array.from(failedAuthByIp)) {
+    if (rec.resetAt <= now && (!rec.blockedUntil || rec.blockedUntil <= now)) {
+      failedAuthByIp.delete(ip);
+    }
+  }
+}, 6e4);
+if (typeof authSweeper.unref === "function") authSweeper.unref();
+function recordFailedAuth(ip) {
+  const now = Date.now();
+  const rec = failedAuthByIp.get(ip) ?? { count: 0, resetAt: now + FAILED_AUTH_BUCKET_MS };
+  if (now > rec.resetAt) {
+    rec.count = 0;
+    rec.resetAt = now + FAILED_AUTH_BUCKET_MS;
+  }
+  rec.count += 1;
+  if (rec.count >= FAILED_AUTH_THRESHOLD) {
+    rec.blockedUntil = now + FAILED_AUTH_BLOCK_MS;
+  }
+  failedAuthByIp.set(ip, rec);
+}
+function isAuthBlocked(ip) {
+  const rec = failedAuthByIp.get(ip);
+  return !!rec?.blockedUntil && rec.blockedUntil > Date.now();
+}
 async function authenticateLicenseKey(req, res, next) {
   const header = req.header("authorization") || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -893,16 +972,13 @@ async function authenticateLicenseKey(req, res, next) {
     res.status(401).json({ error: "Missing Authorization: Bearer <license key> header" });
     return;
   }
-  const adminToken = process.env.ADMIN_TOKEN;
-  if (adminToken && licenseKey === adminToken) {
-    req.lyceumAccount = {
-      licenseKey: adminToken,
-      product: "Admin (Beta)",
-      creditsTotal: 999999,
-      creditsRemaining: 999999,
-      createdAt: Date.now()
-    };
-    next();
+  const clientIp = req.ip ?? "unknown";
+  if (isAuthBlocked(clientIp)) {
+    res.setHeader("Retry-After", "3600");
+    res.status(429).json({
+      error: "Too many failed auth attempts from this network. Try again later.",
+      requestFingerprint: fingerprintCredential(clientIp)
+    });
     return;
   }
   if (licenseKey.startsWith("lyw_")) {
@@ -925,12 +1001,24 @@ async function authenticateLicenseKey(req, res, next) {
     return;
   }
   try {
-    const account = await getAccount(licenseKey);
+    let account = await getAccount(licenseKey);
+    let presentedRotatedFrom;
     if (!account) {
+      const rotated = await resolveRotatedKey(licenseKey).catch(() => null);
+      if (rotated) {
+        account = rotated.account;
+        presentedRotatedFrom = rotated.rotatedFrom;
+      }
+    }
+    if (!account) {
+      recordFailedAuth(clientIp);
       res.status(401).json({ error: "Invalid license key" });
       return;
     }
     req.lyceumAccount = account;
+    if (presentedRotatedFrom) {
+      req._rotatedFrom = presentedRotatedFrom;
+    }
     next();
   } catch {
     res.status(503).json({ error: "Account lookup unavailable \u2014 Firestore may not be configured" });
@@ -1284,12 +1372,154 @@ import { readFile, readdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+
+// server/security/ingestGuard.ts
+var ZERO_WIDTH = /[​-‍⁠﻿­]/g;
+var UNICODE_TAGS = /\uDB40[\uDC00-\uDC7F]/g;
+var CONTROL = /[ --]/g;
+function normalise(input) {
+  const zeroWidth = (input.match(ZERO_WIDTH) ?? []).length;
+  const unicodeTags = (input.match(UNICODE_TAGS) ?? []).length;
+  const controlChars = (input.match(CONTROL) ?? []).length;
+  let text = input.replace(ZERO_WIDTH, "").replace(UNICODE_TAGS, "").replace(CONTROL, "");
+  const despaced = text.replace(
+    /\b(?:[a-zA-Z][\s.\-_]{1,2}){3,}[a-zA-Z]\b/g,
+    (m) => m.replace(/[\s.\-_]/g, "")
+  );
+  const decodedLayers = [];
+  for (const candidate of text.match(/[A-Za-z0-9+/]{24,}={0,2}/g) ?? []) {
+    try {
+      const decoded = Buffer.from(candidate, "base64").toString("utf8");
+      if (/^[\x20-\x7E\s]{12,}$/.test(decoded)) decodedLayers.push(decoded);
+    } catch {
+    }
+  }
+  return {
+    text: despaced !== text ? despaced : text,
+    removed: { zeroWidth, unicodeTags, controlChars },
+    decodedLayers
+  };
+}
+var RULES = [
+  {
+    name: "instruction_override",
+    severity: "critical",
+    pattern: /\b(?:ignore|disregard|forget|override|bypass)\b[^.\n]{0,30}\b(?:previous|prior|above|earlier|all|any|your)\b[^.\n]{0,30}\b(?:instruction|rule|prompt|direction|constraint|guardrail)s?\b/i,
+    explanation: "Tells the assistant to discard its instructions. A reference document has no reason to address the assistant at all."
+  },
+  {
+    name: "role_reassignment",
+    severity: "critical",
+    pattern: /\byou\s+(?:are|act)\s+(?:now\s+)?(?:as\s+)?(?:a\s+|an\s+|the\s+)?(?:developer|admin|root|unrestricted|jailbroken|DAN|god)\b|\benter\s+(?:developer|debug|god|unrestricted)\s+mode\b/i,
+    explanation: "Attempts to reassign the assistant's role or unlock a privileged mode."
+  },
+  {
+    name: "scope_escalation",
+    severity: "critical",
+    pattern: /\b(?:you\s+(?:may|can|are\s+allowed|now\s+have)|grant(?:ed)?\s+(?:you|yourself)|treat\s+(?:this|the)\s+user\s+as)\b[^.\n]{0,40}\b(?:access|permission|admin|full|all\s+department|any\s+document|elevated)\b/i,
+    explanation: "Claims to widen the assistant's permissions. Scope comes from the department, never from a document."
+  },
+  {
+    name: "credential_request",
+    severity: "critical",
+    pattern: /\b(?:reveal|print|output|show|send|include|repeat)\b[^.\n]{0,40}\b(?:system\s+prompt|api[_\s-]?key|secret|credential|password|token|\.env)s?\b/i,
+    explanation: "Asks the assistant to output its system prompt or credentials."
+  },
+  {
+    name: "exfiltration_instruction",
+    severity: "critical",
+    pattern: /\b(?:send|post|forward|upload|email|transmit)\b[^.\n]{0,40}\b(?:to|at)\b[^.\n]{0,20}(?:https?:\/\/|[\w.+-]+@[\w-]+\.[\w.]+)/i,
+    explanation: "Instructs the assistant to send data to an external address embedded in the document."
+  },
+  {
+    name: "tool_invocation",
+    severity: "high",
+    pattern: /\b(?:call|invoke|execute|run|use)\s+(?:the\s+)?(?:tool|function|command)\b|<\s*(?:tool_call|function_call|invoke)\b/i,
+    explanation: "Contains a tool invocation. Documents supply facts; the agent decides which tools to call."
+  },
+  {
+    name: "fake_system_turn",
+    severity: "critical",
+    pattern: /(?:^|\n)\s*(?:\[?(?:SYSTEM|ASSISTANT|USER)\]?\s*[:>]|<\|?(?:im_start|system|assistant)\|?>)/i,
+    explanation: "Forges a conversation turn to make its content look like a system message rather than data."
+  },
+  {
+    name: "conditional_payload",
+    severity: "high",
+    pattern: /\bif\s+(?:you\s+are|asked|the\s+user)\b[^.\n]{0,50}\b(?:then\s+)?(?:reply|respond|say|output|tell)\b/i,
+    explanation: "A conditional instruction that changes the assistant's answer under specific circumstances \u2014 a classic stored payload."
+  },
+  {
+    name: "urgency_authority",
+    severity: "medium",
+    pattern: /\b(?:this\s+is\s+(?:the\s+)?(?:CEO|CTO|founder|admin|an?\s+emergency)|authorized\s+by\s+(?:the\s+)?(?:CEO|CTO|admin)|urgent[:\s]+(?:you\s+must|override))\b/i,
+    explanation: "Claims authority inside the content. Authority comes from authentication, never from text in a document."
+  }
+];
+function scanLayer(text, layer) {
+  const findings = [];
+  for (const rule of RULES) {
+    const match = text.match(rule.pattern);
+    if (match) {
+      findings.push({
+        rule: rule.name,
+        severity: rule.severity,
+        evidence: match[0].slice(0, 200).trim(),
+        layer,
+        explanation: rule.explanation
+      });
+    }
+  }
+  return findings;
+}
+function guardIngest(input, options = {}) {
+  const started = Date.now();
+  const source = options.source ?? "automated";
+  const blockOnCritical = options.blockOnCritical ?? source === "automated";
+  const norm = normalise(input);
+  const findings = [
+    ...scanLayer(norm.text, norm.removed.zeroWidth > 0 ? "zero_width" : "plain"),
+    ...norm.decodedLayers.flatMap((d) => scanLayer(d, "base64"))
+  ];
+  if (norm.removed.unicodeTags > 0) {
+    findings.push({
+      rule: "hidden_unicode_tags",
+      severity: "high",
+      evidence: `${norm.removed.unicodeTags} Unicode tag character(s)`,
+      layer: "unicode_tag",
+      explanation: "Unicode tag characters are invisible to a human reviewer but read by the model. Nothing legitimate uses them in prose."
+    });
+  }
+  const hasCritical = findings.some((f) => f.severity === "critical");
+  const action = hasCritical ? blockOnCritical ? "block" : "sanitise" : findings.length > 0 ? "sanitise" : norm.removed.zeroWidth + norm.removed.unicodeTags + norm.removed.controlChars > 0 ? "sanitise" : "allow";
+  return {
+    action,
+    findings,
+    // Even when allowed, the normalised text is what gets stored — the
+    // invisible characters are removed either way.
+    cleanText: action === "block" ? "" : norm.text,
+    removed: norm.removed,
+    checkedInMs: Date.now() - started
+  };
+}
+
+// server/brain/knowledge.ts
 var DEPARTMENTS = [
   { id: "dev_ops", name: "DevOps", blurb: "API docs, SLAs, failover and breaker config" },
   { id: "finance", name: "Finance", blurb: "Pricing, cost calculators, margin targets" },
   { id: "sales_outreach", name: "Sales & Outreach", blurb: "Pitch scripts, targeting, templates" },
   { id: "qa_compliance", name: "QA & Compliance", blurb: "Output schemas, grounding benchmarks" }
 ];
+var IngestBlockedError = class extends Error {
+  constructor(verdict) {
+    super(
+      `Refused to store this document: ${verdict.findings[0]?.explanation ?? "it contains instructions aimed at the assistant."}`
+    );
+    this.verdict = verdict;
+    this.name = "IngestBlockedError";
+  }
+  code = "INGEST_BLOCKED";
+};
 var collection6 = () => getDb().collection("brainDocuments");
 function findTemplateRoot() {
   const starts = [path.dirname(fileURLToPath(import.meta.url)), process.cwd()];
@@ -1367,15 +1597,31 @@ async function getDocument(licenseKey, docPath) {
   return all.find((d) => d.path === docPath) ?? null;
 }
 async function putDocument(params) {
+  const origin = params.origin ?? "upload";
+  const guarded = origin === "template" ? null : guardIngest(params.body, {
+    // A person pasting their own document gets it flagged and stored;
+    // automated filing gets it refused. An operator who cannot file
+    // their own material will paste it somewhere we cannot see at all.
+    source: origin === "librarian" ? "automated" : "human"
+  });
+  if (guarded?.action === "block") throw new IngestBlockedError(guarded);
+  const body = guarded ? guarded.cleanText : params.body;
+  const ingest = guarded && guarded.action !== "allow" ? {
+    action: guarded.action,
+    findings: guarded.findings,
+    removed: guarded.removed,
+    at: Date.now()
+  } : void 0;
   const existing = await getDocument(params.licenseKey, params.path);
   const now = Date.now();
   if (existing) {
     const updated = {
       ...existing,
       title: params.title,
-      body: params.body,
+      body,
       alwaysInclude: params.alwaysInclude ?? existing.alwaysInclude,
       origin: params.origin ?? existing.origin,
+      ingest: ingest ?? existing.ingest,
       updatedAt: now
     };
     await collection6().doc(existing.id).set(updated, { merge: true });
@@ -1387,9 +1633,10 @@ async function putDocument(params) {
     licenseKey: params.licenseKey,
     path: params.path,
     title: params.title,
-    body: params.body,
+    body,
     alwaysInclude: params.alwaysInclude ?? false,
-    origin: params.origin ?? "upload",
+    origin,
+    ingest,
     createdAt: now,
     updatedAt: now
   };
@@ -1500,9 +1747,7 @@ var STOP_WORDS = /* @__PURE__ */ new Set([
   "has"
 ]);
 function tokenise(text) {
-  return (text.toLowerCase().match(/[a-z0-9$%.]+/g) ?? []).filter(
-    (t) => t.length > 1 && !STOP_WORDS.has(t)
-  );
+  return (text.toLowerCase().match(/[a-z0-9$%.]+/g) ?? []).map((t) => t.replace(/(?<!\d)\.|\.(?!\d)/g, "")).filter((t) => t.length > 1 && !STOP_WORDS.has(t));
 }
 function score(doc, queryTerms) {
   if (queryTerms.size === 0) return 0;
@@ -2465,7 +2710,7 @@ function getSupabase() {
 }
 
 // server/proxy/llmProxy.ts
-import crypto2 from "crypto";
+import crypto4 from "crypto";
 import express from "express";
 
 // server/lib/breakerStore.ts
@@ -3144,7 +3389,7 @@ function fingerprintKey(authHeader) {
   if (!salt) {
     return "unsalted";
   }
-  return crypto2.createHash("sha256").update(salt).update(authHeader).digest("hex").slice(0, 8);
+  return crypto4.createHash("sha256").update(salt).update(authHeader).digest("hex").slice(0, 8);
 }
 function resolveSessionId(req, tenant, body) {
   const header = req.header("x-lyceum-session");
@@ -3372,10 +3617,10 @@ async function pipeAndMeter(upstreamRes, res, ctx, meta) {
 
 // server/db/proxyTokens.ts
 init_firestore();
-import crypto3 from "crypto";
+import crypto5 from "crypto";
 var collection7 = () => getDb().collection("proxyTokens");
 function generateProxyToken() {
-  return `lyc_live_${crypto3.randomBytes(18).toString("base64url")}`;
+  return `lyc_live_${crypto5.randomBytes(18).toString("base64url")}`;
 }
 async function mintProxyToken(params) {
   const record = {
@@ -3864,7 +4109,7 @@ function corpusSummary() {
 }
 
 // server/hive/immunity.ts
-import crypto4 from "crypto";
+import crypto6 from "crypto";
 var SCRUBBERS = [
   { re: /\b[\w.+-]+@[\w-]+\.[\w.]+\b/g, token: "<EMAIL>" },
   { re: /\bhttps?:\/\/\S+/gi, token: "<URL>" },
@@ -3986,7 +4231,7 @@ function extractSignature(params) {
       refusedReason: `Refused to share: ${check.offending.length} token(s) were not recognised as structural (${check.offending.join(", ")}). Not publishing rather than risk leaking tenant content.`
     };
   }
-  const fingerprint = crypto4.createHash("sha256").update(skeleton).digest("hex").slice(0, 24);
+  const fingerprint = crypto6.createHash("sha256").update(skeleton).digest("hex").slice(0, 24);
   return {
     signature: {
       id: `sig_${fingerprint.slice(0, 12)}`,
@@ -4077,7 +4322,7 @@ function isEnforcedFor(sig, licenseKey) {
   const decision = evaluateForPromotion(sig);
   if (decision.rolloutFraction >= 1) return true;
   if (decision.rolloutFraction <= 0) return false;
-  const h = crypto4.createHash("sha256").update(`${sig.id}:${licenseKey}`).digest();
+  const h = crypto6.createHash("sha256").update(`${sig.id}:${licenseKey}`).digest();
   return h[0] / 256 < decision.rolloutFraction;
 }
 var ImmunityRegistry = class {
@@ -4538,23 +4783,460 @@ async function engageBrake(params) {
   return { engaged: true, elapsedMs, withinSla: elapsedMs <= sla, stopped };
 }
 
+// server/lib/security.ts
+import crypto7 from "crypto";
+function securityHeaders() {
+  return (req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    const proto = req.header("x-forwarded-proto") || (req.secure ? "https" : "http");
+    if (proto === "https") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+    if (process.env.SECURITY_CSP === "1") {
+      res.setHeader(
+        "Content-Security-Policy",
+        [
+          "default-src 'self'",
+          // Crisp + Lemon Squeezy + our own bundle. 'unsafe-inline' is required
+          // by Crisp's injected widget script.
+          "script-src 'self' 'unsafe-inline' https://client.crisp.chat https://assets.lemonsqueezy.com",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "font-src 'self' https://fonts.gstatic.com",
+          "img-src 'self' data: blob: https:",
+          // SSE streaming (chat/stream) + Crisp socket + any API calls.
+          "connect-src 'self' https: wss: ws:",
+          "frame-src 'self' https://*.lemonsqueezy.com",
+          "frame-ancestors 'none'",
+          "media-src 'self' https: blob:",
+          "worker-src 'self' blob:"
+        ].join("; ")
+      );
+    }
+    next();
+  };
+}
+var buckets = /* @__PURE__ */ new Map();
+var sweeper = setInterval(() => {
+  const now = Date.now();
+  for (const [key, b] of Array.from(buckets)) {
+    if (b.resetAt <= now) buckets.delete(key);
+  }
+}, 6e4);
+if (typeof sweeper.unref === "function") sweeper.unref();
+function rateLimit(opts) {
+  const windowMs = opts.windowMs;
+  const max = opts.max;
+  const keyFn = opts.key ?? ((req) => req.ip ?? req.socket.remoteAddress ?? "unknown");
+  const message = opts.message ?? "Too many requests. Please slow down and try again shortly.";
+  return (req, res, next) => {
+    const key = keyFn(req);
+    const now = Date.now();
+    let bucket = buckets.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      bucket = { count: 0, resetAt: now + windowMs };
+      buckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > max) {
+      const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1e3));
+      res.setHeader("Retry-After", String(retryAfter));
+      res.status(429).json({ error: message, retryAfter });
+      return;
+    }
+    next();
+  };
+}
+var ALLOWED_ROLES = /* @__PURE__ */ new Set(["system", "user", "assistant", "tool"]);
+var MAX_MESSAGES = 50;
+var MAX_TOTAL_CHARS = 2e5;
+var MAX_SINGLE_CHARS = 4e4;
+var MAX_TEMPERATURE = 2;
+var MAX_TOKENS = 8192;
+var INJECTION_PATTERNS = [
+  {
+    pattern: /ignore\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|messages?|context|directives?)/i,
+    reason: "Message attempts to discard the system instructions."
+  },
+  {
+    pattern: /disregard\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|messages?|context)/i,
+    reason: "Message attempts to discard the system instructions."
+  },
+  {
+    pattern: /forget\s+(everything|all|everything you)\s+(above|before|prior|previously)/i,
+    reason: "Message attempts to reset the conversation context."
+  },
+  {
+    // NOTE: `assistant` and `agent` are deliberately absent. "You are now the
+    // finance assistant" / "You are now the sales agent" are normal system-
+    // prompt phrasings, and since every role is screened, matching them would
+    // 400 legitimate requests. The classic jailbreak redefines the model as
+    // the *system/developer/admin* or a named model (gpt/chatgpt/claude/dan),
+    // which are the terms kept below. Injection patterns are checked
+    // independently, so a "you are now the assistant, ignore all previous
+    // instructions" payload is still caught by the first rule.
+    pattern: /you\s+are\s+now\s+(a|an|the|not)?\s*(system|developer|administrator|admin|gpt|chatgpt|claude|dan)\b/i,
+    reason: "Message attempts to redefine the assistant's identity or role."
+  },
+  {
+    pattern: /<\|?(system|developer|assistant)_?(message|prompt|instruction)\|?>/i,
+    reason: "Message contains a role-tag injection."
+  },
+  {
+    pattern: /do\s+not\s+(follow|obey|honor)\s+(any\s+|the\s+)?(rules|instructions|guidelines|constraints)/i,
+    reason: "Message attempts to disable the system instructions."
+  },
+  {
+    pattern: /reveal\s+(your|the)\s+(system|developer)\s+(prompt|instructions?)/i,
+    reason: "Message attempts to extract the system prompt."
+  }
+];
+function screenPrompt(text) {
+  for (const { pattern, reason } of INJECTION_PATTERNS) {
+    if (pattern.test(text)) return reason;
+  }
+  return null;
+}
+function screenChatRequest(body) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, status: 400, reason: "Request body must be a JSON object." };
+  }
+  const b = body;
+  const domain = b.domain;
+  if (typeof domain !== "string" || domain.length === 0) {
+    return { ok: false, status: 400, reason: "'domain' is required." };
+  }
+  const messages = b.messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { ok: false, status: 400, reason: "'messages' must be a non-empty array." };
+  }
+  if (messages.length > MAX_MESSAGES) {
+    return { ok: false, status: 413, reason: `'messages' exceeds the ${MAX_MESSAGES}-message limit.` };
+  }
+  let totalChars = 0;
+  for (const m of messages) {
+    if (typeof m !== "object" || m === null) {
+      return { ok: false, status: 400, reason: "Each message must be an object." };
+    }
+    const mm = m;
+    if (typeof mm.role !== "string" || !ALLOWED_ROLES.has(mm.role)) {
+      return { ok: false, status: 400, reason: `Invalid message role: ${String(mm.role)}` };
+    }
+    if (typeof mm.content !== "string") {
+      return { ok: false, status: 400, reason: "Each message's 'content' must be a string." };
+    }
+    if (mm.content.length > MAX_SINGLE_CHARS) {
+      return { ok: false, status: 413, reason: `A single message exceeds ${MAX_SINGLE_CHARS} characters.` };
+    }
+    totalChars += mm.content.length;
+    const reason = screenPrompt(mm.content);
+    if (reason) {
+      return { ok: false, status: 400, reason: `Message blocked by LLM guardrail: ${reason}` };
+    }
+  }
+  if (totalChars > MAX_TOTAL_CHARS) {
+    return { ok: false, status: 413, reason: `Total message size exceeds ${MAX_TOTAL_CHARS} characters.` };
+  }
+  if (b.temperature !== void 0 && (typeof b.temperature !== "number" || b.temperature > MAX_TEMPERATURE)) {
+    return { ok: false, status: 400, reason: `'temperature' must be a number \u2264 ${MAX_TEMPERATURE}.` };
+  }
+  if (b.maxTokens !== void 0 && (typeof b.maxTokens !== "number" || !Number.isFinite(b.maxTokens) || b.maxTokens > MAX_TOKENS)) {
+    return { ok: false, status: 400, reason: `'maxTokens' must be a number \u2264 ${MAX_TOKENS}.` };
+  }
+  return { ok: true };
+}
+var pendingStates = /* @__PURE__ */ new Map();
+var STATE_TTL_MS = 10 * 6e4;
+var stateSweeper = setInterval(() => {
+  const now = Date.now();
+  for (const [state, auth] of Array.from(pendingStates)) {
+    if (now - auth.createdAt > STATE_TTL_MS) pendingStates.delete(state);
+  }
+}, 6e4);
+if (typeof stateSweeper.unref === "function") stateSweeper.unref();
+function issueAuthState(auth) {
+  const now = Date.now();
+  for (const [state2, a] of Array.from(pendingStates)) {
+    if (now - a.createdAt > STATE_TTL_MS) pendingStates.delete(state2);
+  }
+  const state = crypto7.randomBytes(24).toString("hex");
+  pendingStates.set(state, auth);
+  return state;
+}
+function consumeAuthState(state) {
+  const auth = pendingStates.get(state);
+  if (!auth) return null;
+  pendingStates.delete(state);
+  if (Date.now() - auth.createdAt > STATE_TTL_MS) return null;
+  return auth;
+}
+function corsPolicy(allowedOrigins) {
+  const allowed = new Set(allowedOrigins);
+  return (req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowed.has(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    } else if (origin) {
+      if (req.method === "OPTIONS") {
+        res.setHeader("Vary", "Origin");
+        return res.sendStatus(204);
+      }
+      return next();
+    }
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Token");
+      res.setHeader("Access-Control-Max-Age", "86400");
+      return res.sendStatus(204);
+    }
+    next();
+  };
+}
+
+// server/lib/integrations.ts
+var OAUTH_PROVIDERS = [
+  {
+    id: "gmail",
+    name: "Gmail",
+    emoji: "\u2709\uFE0F",
+    blurb: "Read and draft mail",
+    envPrefix: "GOOGLE",
+    scopes: ["gmail.readonly", "gmail.compose"],
+    scopeLabels: {
+      "gmail.readonly": "Read your emails and labels",
+      "gmail.compose": "Draft and send emails on your behalf"
+    },
+    authorizeEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenEndpoint: "https://oauth2.googleapis.com/token",
+    responseType: "code",
+    extraParams: { access_type: "offline", prompt: "consent" }
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    emoji: "\u{1F4AC}",
+    blurb: "Read channels, post with approval",
+    envPrefix: "SLACK",
+    scopes: ["channels:history", "chat:write"],
+    scopeLabels: {
+      "channels:history": "Read messages from public channels",
+      "chat:write": "Post messages to channels, only after you approve"
+    },
+    authorizeEndpoint: "https://slack.com/oauth/v2/authorize",
+    tokenEndpoint: "https://slack.com/api/oauth.v2.access"
+  },
+  {
+    id: "notion",
+    name: "Notion",
+    emoji: "\u{1F4D3}",
+    blurb: "Read and write pages",
+    envPrefix: "NOTION",
+    scopes: ["read_content", "update_content"],
+    scopeLabels: {
+      read_content: "Read pages and databases in your workspace",
+      update_content: "Create and update pages you grant access to"
+    },
+    authorizeEndpoint: "https://api.notion.com/v1/oauth/authorize",
+    tokenEndpoint: "https://api.notion.com/v1/oauth/token",
+    extraParams: { owner: "user" }
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    emoji: "\u{1F419}",
+    blurb: "Issues, PRs, code search",
+    envPrefix: "GITHUB",
+    scopes: ["repo", "read:org"],
+    scopeLabels: {
+      repo: "Read and write to the repositories you choose",
+      "read:org": "Read your organization and team membership"
+    },
+    authorizeEndpoint: "https://github.com/login/oauth/authorize",
+    tokenEndpoint: "https://github.com/login/oauth/access_token"
+  }
+];
+function providerFor(id) {
+  return OAUTH_PROVIDERS.find((p) => p.id === id);
+}
+function isProviderConfigured(provider) {
+  return !!(process.env[`${provider.envPrefix}_CLIENT_ID`] && process.env[`${provider.envPrefix}_CLIENT_SECRET`]);
+}
+function buildAuthorizeUrl(provider, params) {
+  const clientId = process.env[`${provider.envPrefix}_CLIENT_ID`];
+  if (isProviderConfigured(provider) && clientId) {
+    const url = new URL(provider.authorizeEndpoint);
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", params.redirectUri);
+    url.searchParams.set("state", params.state);
+    if (provider.responseType) url.searchParams.set("response_type", provider.responseType);
+    url.searchParams.set("scope", provider.scopes.join(" "));
+    for (const [k2, v] of Object.entries(provider.extraParams ?? {})) {
+      url.searchParams.set(k2, v);
+    }
+    return { mode: "real", authorizeUrl: url.toString() };
+  }
+  return {
+    mode: "sandbox",
+    authorizeUrl: `${params.origin}/api/v1/integrations/${provider.id}/sandbox-auth?state=${params.state}`,
+    notice: `No ${provider.name} OAuth app is registered on this server yet, so this is a sandbox connection. It walks the real consent flow; no live ${provider.name} account is touched.`
+  };
+}
+async function exchangeCode(provider, code, redirectUri) {
+  const clientId = process.env[`${provider.envPrefix}_CLIENT_ID`];
+  const clientSecret = process.env[`${provider.envPrefix}_CLIENT_SECRET`];
+  if (!clientId || !clientSecret) {
+    throw new Error(`${provider.name} OAuth app is not configured on the server.`);
+  }
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    redirect_uri: redirectUri,
+    grant_type: "authorization_code"
+  });
+  const res = await fetch(provider.tokenEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      // GitHub returns form-encoded by default; force JSON like everyone else.
+      Accept: "application/json"
+    },
+    body
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) {
+    throw new Error(
+      `${provider.name} rejected the token exchange: ${String(data.error_description ?? data.error ?? res.status)}`
+    );
+  }
+  let connectedAs = `${provider.name} account`;
+  if (provider.id === "gmail" && typeof data.email === "string") {
+    connectedAs = data.email;
+  } else if (provider.id === "slack") {
+    const authedUser = data.authed_user;
+    if (typeof authedUser?.email === "string") connectedAs = authedUser.email;
+  } else if (provider.id === "notion" && typeof data.workspace_name === "string") {
+    connectedAs = `${data.workspace_name} workspace`;
+  } else if (provider.id === "github") {
+    const user = data.user;
+    if (typeof user?.login === "string") connectedAs = `@${user.login}`;
+  }
+  return {
+    connectedAs,
+    accessToken: typeof data.access_token === "string" ? data.access_token : void 0
+  };
+}
+function esc(s) {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+  );
+}
+function renderAuthPage(opts) {
+  const { provider, state, origin } = opts;
+  const callbackUrl = `${origin}/api/v1/integrations/callback?state=${encodeURIComponent(state)}&code=sandbox_code`;
+  const cancelUrl = `${origin}/war-room?connect=cancelled&provider=${provider.id}`;
+  const scopeItems = provider.scopes.map((s) => {
+    const label = provider.scopeLabels[s] ?? s;
+    return `<li><span class="dot"></span><span><strong>${esc(label)}</strong><br/><code>${esc(s)}</code></span></li>`;
+  }).join("");
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc(provider.name)} \xB7 Authorize The Lyceum</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #eef0f3; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+  .card { background: #fff; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.12); width: 100%; max-width: 440px; padding: 32px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .brand .logo { font-size: 30px; }
+  .brand h1 { font-size: 18px; font-weight: 600; color: #111; }
+  .brand p { font-size: 12px; color: #667; }
+  h2 { font-size: 16px; font-weight: 600; color: #111; margin-bottom: 6px; }
+  .sub { font-size: 13px; color: #667; margin-bottom: 20px; line-height: 1.5; }
+  ul { list-style: none; border: 1px solid #e3e6ea; border-radius: 12px; padding: 14px 16px; margin-bottom: 20px; }
+  li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; font-size: 13px; color: #222; line-height: 1.45; }
+  li .dot { width: 8px; height: 8px; border-radius: 50%; background: #1a7f5a; margin-top: 5px; flex-shrink: 0; }
+  li code { display: inline-block; margin-top: 3px; font-size: 11px; color: #889; background: #f6f7f9; border-radius: 4px; padding: 1px 6px; }
+  .notice { background: #fff7e6; border: 1px solid #ffe1a8; color: #8a5b00; font-size: 12px; line-height: 1.5; border-radius: 10px; padding: 10px 12px; margin-bottom: 20px; }
+  .actions { display: flex; gap: 10px; }
+  .btn { flex: 1; text-align: center; padding: 11px 0; border-radius: 10px; font-size: 14px; font-weight: 600; text-decoration: none; transition: filter .15s; }
+  .btn-cancel { background: #fff; border: 1px solid #d5d9de; color: #444; }
+  .btn-allow { background: #111; color: #fff; }
+  .btn:hover { filter: brightness(1.08); }
+  .footer { margin-top: 18px; font-size: 11px; color: #99a; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <span class="logo">${provider.emoji}</span>
+      <div><h1>${esc(provider.name)}</h1><p>Sign in to continue</p></div>
+    </div>
+    <h2>The Lyceum wants to access your ${esc(provider.name)} account</h2>
+    <p class="sub">This will let your Lyceum agents use ${esc(provider.name)} with the permissions below. You can disconnect any time from the workspace.</p>
+    <ul>${scopeItems}</ul>
+    <div class="notice"><strong>Sandbox connection.</strong> ${esc(
+    `No ${provider.name} OAuth app is registered on this server yet, so this walks the real consent flow without touching a live account.`
+  )}</div>
+    <div class="actions">
+      <a class="btn btn-cancel" href="${cancelUrl}">Cancel</a>
+      <a class="btn btn-allow" href="${callbackUrl}">Allow</a>
+    </div>
+    <p class="footer">The Lyceum \xB7 governance layer for AI workforces</p>
+  </div>
+</body>
+</html>`;
+}
+function renderCallbackSuccessPage(providerName) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Connected</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0faf5; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+  .box { background: #fff; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.1); padding: 36px; text-align: center; max-width: 360px; }
+  .check { width: 52px; height: 52px; border-radius: 50%; background: #e6f6ee; color: #1a7f5a; font-size: 28px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+  h1 { font-size: 18px; color: #111; margin-bottom: 6px; }
+  p { font-size: 13px; color: #667; line-height: 1.5; }
+  a { display: inline-block; margin-top: 18px; color: #1a7f5a; font-weight: 600; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="check">\u2713</div>
+    <h1>${esc(providerName)} connected</h1>
+    <p>You can close this window \u2014 your workspace has already updated.</p>
+    <a href="/war-room">Return to workspace \u2192</a>
+  </div>
+  <script>try { window.close(); } catch (e) {}</script>
+</body>
+</html>`;
+}
+
 // server/index.ts
 var orders = /* @__PURE__ */ new Map();
 var BETA_SLOT_BASELINE = Number(process.env.BETA_SLOT_BASELINE ?? 84);
 var BETA_SLOT_CAP = Number(process.env.BETA_SLOT_CAP ?? 100);
 function verifyLemonSignature(rawBody, signatureHeader, secret) {
   if (!signatureHeader || !secret) return false;
-  const digest = crypto5.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const digest = crypto8.createHmac("sha256", secret).update(rawBody).digest("hex");
   const expected = Buffer.from(digest, "utf8");
   const actual = Buffer.from(signatureHeader, "utf8");
-  return expected.length === actual.length && crypto5.timingSafeEqual(expected, actual);
+  return expected.length === actual.length && crypto8.timingSafeEqual(expected, actual);
 }
 function requireAdmin(req, res, next) {
   const configured = process.env.ADMIN_TOKEN || "";
   const provided = req.header("x-admin-token") || "";
   const expected = Buffer.from(configured, "utf8");
   const actual = Buffer.from(provided, "utf8");
-  const valid = configured.length > 0 && expected.length === actual.length && crypto5.timingSafeEqual(expected, actual);
+  const valid = configured.length > 0 && expected.length === actual.length && crypto8.timingSafeEqual(expected, actual);
   if (!valid) {
     return res.status(401).json({ error: "unauthorized" });
   }
@@ -4562,6 +5244,22 @@ function requireAdmin(req, res, next) {
 }
 function createApiApp() {
   const app2 = express2();
+  app2.set("trust proxy", 1);
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (allowedOrigins.length === 0) {
+    if (process.env.NODE_ENV === "production") {
+      allowedOrigins.push("https://thelyceum.ai", "https://www.thelyceum.ai");
+    } else {
+      allowedOrigins.push(
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000"
+      );
+    }
+  }
+  app2.use(corsPolicy(allowedOrigins));
+  app2.disable("x-powered-by");
+  app2.use(securityHeaders());
   app2.use(
     createProxyRouter({
       resolveTenant: async (token) => {
@@ -4578,6 +5276,7 @@ function createApiApp() {
   );
   app2.post(
     "/api/webhooks/lemonsqueezy",
+    rateLimit({ windowMs: 6e4, max: 60 }),
     express2.raw({ type: "application/json", limit: "1mb" }),
     async (req, res) => {
       const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET || "";
@@ -4616,7 +5315,8 @@ function createApiApp() {
           try {
             await provisionAccount({ licenseKey, email, name, organization, product });
           } catch (err) {
-            console.error("[Lyceum] Failed to provision account for", licenseKey, err);
+            const fp = fingerprintCredential(licenseKey);
+            console.error(`[Lyceum] Failed to provision account fp=${fp}`, err);
           }
         }
       } else if (ref && eventName === "order_created") {
@@ -4645,70 +5345,86 @@ function createApiApp() {
     res.json({ orders: list });
   });
   app2.use(express2.json({ limit: "1mb" }));
-  app2.post("/api/chat", async (req, res) => {
-    try {
-      const result = await proxyToOpenRouter(req.body);
-      res.json(result);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Internal server error";
-      res.status(502).json({ error: message });
-    }
-  });
-  app2.post("/api/chat/stream", async (req, res) => {
-    const { domain, messages, temperature, maxTokens } = req.body ?? {};
-    if (!domain || !messages) {
-      return res.status(400).json({ error: "Both 'domain' and 'messages' are required" });
-    }
-    const apiKey = KEY_MAP[domain];
-    if (!apiKey) {
-      return res.status(502).json({ error: `No API key configured for domain "${domain}"` });
-    }
-    const route = MODEL_ROUTES[domain];
-    if (!route) {
-      return res.status(400).json({ error: `Unknown domain "${domain}"` });
-    }
-    try {
-      await proxyStreamToOpenRouter({
-        domain,
-        messages,
-        temperature,
-        maxTokens,
-        onHeaders: (headers) => {
-          res.writeHead(headers.status || 200, {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-            "X-Accel-Buffering": "no"
-          });
-        },
-        onChunk: (chunk) => {
-          res.write(chunk);
-        },
-        onDone: () => {
-          res.write("data: [DONE]\n\n");
-          res.end();
-        },
-        onError: (err) => {
-          if (res.headersSent) {
-            res.write(`data: ${JSON.stringify({ error: err.message })}
-
-`);
-            res.write("data: [DONE]\n\n");
-            res.end();
-          } else {
-            res.status(502).json({ error: err.message });
-          }
+  app2.post(
+    "/api/chat",
+    rateLimit({ windowMs: 6e4, max: 30 }),
+    async (req, res) => {
+      try {
+        const screened = screenChatRequest(req.body);
+        if (!screened.ok) {
+          return res.status(screened.status).json({ error: screened.reason });
         }
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Internal server error";
-      if (!res.headersSent) {
+        const result = await proxyToOpenRouter(req.body);
+        res.json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Internal server error";
         res.status(502).json({ error: message });
-      } else {
-        res.end();
       }
     }
-  });
+  );
+  app2.post(
+    "/api/chat/stream",
+    rateLimit({ windowMs: 6e4, max: 60 }),
+    async (req, res) => {
+      const { domain, messages, temperature, maxTokens } = req.body ?? {};
+      const screened = screenChatRequest(req.body);
+      if (!screened.ok) {
+        return res.status(screened.status).json({ error: screened.reason });
+      }
+      if (!domain || !messages) {
+        return res.status(400).json({ error: "Both 'domain' and 'messages' are required" });
+      }
+      const apiKey = KEY_MAP[domain];
+      if (!apiKey) {
+        return res.status(502).json({ error: `No API key configured for domain "${domain}"` });
+      }
+      const route = MODEL_ROUTES[domain];
+      if (!route) {
+        return res.status(400).json({ error: `Unknown domain "${domain}"` });
+      }
+      try {
+        await proxyStreamToOpenRouter({
+          domain,
+          messages,
+          temperature,
+          maxTokens,
+          onHeaders: (headers) => {
+            res.writeHead(headers.status || 200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+              "X-Accel-Buffering": "no"
+            });
+          },
+          onChunk: (chunk) => {
+            res.write(chunk);
+          },
+          onDone: () => {
+            res.write("data: [DONE]\n\n");
+            res.end();
+          },
+          onError: (err) => {
+            if (res.headersSent) {
+              res.write(`data: ${JSON.stringify({ error: err.message })}
+
+`);
+              res.write("data: [DONE]\n\n");
+              res.end();
+            } else {
+              res.status(502).json({ error: err.message });
+            }
+          }
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Internal server error";
+        if (!res.headersSent) {
+          res.status(502).json({ error: message });
+        } else {
+          res.end();
+        }
+      }
+    }
+  );
   app2.post("/api/sessions", authenticateLicenseKey, async (req, res) => {
     try {
       const { name, tasks } = req.body ?? {};
@@ -4806,6 +5522,29 @@ function createApiApp() {
       res.status(503).json({ error: err instanceof Error ? err.message : "Supabase not configured" });
     }
   });
+  app2.post(
+    "/api/v1/dev/workspace",
+    rateLimit({ windowMs: 6e4, max: 5 }),
+    async (req, res) => {
+      if (process.env.NODE_ENV !== "development") {
+        return res.status(404).json({ error: "Not found" });
+      }
+      const licenseKey = `lyc_dev_${crypto8.randomBytes(16).toString("base64url")}`;
+      const account = await provisionAccount({
+        licenseKey,
+        email: String(req.body?.email ?? "founder@localhost"),
+        name: String(req.body?.name ?? "Founder"),
+        organization: String(req.body?.organization ?? "Demo Workspace"),
+        product: String(req.body?.product ?? "VIP")
+      });
+      await seedBrain(licenseKey);
+      res.status(201).json({
+        licenseKey,
+        credits: account.creditsRemaining,
+        note: "Development workspace. This endpoint returns 404 unless NODE_ENV=development."
+      });
+    }
+  );
   app2.get("/api/v1/account", authenticateLicenseKey, (req, res) => {
     const account = req.lyceumAccount;
     res.json({
@@ -4818,29 +5557,59 @@ function createApiApp() {
       creditsTotal: account.creditsTotal
     });
   });
-  app2.post("/api/v1/chat", authenticateLicenseKey, async (req, res) => {
-    const { domain, prompt } = req.body ?? {};
-    if (!domain || !prompt) {
-      return res.status(400).json({ error: "Both 'domain' and 'prompt' are required" });
-    }
-    if (!DOMAINS.includes(domain)) {
-      return res.status(400).json({ error: `domain must be one of: ${DOMAINS.join(", ")}` });
-    }
-    try {
-      const result = await runTask({
-        licenseKey: req.lyceumAccount.licenseKey,
-        domain,
-        prompt,
-        source: "api"
-      });
-      res.json(result);
-    } catch (err) {
-      if (err instanceof InsufficientCreditsError) {
-        return res.status(402).json({ error: err.message, remaining: err.remaining });
+  app2.post(
+    "/api/v1/license/rotate",
+    rateLimit({ windowMs: 60 * 6e4, max: 5 }),
+    authenticateLicenseKey,
+    async (req, res) => {
+      const oldKey = req.lyceumAccount.licenseKey;
+      const graceMs = Number(process.env.ROTATE_GRACE_HOURS ?? 24) * 60 * 6e4;
+      const result = await rotateLicenseKey(oldKey, graceMs);
+      if (!result) {
+        return res.status(404).json({ error: "Account not found" });
       }
-      res.status(502).json({ error: err instanceof Error ? err.message : "Task failed" });
+      const oldFp = fingerprintCredential(oldKey);
+      const newFp = fingerprintCredential(result.newKey);
+      console.log(
+        `[security] license rotated: oldFp=${oldFp} newFp=${newFp} graceHours=${graceMs / 36e5}`
+      );
+      res.json({
+        licenseKey: result.newKey,
+        graceUntil: result.graceUntil,
+        graceHours: graceMs / 36e5,
+        message: "Save the new key now. The old key works for the grace window, then stops."
+      });
     }
-  });
+  );
+  app2.post(
+    "/api/v1/chat",
+    // Per-license limiter: runTask burns the customer's real credits.
+    rateLimit({ windowMs: 6e4, max: 120, key: (req) => `lk:${req.header("authorization") ?? req.ip}` }),
+    authenticateLicenseKey,
+    async (req, res) => {
+      const { domain, prompt } = req.body ?? {};
+      if (!domain || !prompt) {
+        return res.status(400).json({ error: "Both 'domain' and 'prompt' are required" });
+      }
+      if (!DOMAINS.includes(domain)) {
+        return res.status(400).json({ error: `domain must be one of: ${DOMAINS.join(", ")}` });
+      }
+      try {
+        const result = await runTask({
+          licenseKey: req.lyceumAccount.licenseKey,
+          domain,
+          prompt,
+          source: "api"
+        });
+        res.json(result);
+      } catch (err) {
+        if (err instanceof InsufficientCreditsError) {
+          return res.status(402).json({ error: err.message, remaining: err.remaining });
+        }
+        res.status(502).json({ error: err instanceof Error ? err.message : "Task failed" });
+      }
+    }
+  );
   app2.get("/api/v1/tasks", authenticateLicenseKey, async (req, res) => {
     const limit = Number(req.query.limit) || 20;
     const tasks = await listTasks(req.lyceumAccount.licenseKey, limit);
@@ -4851,16 +5620,22 @@ function createApiApp() {
     if (!task) return res.status(404).json({ error: "Task not found" });
     res.json({ task });
   });
+  const mcpLimiter = rateLimit({
+    windowMs: 6e4,
+    max: 240,
+    key: (req) => `mcp:${req.header("authorization") ?? req.ip}`
+  });
   app2.all(
     "/api/mcp/w/:token",
     (req, _res, next) => {
       req.headers.authorization = `Bearer ${req.params.token}`;
       next();
     },
+    mcpLimiter,
     authenticateLicenseKey,
     handleMcpRequest
   );
-  app2.all("/api/mcp", authenticateLicenseKey, handleMcpRequest);
+  app2.all("/api/mcp", mcpLimiter, authenticateLicenseKey, handleMcpRequest);
   const mcpUrlFor = (req, token) => `${req.protocol}://${req.get("host")}/api/mcp/w/${token}`;
   app2.get("/api/v1/brain", authenticateLicenseKey, async (req, res) => {
     const licenseKey = req.lyceumAccount.licenseKey;
@@ -4896,13 +5671,24 @@ function createApiApp() {
     if (!title || !body) {
       return res.status(400).json({ error: "title and body are required" });
     }
-    const result = await fileDocument({
-      licenseKey,
-      title: String(title),
-      body: String(body),
-      department
-    });
-    res.status(201).json(result);
+    try {
+      const result = await fileDocument({
+        licenseKey,
+        title: String(title),
+        body: String(body),
+        department
+      });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof IngestBlockedError) {
+        return res.status(422).json({
+          error: err.message,
+          findings: err.verdict.findings,
+          hint: "This document contains instructions aimed at the assistant. If it is genuinely yours, remove those lines and try again."
+        });
+      }
+      throw err;
+    }
   });
   app2.post("/api/v1/brain/classify", authenticateLicenseKey, async (req, res) => {
     const { title, body } = req.body ?? {};
@@ -5242,12 +6028,6 @@ function createApiApp() {
       }
     });
   });
-  const OAUTH_PROVIDERS = [
-    { id: "gmail", name: "Gmail", blurb: "Read and draft mail", envPrefix: "GOOGLE", scopes: ["gmail.readonly", "gmail.compose"] },
-    { id: "slack", name: "Slack", blurb: "Read channels, post with approval", envPrefix: "SLACK", scopes: ["channels:history", "chat:write"] },
-    { id: "notion", name: "Notion", blurb: "Read and write pages", envPrefix: "NOTION", scopes: ["read_content", "update_content"] },
-    { id: "github", name: "GitHub", blurb: "Issues, PRs, code search", envPrefix: "GITHUB", scopes: ["repo", "read:org"] }
-  ];
   const connections = /* @__PURE__ */ new Map();
   app2.get("/api/v1/integrations", authenticateLicenseKey, async (req, res) => {
     const licenseKey = req.lyceumAccount.licenseKey;
@@ -5255,31 +6035,85 @@ function createApiApp() {
     res.json({
       integrations: OAUTH_PROVIDERS.map((p) => {
         const live = mine.get(p.id);
-        const configured = !!(process.env[`${p.envPrefix}_CLIENT_ID`] && process.env[`${p.envPrefix}_CLIENT_SECRET`]);
+        const configured = isProviderConfigured(p);
         return {
           id: p.id,
           name: p.name,
+          emoji: p.emoji,
           blurb: p.blurb,
           auth: "oauth",
           scopes: p.scopes,
-          state: live ? "connected" : configured ? "available" : "unavailable",
-          blockedReason: configured ? void 0 : `No OAuth app registered for ${p.name} yet. This needs ${p.envPrefix}_CLIENT_ID and ${p.envPrefix}_CLIENT_SECRET set on the server \u2014 an operator task, not something you can do from here.`,
+          scopeLabels: p.scopeLabels,
+          // Honest state: a card reads "connected" only when a connection
+          // exists. Every card is connectable — either to the real provider
+          // (mode: real) or through the sandbox consent flow (mode: sandbox).
+          mode: configured ? "real" : "sandbox",
+          state: live ? "connected" : "available",
+          blockedReason: void 0,
           connectedAs: live?.connectedAs,
-          connectedAt: live?.connectedAt
+          connectedAt: live?.connectedAt,
+          connectedMode: live?.mode
         };
       })
     });
   });
   app2.post("/api/v1/integrations/:id/authorize", authenticateLicenseKey, async (req, res) => {
-    const provider = OAUTH_PROVIDERS.find((p) => p.id === req.params.id);
+    const provider = providerFor(req.params.id);
     if (!provider) return res.status(404).json({ error: "Unknown integration." });
-    const clientId = process.env[`${provider.envPrefix}_CLIENT_ID`];
-    if (!clientId) {
-      return res.status(409).json({
-        error: `${provider.name} has no OAuth app configured on this server, so there is no authorize URL to send you to.`
-      });
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const redirectUri = `${origin}/api/v1/integrations/callback`;
+    const state = issueAuthState({
+      provider: provider.id,
+      licenseKey: req.lyceumAccount.licenseKey,
+      mode: isProviderConfigured(provider) ? "real" : "sandbox",
+      createdAt: Date.now()
+    });
+    const outcome = buildAuthorizeUrl(provider, { origin, state, redirectUri });
+    res.json({ authorizeUrl: outcome.authorizeUrl, mode: outcome.mode, notice: outcome.notice });
+  });
+  app2.get("/api/v1/integrations/:id/sandbox-auth", async (req, res) => {
+    const provider = providerFor(req.params.id);
+    const state = String(req.query.state ?? "");
+    if (!provider || !state) {
+      return res.status(400).send("Invalid integration request.");
     }
-    res.json({ authorizeUrl: null, error: "OAuth callback handler not yet implemented." });
+    const origin = `${req.protocol}://${req.get("host")}`;
+    res.type("html").send(renderAuthPage({ provider, state, origin }));
+  });
+  app2.get("/api/v1/integrations/callback", async (req, res) => {
+    const state = String(req.query.state ?? "");
+    const code = String(req.query.code ?? "");
+    const auth = consumeAuthState(state);
+    if (!auth) {
+      return res.status(400).send("This link is invalid or has expired. Go back and try again.");
+    }
+    const provider = providerFor(auth.provider);
+    if (!provider) {
+      return res.status(400).send("Unknown integration.");
+    }
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const redirectUri = `${origin}/api/v1/integrations/callback`;
+    try {
+      let connectedAs = `${provider.name} sandbox account`;
+      if (auth.mode === "real") {
+        if (!code) {
+          return res.status(400).send(`${provider.name} returned no authorization code.`);
+        }
+        const exchanged = await exchangeCode(provider, code, redirectUri);
+        connectedAs = exchanged.connectedAs;
+      }
+      const mine = connections.get(auth.licenseKey) ?? /* @__PURE__ */ new Map();
+      mine.set(provider.id, {
+        connectedAs,
+        connectedAt: Date.now(),
+        mode: auth.mode,
+        scopes: provider.scopes
+      });
+      connections.set(auth.licenseKey, mine);
+      res.type("html").send(renderCallbackSuccessPage(provider.name));
+    } catch (err) {
+      res.status(502).type("html").send(`<h3>Connection failed</h3><p>${String(err instanceof Error ? err.message : err)}</p>`);
+    }
   });
   app2.delete("/api/v1/integrations/:id", authenticateLicenseKey, async (req, res) => {
     connections.get(req.lyceumAccount.licenseKey)?.delete(req.params.id);
