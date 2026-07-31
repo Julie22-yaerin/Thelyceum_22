@@ -39,6 +39,9 @@ import { scopeForDepartment, GLOBAL_NEVER_ALLOWED } from "./pillars/scopeGuard.j
 import { verifyOutput } from "./pillars/factGuard.js";
 import { arbitrate, type AgentPosition } from "./pillars/arbitration.js";
 import { DEFAULT_FAILOVER } from "./pillars/failover.js";
+import { runRedTeam, summarise as summariseRedTeam, corpusSummary } from "./redteam/engine.js";
+import { immunityRegistry } from "./hive/immunity.js";
+import { promptRegistry, healIncident } from "./healing/promptMutation.js";
 
 // ── Lemon Squeezy payment tracking ──────────────────────────────────────────
 // In-memory order store, keyed by the `ref` we attach to each checkout link.
@@ -595,6 +598,104 @@ export function createApiApp(): express.Express {
       return res.status(400).json({ error: "positions[] is required" });
     }
     res.json(arbitrate(positions as AgentPosition[]));
+  });
+
+  // ── Red Team (shadow) ────────────────────────────────────────────────────
+  // Replays the adversarial corpus against this workspace's own policy. No
+  // model calls, no production traffic, no data mutated — it exercises the
+  // guards, which are pure functions over configuration.
+
+  app.get("/api/v1/redteam/corpus", authenticateLicenseKey, async (_req: AuthedRequest, res: express.Response) => {
+    res.json({ categories: corpusSummary() });
+  });
+
+  app.post("/api/v1/redteam/run", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const licenseKey = req.lyceumAccount!.licenseKey;
+    const run = await runRedTeam({
+      licenseKey,
+      departments: req.body?.departments,
+      categories: req.body?.categories,
+    });
+
+    // A finding is a live attack pattern this workspace is vulnerable to.
+    // Contributing it is what makes every other workspace immune — but only
+    // the de-identified skeleton is ever shared, and extraction refuses
+    // outright if anything non-structural survives.
+    const contributed: { signature: string; stage: string; reason?: string }[] = [];
+    if (req.body?.contributeToHive !== false) {
+      for (const finding of run.findings) {
+        const attack = (await import("./redteam/attacks.js")).ATTACKS.find(
+          (a) => a.id === finding.attackId
+        );
+        if (!attack) continue;
+        const result = immunityRegistry.report({
+          licenseKey,
+          payload: attack.payload,
+          guard: attack.expect.guard,
+          category: finding.category,
+          severity: finding.severity,
+        });
+        contributed.push({
+          signature: result.signature?.id ?? "(not shared)",
+          stage: result.signature?.stage ?? "refused",
+          reason: result.refusedReason ?? result.decision?.reason,
+        });
+      }
+    }
+
+    res.json({ run, summary: summariseRedTeam(run), contributed });
+  });
+
+  // ── Hive immunity ────────────────────────────────────────────────────────
+
+  app.get("/api/v1/hive", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const licenseKey = req.lyceumAccount!.licenseKey;
+    const active = immunityRegistry.activeFor(licenseKey);
+    res.json({
+      // Every field here is structural. There is no endpoint that returns
+      // another workspace's traffic, because no such data is ever stored.
+      enforcedHere: active.length,
+      signatures: immunityRegistry.all().map((s) => ({
+        id: s.id,
+        category: s.category,
+        severity: s.severity,
+        skeleton: s.skeleton,
+        observedBy: s.observedBy,
+        stage: s.stage,
+        falsePositiveRate: s.falsePositiveRate,
+        enforcedHere: active.some((a) => a.id === s.id),
+        rejectedReason: s.rejectedReason,
+      })),
+    });
+  });
+
+  /** Screen a payload against this workspace's active immunity. */
+  app.post("/api/v1/hive/screen", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const licenseKey = req.lyceumAccount!.licenseKey;
+    const payload = String(req.body?.payload ?? "");
+    if (!payload) return res.status(400).json({ error: "payload is required" });
+    const result = immunityRegistry.screen(licenseKey, payload);
+    res.json({
+      blocked: result.blocked,
+      matchedSignature: result.signature?.id,
+      category: result.signature?.category,
+    });
+  });
+
+  // ── Self-healing ─────────────────────────────────────────────────────────
+
+  app.get("/api/v1/healing/prompts/:promptId", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    res.json({ history: promptRegistry.history(req.params.promptId) });
+  });
+
+  app.post("/api/v1/healing/rollback", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const { promptId, toVersion } = req.body ?? {};
+    if (!promptId || typeof toVersion !== "number") {
+      return res.status(400).json({ error: "promptId and toVersion are required" });
+    }
+    const version = promptRegistry.rollback(String(promptId), toVersion);
+    if (!version) return res.status(404).json({ error: "No such prompt version." });
+    res.json({ rolledBackTo: version });
   });
 
   app.get("/api/v1/workers", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {

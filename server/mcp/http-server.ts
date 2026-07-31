@@ -33,6 +33,10 @@ import {
 } from "../db/aiRoles.js";
 import { createMission, listMissions, updateStep, progressOf, stepsForWorker } from "../db/missions.js";
 import { recordWorkerUsage, type Worker } from "../db/workers.js";
+import { routeContext, buildSystemPrompt } from "../brain/contextRouter.js";
+import type { DepartmentId, BrainDocument } from "../brain/knowledge.js";
+import { verifyOutput } from "../pillars/factGuard.js";
+import { checkToolScope, scopeForDepartment } from "../pillars/scopeGuard.js";
 
 function buildServer(account: Account, worker?: Worker): McpServer {
   const server = new McpServer({ name: "the-lyceum", version: "1.0.0" });
@@ -62,6 +66,158 @@ function buildServer(account: Account, worker?: Worker): McpServer {
           },
         ],
       })
+    );
+
+    // ── Second Brain, scoped to this worker's department ──────────────────
+    // The whole point of the brain is that an AI cannot answer from thin air.
+    // A connected client gets exactly what its department may read — the same
+    // routing the internal pipeline uses, so an agent working over MCP is under
+    // the same isolation as one going through the proxy.
+
+    server.registerTool(
+      "recall",
+      {
+        title: "Look it up in the company knowledge base",
+        description:
+          "Search the company's knowledge base for facts you need. Returns ONLY documents your department is allowed to read. " +
+          "You must call this before stating any company fact — price, SLA, policy, capability. " +
+          "If it returns nothing, you do not have the answer: say so rather than guessing.",
+        inputSchema: { query: z.string().describe("What you need to know, in plain words.") },
+      },
+      async ({ query }: { query: string }) => {
+        const context = await routeContext({
+          licenseKey: account.licenseKey,
+          department: worker.departmentId as DepartmentId,
+          query,
+        });
+
+        if (context.documents.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text:
+                  `Nothing in the knowledge base matched that, within your scope (${context.scope.join(", ")}).\n\n` +
+                  `Do not answer from general knowledge. Tell the person you don't have it, ` +
+                  `or ask them to add it to the knowledge base.`,
+              },
+            ],
+          };
+        }
+
+        const body = context.documents
+          .map((d: BrainDocument) => `--- ${d.path} ---\n${d.body.trim()}`)
+          .join("\n\n");
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text:
+                `${context.documents.length} document(s) you may use as fact:\n\n${body}\n\n` +
+                `Treat the above as the only source of truth. Anything not in it, you do not know.` +
+                (context.empty
+                  ? `\n\nNOTE: these are your standing rules, not an answer to your question — nothing matched the query itself.`
+                  : ""),
+            },
+          ],
+        };
+      }
+    );
+
+    server.registerTool(
+      "my_grounding",
+      {
+        title: "Show my scope and standing rules",
+        description:
+          "Return the exact system prompt this workspace expects you to operate under, including what you may and may not read. " +
+          "Call this once at the start of a session.",
+        inputSchema: { topic: z.string().optional().describe("Optional topic to ground on.") },
+      },
+      async ({ topic }: { topic?: string }) => {
+        const context = await routeContext({
+          licenseKey: account.licenseKey,
+          department: worker.departmentId as DepartmentId,
+          query: topic || worker.role,
+        });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: buildSystemPrompt({
+                context,
+                agentName: worker.name,
+                role: worker.role,
+              }),
+            },
+          ],
+        };
+      }
+    );
+
+    server.registerTool(
+      "check_before_sending",
+      {
+        title: "Fact-check your draft before you send it",
+        description:
+          "Check a draft answer against the knowledge base BEFORE giving it to a person. " +
+          "Returns any figure or commitment you invented. Call this whenever your answer contains a number.",
+        inputSchema: {
+          draft: z.string().describe("The answer you are about to give."),
+          topic: z.string().optional().describe("What it is about, to retrieve the right context."),
+        },
+      },
+      async ({ draft, topic }: { draft: string; topic?: string }) => {
+        const context = await routeContext({
+          licenseKey: account.licenseKey,
+          department: worker.departmentId as DepartmentId,
+          query: topic || draft,
+        });
+        const verdict = verifyOutput({ output: draft, context: context.groundingText });
+
+        if (verdict.grounded) {
+          return {
+            content: [{ type: "text" as const, text: "Grounded. Every figure in your draft is in the knowledge base." }],
+          };
+        }
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text:
+                `Do NOT send this. ${verdict.claims.length} ungrounded claim(s):\n\n` +
+                verdict.claims.map((c) => `• ${c.text} — ${c.reason}`).join("\n") +
+                `\n\n${verdict.correctionPrompt ?? ""}`,
+            },
+          ],
+        };
+      }
+    );
+
+    server.registerTool(
+      "can_i",
+      {
+        title: "Check whether you are allowed to do something",
+        description:
+          "Ask whether a tool or action is permitted for your department before attempting it. " +
+          "Use this instead of trying and being blocked — a blocked attempt is logged as a security event.",
+        inputSchema: { tool: z.string().describe("The tool or action name, e.g. issue_refund.") },
+      },
+      async ({ tool }: { tool: string }) => {
+        const scope = scopeForDepartment(worker.departmentId);
+        const decision = checkToolScope({ tool, scope });
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: decision.allowed
+                ? `Yes — "${tool}" is permitted for ${worker.departmentName}.`
+                : `No. ${decision.reason}\n\nYou may use: ${scope.allowedTools.join(", ")}`,
+            },
+          ],
+        };
+      }
     );
 
     server.registerTool(

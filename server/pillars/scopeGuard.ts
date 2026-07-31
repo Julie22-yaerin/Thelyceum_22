@@ -86,12 +86,46 @@ export const GLOBAL_NEVER_ALLOWED: readonly string[] = [
 ];
 
 function matches(pattern: string, tool: string): boolean {
-  if (pattern === tool) return true;
+  const t = tool.toLowerCase();
+  const p = pattern.toLowerCase();
+  if (p === t) return true;
   // Prefix wildcard only, and only in the final position.
-  if (pattern.endsWith("*") && !pattern.slice(0, -1).includes("*")) {
-    return tool.startsWith(pattern.slice(0, -1));
+  if (p.endsWith("*") && !p.slice(0, -1).includes("*")) {
+    return t.startsWith(p.slice(0, -1));
   }
   return false;
+}
+
+/**
+ * Dangerous operations, matched ANYWHERE in a tool name.
+ *
+ * Found by our own red team (attack esc-003): `read_*_then_delete_database`
+ * satisfied the `read_*` allowlist while the global floor missed it, because
+ * the floor only compared by prefix and exact name. A tool name is attacker-
+ * influenced input, so anything containing a destructive verb is refused
+ * regardless of how the name is arranged around it.
+ *
+ * The cost is that a legitimately-named tool like `undelete_record` is caught
+ * too. That is the correct side to err on: a false refusal is a support ticket,
+ * a false allow is the database.
+ */
+const DANGEROUS_FRAGMENTS = [
+  "delete_database",
+  "drop_table",
+  "drop_database",
+  "read_api_key",
+  "read_credential",
+  "export_all_customer",
+  "rotate_master_key",
+  "disable_audit",
+  "disable_circuit_breaker",
+  "delete_all",
+  "wipe_",
+];
+
+function containsDangerousFragment(tool: string): string | null {
+  const t = tool.toLowerCase().replace(/[\s-]/g, "_");
+  return DANGEROUS_FRAGMENTS.find((frag) => t.includes(frag)) ?? null;
 }
 
 export interface ScopeDecision {
@@ -116,6 +150,16 @@ export function checkToolScope(params: {
   const tool = params.tool.trim();
   if (!tool) {
     return { allowed: false, tool, reason: "Empty tool name." };
+  }
+
+  const fragment = containsDangerousFragment(tool);
+  if (fragment) {
+    return {
+      allowed: false,
+      tool,
+      matchedRule: `global:contains:${fragment}`,
+      reason: `"${tool}" contains "${fragment}" — irreversible or credential-exposing operations are blocked for every agent, however the tool name is composed.`,
+    };
   }
 
   for (const pattern of GLOBAL_NEVER_ALLOWED) {
