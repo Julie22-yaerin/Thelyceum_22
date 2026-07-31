@@ -79,7 +79,37 @@
   --color-pastel-pink-ink: #ad1a72;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   BRAND DNA — the canonical palette. Everything below derives from these.
+
+   Change a brand value here and the whole product moves with it; nothing else
+   in the codebase hardcodes a brand colour. The two emeralds do different
+   jobs and are not interchangeable:
+
+     --primary-emerald   the deep, still one. Authority. Used for weight and
+                         permanence — headings, the wordmark, dark surfaces.
+     --accent-emerald    the bright, active one. Used only where something is
+                         alive: a live indicator, a healthy state, the one
+                         action on a screen that matters most.
+
+   Using the accent for decoration is what turns a signal into wallpaper. If
+   everything is emerald, "this is running" stops meaning anything.
+   ══════════════════════════════════════════════════════════════════════════ */
 :root {
+  --bg-base: #F8FAFC;
+  --surface-card: #FFFFFF;
+  --border-line: #E2E8F0;
+
+  --primary-emerald: #0F392B;
+  --accent-emerald: #10B981;
+  --mint-highlight: #D1FAE5;
+
+  --text-main: #0F172A;
+  --text-muted: #64748B;
+
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
   --primary: oklch(0.597 0.108 181);
   --primary-foreground: oklch(1 0 0);
   --sidebar-primary: oklch(0.597 0.108 181);
@@ -114,22 +144,23 @@
   --sidebar-border: oklch(0.92 0.003 80);
   --sidebar-ring: oklch(0.597 0.108 181);
 
-  /* Workspace surfaces — light values (overridden in .dark) */
-  --ws-bg: #ffffff;
-  --ws-subtle: #f7f7f5;
-  --ws-hover: #f1f1ef;
-  --ws-border: #e9e9e7;
-  --ws-text: #37352f;
-  --ws-text-soft: #5f5e5b;
-  --ws-text-muted: #9b9a97;
+  /* Workspace surfaces — derived from the brand DNA above, not independent.
+     Components reference these; only this block maps them to brand values. */
+  --ws-bg: var(--surface-card);
+  --ws-subtle: var(--bg-base);
+  --ws-hover: #F1F5F9;
+  --ws-border: var(--border-line);
+  --ws-text: var(--text-main);
+  --ws-text-soft: #475569;
+  --ws-text-muted: var(--text-muted);
 
-  /* React Flow canvas — light values (overridden in .dark) */
-  --ws-flow-edge: #d4d4d1;
-  --ws-flow-label: #9b9a97;
-  --ws-flow-dot: #e0e0dd;
-  --ws-minimap-node: #f1f1ef;
-  --ws-minimap-mask: rgba(55, 53, 47, 0.08);
-  --ws-minimap-bg: #ffffff;
+  /* React Flow canvas */
+  --ws-flow-edge: #CBD5E1;
+  --ws-flow-label: var(--text-muted);
+  --ws-flow-dot: #E2E8F0;
+  --ws-minimap-node: #F1F5F9;
+  --ws-minimap-mask: rgba(15, 23, 42, 0.08);
+  --ws-minimap-bg: var(--surface-card);
 }
 
 /* ── Dark mode (workspace) ──────────────────────────────────────────────
@@ -165,7 +196,20 @@
   --sidebar-border: oklch(0.28 0.004 285);
   --sidebar-ring: oklch(0.597 0.108 181);
 
-  /* Workspace surfaces (Notion-style dark) */
+  /* Brand DNA — dark. The emeralds keep their identity: the deep one becomes
+     a surface rather than a foreground (it is unreadable as text on dark), and
+     the accent lifts slightly so it still reads as "alive" against a dark
+     background rather than sinking into it. */
+  --bg-base: #0B1120;
+  --surface-card: #111827;
+  --border-line: #1F2937;
+  --primary-emerald: #064E3B;
+  --accent-emerald: #34D399;
+  --mint-highlight: #064E3B;
+  --text-main: #F1F5F9;
+  --text-muted: #94A3B8;
+
+  /* Workspace surfaces */
   --ws-bg: #1e1e20;
   --ws-subtle: #161618;
   --ws-hover: #2a2a2e;
