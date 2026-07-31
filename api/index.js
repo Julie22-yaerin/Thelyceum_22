@@ -512,7 +512,7 @@ __export(sessions_exports, {
   updateSessionTasks: () => updateSessionTasks
 });
 async function createSession(params) {
-  const ref = collection9().doc();
+  const ref = collection10().doc();
   const session = {
     id: ref.id,
     licenseKey: params.licenseKey,
@@ -528,7 +528,7 @@ async function createSession(params) {
   return session;
 }
 async function confirmSession(sessionId, licenseKey) {
-  const ref = collection9().doc(sessionId);
+  const ref = collection10().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -542,7 +542,7 @@ async function confirmSession(sessionId, licenseKey) {
   return { ...data, ...updated };
 }
 async function updateSessionTasks(sessionId, licenseKey, tasks) {
-  const ref = collection9().doc(sessionId);
+  const ref = collection10().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -555,7 +555,7 @@ async function updateSessionTasks(sessionId, licenseKey, tasks) {
   return { ...data, ...updated, tasks };
 }
 async function updateSessionMeta(sessionId, licenseKey, meta) {
-  const ref = collection9().doc(sessionId);
+  const ref = collection10().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
@@ -565,17 +565,17 @@ async function updateSessionMeta(sessionId, licenseKey, meta) {
   return { ...data, ...updated };
 }
 async function getSession(sessionId, licenseKey) {
-  const snap = await collection9().doc(sessionId).get();
+  const snap = await collection10().doc(sessionId).get();
   if (!snap.exists) return null;
   const data = snap.data();
   return data.licenseKey === licenseKey ? data : null;
 }
 async function listSessions(licenseKey, limit = 50) {
-  const snap = await collection9().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
+  const snap = await collection10().where("licenseKey", "==", licenseKey).orderBy("updatedAt", "desc").limit(limit).get();
   return snap.docs.map((d) => d.data());
 }
 async function deleteSession(sessionId, licenseKey) {
-  const ref = collection9().doc(sessionId);
+  const ref = collection10().doc(sessionId);
   const snap = await ref.get();
   if (!snap.exists) return false;
   const data = snap.data();
@@ -583,12 +583,12 @@ async function deleteSession(sessionId, licenseKey) {
   await ref.delete();
   return true;
 }
-var collection9;
+var collection10;
 var init_sessions = __esm({
   "server/db/sessions.ts"() {
     "use strict";
     init_firestore();
-    collection9 = () => getDb().collection("sessions");
+    collection10 = () => getDb().collection("sessions");
   }
 });
 
@@ -3662,8 +3662,218 @@ async function updateProxyPolicy(licenseKey, token, policy) {
   return true;
 }
 
-// server/index.ts
-init_firestore();
+// server/lib/security.ts
+import crypto6 from "crypto";
+function securityHeaders() {
+  return (req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    const proto = req.header("x-forwarded-proto") || (req.secure ? "https" : "http");
+    if (proto === "https") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+    if (process.env.SECURITY_CSP === "1") {
+      res.setHeader(
+        "Content-Security-Policy",
+        [
+          "default-src 'self'",
+          // Crisp + Lemon Squeezy + our own bundle. 'unsafe-inline' is required
+          // by Crisp's injected widget script.
+          "script-src 'self' 'unsafe-inline' https://client.crisp.chat https://assets.lemonsqueezy.com",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "font-src 'self' https://fonts.gstatic.com",
+          "img-src 'self' data: blob: https:",
+          // SSE streaming (chat/stream) + Crisp socket + any API calls.
+          "connect-src 'self' https: wss: ws:",
+          "frame-src 'self' https://*.lemonsqueezy.com",
+          "frame-ancestors 'none'",
+          "media-src 'self' https: blob:",
+          "worker-src 'self' blob:"
+        ].join("; ")
+      );
+    }
+    next();
+  };
+}
+var buckets = /* @__PURE__ */ new Map();
+var sweeper = setInterval(() => {
+  const now = Date.now();
+  for (const [key, b] of Array.from(buckets)) {
+    if (b.resetAt <= now) buckets.delete(key);
+  }
+}, 6e4);
+if (typeof sweeper.unref === "function") sweeper.unref();
+function rateLimit(opts) {
+  const windowMs = opts.windowMs;
+  const max = opts.max;
+  const keyFn = opts.key ?? ((req) => req.ip ?? req.socket.remoteAddress ?? "unknown");
+  const message = opts.message ?? "Too many requests. Please slow down and try again shortly.";
+  return (req, res, next) => {
+    const key = keyFn(req);
+    const now = Date.now();
+    let bucket = buckets.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      bucket = { count: 0, resetAt: now + windowMs };
+      buckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > max) {
+      const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1e3));
+      res.setHeader("Retry-After", String(retryAfter));
+      res.status(429).json({ error: message, retryAfter });
+      return;
+    }
+    next();
+  };
+}
+var ALLOWED_ROLES = /* @__PURE__ */ new Set(["system", "user", "assistant", "tool"]);
+var MAX_MESSAGES = 50;
+var MAX_TOTAL_CHARS = 2e5;
+var MAX_SINGLE_CHARS = 4e4;
+var MAX_TEMPERATURE = 2;
+var MAX_TOKENS = 8192;
+var INJECTION_PATTERNS = [
+  {
+    pattern: /ignore\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|messages?|context|directives?)/i,
+    reason: "Message attempts to discard the system instructions."
+  },
+  {
+    pattern: /disregard\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|messages?|context)/i,
+    reason: "Message attempts to discard the system instructions."
+  },
+  {
+    pattern: /forget\s+(everything|all|everything you)\s+(above|before|prior|previously)/i,
+    reason: "Message attempts to reset the conversation context."
+  },
+  {
+    // NOTE: `assistant` and `agent` are deliberately absent. "You are now the
+    // finance assistant" / "You are now the sales agent" are normal system-
+    // prompt phrasings, and since every role is screened, matching them would
+    // 400 legitimate requests. The classic jailbreak redefines the model as
+    // the *system/developer/admin* or a named model (gpt/chatgpt/claude/dan),
+    // which are the terms kept below. Injection patterns are checked
+    // independently, so a "you are now the assistant, ignore all previous
+    // instructions" payload is still caught by the first rule.
+    pattern: /you\s+are\s+now\s+(a|an|the|not)?\s*(system|developer|administrator|admin|gpt|chatgpt|claude|dan)\b/i,
+    reason: "Message attempts to redefine the assistant's identity or role."
+  },
+  {
+    pattern: /<\|?(system|developer|assistant)_?(message|prompt|instruction)\|?>/i,
+    reason: "Message contains a role-tag injection."
+  },
+  {
+    pattern: /do\s+not\s+(follow|obey|honor)\s+(any\s+|the\s+)?(rules|instructions|guidelines|constraints)/i,
+    reason: "Message attempts to disable the system instructions."
+  },
+  {
+    pattern: /reveal\s+(your|the)\s+(system|developer)\s+(prompt|instructions?)/i,
+    reason: "Message attempts to extract the system prompt."
+  }
+];
+function screenPrompt(text) {
+  for (const { pattern, reason } of INJECTION_PATTERNS) {
+    if (pattern.test(text)) return reason;
+  }
+  return null;
+}
+function screenChatRequest(body) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, status: 400, reason: "Request body must be a JSON object." };
+  }
+  const b = body;
+  const domain = b.domain;
+  if (typeof domain !== "string" || domain.length === 0) {
+    return { ok: false, status: 400, reason: "'domain' is required." };
+  }
+  const messages = b.messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { ok: false, status: 400, reason: "'messages' must be a non-empty array." };
+  }
+  if (messages.length > MAX_MESSAGES) {
+    return { ok: false, status: 413, reason: `'messages' exceeds the ${MAX_MESSAGES}-message limit.` };
+  }
+  let totalChars = 0;
+  for (const m of messages) {
+    if (typeof m !== "object" || m === null) {
+      return { ok: false, status: 400, reason: "Each message must be an object." };
+    }
+    const mm = m;
+    if (typeof mm.role !== "string" || !ALLOWED_ROLES.has(mm.role)) {
+      return { ok: false, status: 400, reason: `Invalid message role: ${String(mm.role)}` };
+    }
+    if (typeof mm.content !== "string") {
+      return { ok: false, status: 400, reason: "Each message's 'content' must be a string." };
+    }
+    if (mm.content.length > MAX_SINGLE_CHARS) {
+      return { ok: false, status: 413, reason: `A single message exceeds ${MAX_SINGLE_CHARS} characters.` };
+    }
+    totalChars += mm.content.length;
+    const reason = screenPrompt(mm.content);
+    if (reason) {
+      return { ok: false, status: 400, reason: `Message blocked by LLM guardrail: ${reason}` };
+    }
+  }
+  if (totalChars > MAX_TOTAL_CHARS) {
+    return { ok: false, status: 413, reason: `Total message size exceeds ${MAX_TOTAL_CHARS} characters.` };
+  }
+  if (b.temperature !== void 0 && (typeof b.temperature !== "number" || b.temperature > MAX_TEMPERATURE)) {
+    return { ok: false, status: 400, reason: `'temperature' must be a number \u2264 ${MAX_TEMPERATURE}.` };
+  }
+  if (b.maxTokens !== void 0 && (typeof b.maxTokens !== "number" || !Number.isFinite(b.maxTokens) || b.maxTokens > MAX_TOKENS)) {
+    return { ok: false, status: 400, reason: `'maxTokens' must be a number \u2264 ${MAX_TOKENS}.` };
+  }
+  return { ok: true };
+}
+var pendingStates = /* @__PURE__ */ new Map();
+var STATE_TTL_MS = 10 * 6e4;
+var stateSweeper = setInterval(() => {
+  const now = Date.now();
+  for (const [state, auth] of Array.from(pendingStates)) {
+    if (now - auth.createdAt > STATE_TTL_MS) pendingStates.delete(state);
+  }
+}, 6e4);
+if (typeof stateSweeper.unref === "function") stateSweeper.unref();
+function issueAuthState(auth) {
+  const now = Date.now();
+  for (const [state2, a] of Array.from(pendingStates)) {
+    if (now - a.createdAt > STATE_TTL_MS) pendingStates.delete(state2);
+  }
+  const state = crypto6.randomBytes(24).toString("hex");
+  pendingStates.set(state, auth);
+  return state;
+}
+function consumeAuthState(state) {
+  const auth = pendingStates.get(state);
+  if (!auth) return null;
+  pendingStates.delete(state);
+  if (Date.now() - auth.createdAt > STATE_TTL_MS) return null;
+  return auth;
+}
+function corsPolicy(allowedOrigins) {
+  const allowed = new Set(allowedOrigins);
+  return (req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowed.has(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    } else if (origin) {
+      if (req.method === "OPTIONS") {
+        res.setHeader("Vary", "Origin");
+        return res.sendStatus(204);
+      }
+      return next();
+    }
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Token");
+      res.setHeader("Access-Control-Max-Age", "86400");
+      return res.sendStatus(204);
+    }
+    next();
+  };
+}
 
 // server/brain/librarian.ts
 var SIGNALS = {
@@ -3942,6 +4152,118 @@ var DEFAULT_FAILOVER = {
   switchBudgetMs: 100
 };
 
+// server/routes/brain.ts
+init_firestore();
+function registerBrainRoutes(app2, authenticateLicenseKey2) {
+  app2.get("/api/v1/brain", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    let docs = await listDocuments(licenseKey);
+    if (docs.length === 0) {
+      await seedBrain(licenseKey);
+      docs = await listDocuments(licenseKey);
+    }
+    res.json({
+      ephemeralStore: isEphemeralStore(),
+      departments: DEPARTMENTS.map((d) => ({
+        ...d,
+        scope: scopeFor(d.id),
+        tools: scopeForDepartment(d.id),
+        documentCount: docs.filter((doc) => doc.path.startsWith(`departments/${d.id}/`)).length
+      })),
+      globalNeverAllowed: GLOBAL_NEVER_ALLOWED,
+      failover: DEFAULT_FAILOVER,
+      documents: docs.map((d) => ({
+        id: d.id,
+        path: d.path,
+        title: d.title,
+        alwaysInclude: d.alwaysInclude,
+        origin: d.origin,
+        updatedAt: d.updatedAt,
+        preview: d.body.slice(0, 240)
+      }))
+    });
+  });
+  app2.post("/api/v1/brain/documents", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const { title, body, department } = req.body ?? {};
+    if (!title || !body) {
+      return res.status(400).json({ error: "title and body are required" });
+    }
+    try {
+      const result = await fileDocument({
+        licenseKey,
+        title: String(title),
+        body: String(body),
+        department
+      });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof IngestBlockedError) {
+        return res.status(422).json({
+          error: err.message,
+          findings: err.verdict.findings,
+          hint: "This document contains instructions aimed at the assistant. If it is genuinely yours, remove those lines and try again."
+        });
+      }
+      throw err;
+    }
+  });
+  app2.post("/api/v1/brain/classify", authenticateLicenseKey2, async (req, res) => {
+    const { title, body } = req.body ?? {};
+    if (!title && !body) return res.status(400).json({ error: "title or body is required" });
+    res.json(await classify(String(title ?? ""), String(body ?? "")));
+  });
+  app2.delete("/api/v1/brain/documents", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const path3 = String(req.query.path ?? "");
+    if (!path3) return res.status(400).json({ error: "path is required" });
+    const ok = await deleteDocument(licenseKey, path3);
+    res.json({ deleted: ok });
+  });
+  app2.post("/api/v1/brain/preview", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const { department, query, agentName, role } = req.body ?? {};
+    if (!department || !query) {
+      return res.status(400).json({ error: "department and query are required" });
+    }
+    const context = await routeContext({
+      licenseKey,
+      department,
+      query: String(query)
+    });
+    res.json({
+      scope: context.scope,
+      empty: context.empty,
+      documents: context.documents.map((d) => ({ path: d.path, title: d.title })),
+      systemPrompt: buildSystemPrompt({
+        context,
+        agentName: String(agentName || "Agent"),
+        role: String(role || "assistant")
+      })
+    });
+  });
+  app2.post("/api/v1/pillars/factcheck", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const { department, query, output } = req.body ?? {};
+    if (!department || !output) {
+      return res.status(400).json({ error: "department and output are required" });
+    }
+    const context = await routeContext({
+      licenseKey,
+      department,
+      query: String(query ?? output)
+    });
+    res.json(verifyOutput({ output: String(output), context: context.groundingText }));
+  });
+  app2.post("/api/v1/pillars/arbitrate", authenticateLicenseKey2, async (req, res) => {
+    const positions = req.body?.positions;
+    if (!Array.isArray(positions)) {
+      return res.status(400).json({ error: "positions[] is required" });
+    }
+    res.json(arbitrate(positions));
+  });
+}
+
 // server/healing/incidents.ts
 function detectLoop(recentPayloads, threshold = 3) {
   if (recentPayloads.length < threshold) return null;
@@ -4109,7 +4431,8 @@ function corpusSummary() {
 }
 
 // server/hive/immunity.ts
-import crypto6 from "crypto";
+init_firestore();
+import crypto7 from "crypto";
 var SCRUBBERS = [
   { re: /\b[\w.+-]+@[\w-]+\.[\w.]+\b/g, token: "<EMAIL>" },
   { re: /\bhttps?:\/\/\S+/gi, token: "<URL>" },
@@ -4231,7 +4554,7 @@ function extractSignature(params) {
       refusedReason: `Refused to share: ${check.offending.length} token(s) were not recognised as structural (${check.offending.join(", ")}). Not publishing rather than risk leaking tenant content.`
     };
   }
-  const fingerprint = crypto6.createHash("sha256").update(skeleton).digest("hex").slice(0, 24);
+  const fingerprint = crypto7.createHash("sha256").update(skeleton).digest("hex").slice(0, 24);
   return {
     signature: {
       id: `sig_${fingerprint.slice(0, 12)}`,
@@ -4322,58 +4645,72 @@ function isEnforcedFor(sig, licenseKey) {
   const decision = evaluateForPromotion(sig);
   if (decision.rolloutFraction >= 1) return true;
   if (decision.rolloutFraction <= 0) return false;
-  const h = crypto6.createHash("sha256").update(`${sig.id}:${licenseKey}`).digest();
+  const h = crypto7.createHash("sha256").update(`${sig.id}:${licenseKey}`).digest();
   return h[0] / 256 < decision.rolloutFraction;
 }
+var signatureCollection = () => getDb().collection("threatSignatures");
 var ImmunityRegistry = class {
-  byFingerprint = /* @__PURE__ */ new Map();
-  /** Which workspaces reported each fingerprint, so `observedBy` counts
-   *  distinct sources without ever exposing who they were. */
-  reporters = /* @__PURE__ */ new Map();
   /** Contribute an observation. Returns null when nothing shareable came out. */
-  report(params) {
+  async report(params) {
     const extracted = extractSignature(params);
     if (!extracted.signature) return { signature: null, refusedReason: extracted.refusedReason };
     const sig = extracted.signature;
-    const existing = this.byFingerprint.get(sig.fingerprint);
-    const seen = this.reporters.get(sig.fingerprint) ?? /* @__PURE__ */ new Set();
-    seen.add(params.licenseKey);
-    this.reporters.set(sig.fingerprint, seen);
-    const merged = existing ? { ...existing, observedBy: seen.size, severity: worst(existing.severity, sig.severity) } : { ...sig, observedBy: seen.size };
+    const ref = signatureCollection().doc(sig.fingerprint);
+    const snap = await ref.get();
+    const existing = snap.exists ? snap.data() : null;
+    const reporters = new Set(existing?.reporters ?? []);
+    reporters.add(params.licenseKey);
+    const merged = {
+      ...existing ?? sig,
+      observedBy: reporters.size,
+      severity: existing ? worst(existing.severity, sig.severity) : sig.severity,
+      reporters: Array.from(reporters)
+    };
     const decision = evaluateForPromotion(merged);
     merged.stage = decision.stage;
     merged.falsePositiveRate = measureFalsePositives(merged);
     if (decision.stage === "global" && !merged.promotedAt) merged.promotedAt = Date.now();
     if (decision.stage === "rejected") merged.rejectedReason = decision.reason;
-    this.byFingerprint.set(sig.fingerprint, merged);
-    return { signature: merged, decision };
+    await ref.set(merged);
+    return { signature: stripReporters(merged), decision };
   }
   /** Signatures this workspace should currently enforce. */
-  activeFor(licenseKey) {
-    return Array.from(this.byFingerprint.values()).filter(
-      (s) => s.stage !== "rejected" && isEnforcedFor(s, licenseKey)
-    );
+  async activeFor(licenseKey) {
+    const all = await this.all();
+    return all.filter((s) => s.stage !== "rejected" && isEnforcedFor(s, licenseKey));
   }
   /** Check an incoming payload against this workspace's active immunity. */
-  screen(licenseKey, payload) {
-    for (const sig of this.activeFor(licenseKey)) {
+  async screen(licenseKey, payload) {
+    for (const sig of await this.activeFor(licenseKey)) {
       if (matchesSignature(payload, sig)) return { blocked: true, signature: sig };
     }
     return { blocked: false };
   }
-  all() {
-    return Array.from(this.byFingerprint.values()).sort((a, b) => b.createdAt - a.createdAt);
+  async all() {
+    const snap = await signatureCollection().get();
+    return (snap.docs ?? []).map((d) => stripReporters(d.data())).sort((a, b) => b.createdAt - a.createdAt);
   }
-  reset() {
-    this.byFingerprint.clear();
-    this.reporters.clear();
+  /** Test helper. Never called by the server. */
+  async reset() {
+    const snap = await signatureCollection().get();
+    for (const d of snap.docs ?? []) {
+      const data = d.data();
+      await signatureCollection().doc(data.fingerprint).delete?.();
+    }
   }
 };
+function stripReporters(s) {
+  const { reporters, ...rest } = s;
+  return rest;
+}
 function worst(a, b) {
   const order = ["critical", "high", "medium", "low"];
   return order.indexOf(a) <= order.indexOf(b) ? a : b;
 }
 var immunityRegistry = new ImmunityRegistry();
+
+// server/healing/promptMutation.ts
+init_firestore();
 
 // server/healing/riskAssessment.ts
 var DEFAULT_HEALING_POLICY = {
@@ -4383,10 +4720,20 @@ var DEFAULT_HEALING_POLICY = {
 
 // server/healing/promptMutation.ts
 var PromptRegistry = class {
-  versions = /* @__PURE__ */ new Map();
-  register(promptId, text, origin = "human") {
-    const history = this.versions.get(promptId) ?? [];
-    for (const v of history) v.active = false;
+  collection() {
+    return getDb().collection("promptVersions");
+  }
+  /** Composite id so versions of one prompt sort and fetch together. */
+  docId(promptId, version) {
+    return `${promptId}__v${String(version).padStart(4, "0")}`;
+  }
+  async register(promptId, text, origin = "human") {
+    const history = await this.history(promptId);
+    for (const v of history) {
+      if (v.active) {
+        await this.collection().doc(this.docId(promptId, v.version)).set({ active: false }, { merge: true });
+      }
+    }
     const version = {
       id: `pv_${promptId}_${history.length + 1}`,
       promptId,
@@ -4396,33 +4743,41 @@ var PromptRegistry = class {
       createdAt: Date.now(),
       active: true
     };
-    this.versions.set(promptId, [...history, version]);
+    await this.collection().doc(this.docId(promptId, version.version)).set(version);
     return version;
   }
   /** Swap in a healed prompt. Returns the new version. */
-  hotSwap(promptId, text, incidentId) {
-    const version = this.register(promptId, text, "healer");
+  async hotSwap(promptId, text, incidentId) {
+    const version = await this.register(promptId, text, "healer");
     version.fromIncidentId = incidentId;
+    await this.collection().doc(this.docId(promptId, version.version)).set({ fromIncidentId: incidentId }, { merge: true });
     return version;
   }
-  active(promptId) {
-    return (this.versions.get(promptId) ?? []).find((v) => v.active) ?? null;
+  async active(promptId) {
+    return (await this.history(promptId)).find((v) => v.active) ?? null;
   }
-  history(promptId) {
-    return [...this.versions.get(promptId) ?? []].reverse();
+  /** Newest first. */
+  async history(promptId) {
+    const snap = await this.collection().where("promptId", "==", promptId).get();
+    return (snap.docs ?? []).map((d) => d.data()).sort((a, b) => b.version - a.version);
   }
   /** Undo — reactivate a previous version. The escape hatch that makes the rest safe. */
-  rollback(promptId, toVersion) {
-    const history = this.versions.get(promptId);
-    if (!history) return null;
+  async rollback(promptId, toVersion) {
+    const history = await this.history(promptId);
     const target = history.find((v) => v.version === toVersion);
     if (!target) return null;
-    for (const v of history) v.active = false;
-    target.active = true;
-    return target;
+    for (const v of history) {
+      await this.collection().doc(this.docId(promptId, v.version)).set({ active: v.version === toVersion }, { merge: true });
+    }
+    return { ...target, active: true };
   }
-  reset() {
-    this.versions.clear();
+  /** Test helper. Never called by the server. */
+  async reset() {
+    const snap = await this.collection().get();
+    for (const d of snap.docs ?? []) {
+      const v = d.data();
+      await this.collection().doc(this.docId(v.promptId, v.version)).delete?.();
+    }
   }
 };
 var promptRegistry = new PromptRegistry();
@@ -4546,11 +4901,197 @@ function buildNarrative(p) {
   return parts.join(" ");
 }
 
+// server/db/workspaceState.ts
+init_firestore();
+var collection8 = () => getDb().collection("workspaceState");
+async function readState(licenseKey) {
+  const snap = await collection8().doc(licenseKey).get();
+  return snap.exists ? snap.data() : null;
+}
+async function readSlot(licenseKey, slot, fallback) {
+  const state = await readState(licenseKey);
+  const value = state?.[slot];
+  return value === void 0 || value === null ? fallback : value;
+}
+async function writeSlot(licenseKey, slot, value) {
+  await collection8().doc(licenseKey).set({ licenseKey, [slot]: value, updatedAt: Date.now() }, { merge: true });
+}
+async function clearSlot(licenseKey, slot) {
+  await writeSlot(licenseKey, slot, null);
+}
+async function listConnections(licenseKey) {
+  return readSlot(licenseKey, "connections", {});
+}
+async function saveConnection(licenseKey, providerId, connection) {
+  const existing = await listConnections(licenseKey);
+  await writeSlot(licenseKey, "connections", { ...existing, [providerId]: connection });
+}
+async function removeConnection(licenseKey, providerId) {
+  const existing = await listConnections(licenseKey);
+  delete existing[providerId];
+  await writeSlot(licenseKey, "connections", existing);
+}
+function publicConnection(c) {
+  return {
+    provider: c.provider,
+    connectedAs: c.connectedAs,
+    connectedAt: c.connectedAt,
+    mode: c.mode
+  };
+}
+
+// server/routes/autonomy.ts
+function registerAutonomyRoutes(app2, authenticateLicenseKey2) {
+  app2.get("/api/v1/redteam/corpus", authenticateLicenseKey2, async (_req, res) => {
+    res.json({ categories: corpusSummary() });
+  });
+  app2.post("/api/v1/redteam/run", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const run = await runRedTeam({
+      licenseKey,
+      departments: req.body?.departments,
+      categories: req.body?.categories
+    });
+    const contributed = [];
+    if (req.body?.contributeToHive !== false) {
+      for (const finding of run.findings) {
+        const attack = (await Promise.resolve().then(() => (init_attacks(), attacks_exports))).ATTACKS.find(
+          (a) => a.id === finding.attackId
+        );
+        if (!attack) continue;
+        const result = await immunityRegistry.report({
+          licenseKey,
+          payload: attack.payload,
+          guard: attack.expect.guard,
+          category: finding.category,
+          severity: finding.severity
+        });
+        contributed.push({
+          signature: result.signature?.id ?? "(not shared)",
+          stage: result.signature?.stage ?? "refused",
+          reason: result.refusedReason ?? result.decision?.reason
+        });
+      }
+    }
+    res.json({ run, summary: summarise(run), contributed });
+  });
+  app2.get("/api/v1/hive", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const active = await immunityRegistry.activeFor(licenseKey);
+    res.json({
+      // Every field here is structural. There is no endpoint that returns
+      // another workspace's traffic, because no such data is ever stored.
+      enforcedHere: active.length,
+      signatures: (await immunityRegistry.all()).map((s) => ({
+        id: s.id,
+        category: s.category,
+        severity: s.severity,
+        skeleton: s.skeleton,
+        observedBy: s.observedBy,
+        stage: s.stage,
+        falsePositiveRate: s.falsePositiveRate,
+        enforcedHere: active.some((a) => a.id === s.id),
+        rejectedReason: s.rejectedReason
+      }))
+    });
+  });
+  app2.post("/api/v1/hive/screen", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const payload = String(req.body?.payload ?? "");
+    if (!payload) return res.status(400).json({ error: "payload is required" });
+    const result = await immunityRegistry.screen(licenseKey, payload);
+    res.json({
+      blocked: result.blocked,
+      matchedSignature: result.signature?.id,
+      category: result.signature?.category
+    });
+  });
+  app2.get("/api/v1/healing/prompts/:promptId", authenticateLicenseKey2, async (req, res) => {
+    res.json({ history: await promptRegistry.history(req.params.promptId) });
+  });
+  app2.post("/api/v1/healing/rollback", authenticateLicenseKey2, async (req, res) => {
+    const { promptId, toVersion } = req.body ?? {};
+    if (!promptId || typeof toVersion !== "number") {
+      return res.status(400).json({ error: "promptId and toVersion are required" });
+    }
+    const version = await promptRegistry.rollback(String(promptId), toVersion);
+    if (!version) return res.status(404).json({ error: "No such prompt version." });
+    res.json({ rolledBackTo: version });
+  });
+  app2.get("/api/v1/audit", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const breaches = await pendingBreaches(licenseKey, limit);
+    res.json({
+      entries: breaches.map((b) => ({
+        id: b.id,
+        at: b.createdAt ?? b.at,
+        actor: b.actorId ?? b.actor ?? "unknown",
+        actorKind: b.actorKind ?? "ai",
+        action: b.kind ?? "breach",
+        outcome: "blocked",
+        reason: b.summary ?? b.reason,
+        code: b.code,
+        sessionId: b.sessionId
+      })),
+      note: "Every entry is a real recorded event. Nothing here is reconstructed after the fact \u2014 the record is written at the moment the decision is made."
+    });
+  });
+  app2.get("/api/v1/roi", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    const periodEnd = Date.now();
+    const periodStart = periodEnd - days * 864e5;
+    const breaches = await pendingBreaches(licenseKey, 500);
+    const events = breaches.map((b) => ({
+      at: b.createdAt ?? Date.now(),
+      kind: b.code === "LOOP_DETECTED" ? "loop_stopped" : b.code === "BUDGET_EXCEEDED" ? "budget_breach" : b.code === "SCOPE_VIOLATION" ? "scope_violation" : "budget_breach",
+      preventedCents: b.preventedCents ?? 0
+    }));
+    const subscriptionCents = Number(req.query.subscriptionCents) || 0;
+    res.json(
+      buildRoiReport({
+        events,
+        periodStart,
+        periodEnd,
+        subscriptionCents,
+        attacksRepelled: Number(req.query.attacksRepelled) || 0
+      })
+    );
+  });
+  app2.get("/api/v1/healing/policy", authenticateLicenseKey2, async (req, res) => {
+    const policy = await readSlot(
+      req.lyceumAccount.licenseKey,
+      "healingPolicy",
+      DEFAULT_HEALING_POLICY
+    );
+    res.json({ policy, default: DEFAULT_HEALING_POLICY });
+  });
+  app2.put("/api/v1/healing/policy", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const { autonomousHealingEnabled, maxAutonomousRiskPercent, excludedKinds } = req.body ?? {};
+    const policy = await readSlot(
+      licenseKey,
+      "healingPolicy",
+      DEFAULT_HEALING_POLICY
+    );
+    if (typeof autonomousHealingEnabled === "boolean") {
+      policy.autonomousHealingEnabled = autonomousHealingEnabled;
+    }
+    if (typeof maxAutonomousRiskPercent === "number") {
+      policy.maxAutonomousRiskPercent = Math.max(0, Math.min(70, maxAutonomousRiskPercent));
+    }
+    if (Array.isArray(excludedKinds)) policy.excludedKinds = excludedKinds;
+    await writeSlot(licenseKey, "healingPolicy", policy);
+    res.json({ policy });
+  });
+}
+
 // server/plans/lifecycle.ts
 init_firestore();
-var collection8 = () => getDb().collection("plans");
+var collection9 = () => getDb().collection("plans");
 async function createPlan(params) {
-  const ref = collection8().doc();
+  const ref = collection9().doc();
   const now = Date.now();
   const plan = {
     id: ref.id,
@@ -4578,18 +5119,18 @@ async function createPlan(params) {
   return plan;
 }
 async function getPlan(licenseKey, planId) {
-  const snap = await collection8().doc(planId).get();
+  const snap = await collection9().doc(planId).get();
   if (!snap.exists) return null;
   const plan = snap.data();
   return plan.licenseKey === licenseKey ? plan : null;
 }
 async function listPlans(licenseKey) {
-  const snap = await collection8().where("licenseKey", "==", licenseKey).get();
+  const snap = await collection9().where("licenseKey", "==", licenseKey).get();
   return (snap.docs ?? []).map((d) => d.data()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 async function save(plan) {
   const updated = { ...plan, updatedAt: Date.now() };
-  await collection8().doc(plan.id).set(updated, { merge: true });
+  await collection9().doc(plan.id).set(updated, { merge: true });
   return updated;
 }
 async function answerQuestions(params) {
@@ -4783,217 +5324,177 @@ async function engageBrake(params) {
   return { engaged: true, elapsedMs, withinSla: elapsedMs <= sla, stopped };
 }
 
-// server/lib/security.ts
-import crypto7 from "crypto";
-function securityHeaders() {
-  return (req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    const proto = req.header("x-forwarded-proto") || (req.secure ? "https" : "http");
-    if (proto === "https") {
-      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+// server/routes/plans.ts
+function registerPlansRoutes(app2, authenticateLicenseKey2) {
+  app2.get("/api/v1/plans", authenticateLicenseKey2, async (req, res) => {
+    const plans = await listPlans(req.lyceumAccount.licenseKey);
+    res.json({ plans: plans.map((p) => ({ ...p, summary: planSummary(p) })) });
+  });
+  app2.get("/api/v1/plans/:id", authenticateLicenseKey2, async (req, res) => {
+    const plan = await getPlan(req.lyceumAccount.licenseKey, req.params.id);
+    if (!plan) return res.status(404).json({ error: "No such plan." });
+    res.json({ plan, summary: planSummary(plan) });
+  });
+  app2.post("/api/v1/plans", authenticateLicenseKey2, async (req, res) => {
+    const { agentId, agentName, department, goal, questions } = req.body ?? {};
+    if (!goal || !agentId) {
+      return res.status(400).json({ error: "goal and agentId are required" });
     }
-    if (process.env.SECURITY_CSP === "1") {
-      res.setHeader(
-        "Content-Security-Policy",
-        [
-          "default-src 'self'",
-          // Crisp + Lemon Squeezy + our own bundle. 'unsafe-inline' is required
-          // by Crisp's injected widget script.
-          "script-src 'self' 'unsafe-inline' https://client.crisp.chat https://assets.lemonsqueezy.com",
-          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-          "font-src 'self' https://fonts.gstatic.com",
-          "img-src 'self' data: blob: https:",
-          // SSE streaming (chat/stream) + Crisp socket + any API calls.
-          "connect-src 'self' https: wss: ws:",
-          "frame-src 'self' https://*.lemonsqueezy.com",
-          "frame-ancestors 'none'",
-          "media-src 'self' https: blob:",
-          "worker-src 'self' blob:"
-        ].join("; ")
-      );
+    const plan = await createPlan({
+      licenseKey: req.lyceumAccount.licenseKey,
+      agentId: String(agentId),
+      agentName: String(agentName ?? agentId),
+      department: String(department ?? "dev_ops"),
+      goal: String(goal),
+      questions: Array.isArray(questions) ? questions : []
+    });
+    res.status(201).json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/answers", authenticateLicenseKey2, async (req, res) => {
+    const plan = await answerQuestions({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id,
+      answers: req.body?.answers ?? []
+    });
+    if (!plan) return res.status(404).json({ error: "No such plan." });
+    res.json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/steps", authenticateLicenseKey2, async (req, res) => {
+    const { plan, error } = await submitPlan({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id,
+      steps: req.body?.steps ?? []
+    });
+    if (!plan) return res.status(400).json({ error });
+    res.json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/approve", authenticateLicenseKey2, async (req, res) => {
+    const { plan, error } = await approvePlan({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id,
+      by: req.lyceumAccount.email ?? "operator",
+      version: Number(req.body?.version)
+    });
+    if (!plan) return res.status(409).json({ error });
+    res.json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/revise", authenticateLicenseKey2, async (req, res) => {
+    const { plan, error } = await requestRevision({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id,
+      by: req.lyceumAccount.email ?? "operator",
+      note: String(req.body?.note ?? "")
+    });
+    if (!plan) return res.status(400).json({ error });
+    res.json({ plan });
+  });
+  app2.post("/api/v1/plans/:id/execute", authenticateLicenseKey2, async (req, res) => {
+    const { plan, error } = await beginExecution({
+      licenseKey: req.lyceumAccount.licenseKey,
+      planId: req.params.id
+    });
+    if (!plan) return res.status(409).json({ error });
+    res.json({ plan });
+  });
+  app2.get("/api/v1/warroom/alert", authenticateLicenseKey2, async (req, res) => {
+    res.json({
+      alert: await readSlot(req.lyceumAccount.licenseKey, "activeAlert", null)
+    });
+  });
+  app2.post("/api/v1/warroom/intent", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const intent = String(req.body?.intent ?? "");
+    const danger = scanForDanger(intent);
+    if (danger) {
+      const alert = {
+        id: `alert_${Date.now().toString(36)}`,
+        agentId: String(req.body?.agentId ?? "unknown"),
+        agentName: String(req.body?.agentName ?? req.body?.agentId ?? "An agent"),
+        planId: req.body?.planId,
+        stepTitle: req.body?.stepTitle,
+        danger,
+        raisedAt: Date.now()
+      };
+      await writeSlot(licenseKey, "activeAlert", alert);
+      return res.status(423).json({ blocked: true, alert });
     }
-    next();
-  };
-}
-var buckets = /* @__PURE__ */ new Map();
-var sweeper = setInterval(() => {
-  const now = Date.now();
-  for (const [key, b] of Array.from(buckets)) {
-    if (b.resetAt <= now) buckets.delete(key);
-  }
-}, 6e4);
-if (typeof sweeper.unref === "function") sweeper.unref();
-function rateLimit(opts) {
-  const windowMs = opts.windowMs;
-  const max = opts.max;
-  const keyFn = opts.key ?? ((req) => req.ip ?? req.socket.remoteAddress ?? "unknown");
-  const message = opts.message ?? "Too many requests. Please slow down and try again shortly.";
-  return (req, res, next) => {
-    const key = keyFn(req);
-    const now = Date.now();
-    let bucket = buckets.get(key);
-    if (!bucket || bucket.resetAt <= now) {
-      bucket = { count: 0, resetAt: now + windowMs };
-      buckets.set(key, bucket);
-    }
-    bucket.count += 1;
-    if (bucket.count > max) {
-      const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1e3));
-      res.setHeader("Retry-After", String(retryAfter));
-      res.status(429).json({ error: message, retryAfter });
-      return;
-    }
-    next();
-  };
-}
-var ALLOWED_ROLES = /* @__PURE__ */ new Set(["system", "user", "assistant", "tool"]);
-var MAX_MESSAGES = 50;
-var MAX_TOTAL_CHARS = 2e5;
-var MAX_SINGLE_CHARS = 4e4;
-var MAX_TEMPERATURE = 2;
-var MAX_TOKENS = 8192;
-var INJECTION_PATTERNS = [
-  {
-    pattern: /ignore\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|messages?|context|directives?)/i,
-    reason: "Message attempts to discard the system instructions."
-  },
-  {
-    pattern: /disregard\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|messages?|context)/i,
-    reason: "Message attempts to discard the system instructions."
-  },
-  {
-    pattern: /forget\s+(everything|all|everything you)\s+(above|before|prior|previously)/i,
-    reason: "Message attempts to reset the conversation context."
-  },
-  {
-    // NOTE: `assistant` and `agent` are deliberately absent. "You are now the
-    // finance assistant" / "You are now the sales agent" are normal system-
-    // prompt phrasings, and since every role is screened, matching them would
-    // 400 legitimate requests. The classic jailbreak redefines the model as
-    // the *system/developer/admin* or a named model (gpt/chatgpt/claude/dan),
-    // which are the terms kept below. Injection patterns are checked
-    // independently, so a "you are now the assistant, ignore all previous
-    // instructions" payload is still caught by the first rule.
-    pattern: /you\s+are\s+now\s+(a|an|the|not)?\s*(system|developer|administrator|admin|gpt|chatgpt|claude|dan)\b/i,
-    reason: "Message attempts to redefine the assistant's identity or role."
-  },
-  {
-    pattern: /<\|?(system|developer|assistant)_?(message|prompt|instruction)\|?>/i,
-    reason: "Message contains a role-tag injection."
-  },
-  {
-    pattern: /do\s+not\s+(follow|obey|honor)\s+(any\s+|the\s+)?(rules|instructions|guidelines|constraints)/i,
-    reason: "Message attempts to disable the system instructions."
-  },
-  {
-    pattern: /reveal\s+(your|the)\s+(system|developer)\s+(prompt|instructions?)/i,
-    reason: "Message attempts to extract the system prompt."
-  }
-];
-function screenPrompt(text) {
-  for (const { pattern, reason } of INJECTION_PATTERNS) {
-    if (pattern.test(text)) return reason;
-  }
-  return null;
-}
-function screenChatRequest(body) {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return { ok: false, status: 400, reason: "Request body must be a JSON object." };
-  }
-  const b = body;
-  const domain = b.domain;
-  if (typeof domain !== "string" || domain.length === 0) {
-    return { ok: false, status: 400, reason: "'domain' is required." };
-  }
-  const messages = b.messages;
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return { ok: false, status: 400, reason: "'messages' must be a non-empty array." };
-  }
-  if (messages.length > MAX_MESSAGES) {
-    return { ok: false, status: 413, reason: `'messages' exceeds the ${MAX_MESSAGES}-message limit.` };
-  }
-  let totalChars = 0;
-  for (const m of messages) {
-    if (typeof m !== "object" || m === null) {
-      return { ok: false, status: 400, reason: "Each message must be an object." };
-    }
-    const mm = m;
-    if (typeof mm.role !== "string" || !ALLOWED_ROLES.has(mm.role)) {
-      return { ok: false, status: 400, reason: `Invalid message role: ${String(mm.role)}` };
-    }
-    if (typeof mm.content !== "string") {
-      return { ok: false, status: 400, reason: "Each message's 'content' must be a string." };
-    }
-    if (mm.content.length > MAX_SINGLE_CHARS) {
-      return { ok: false, status: 413, reason: `A single message exceeds ${MAX_SINGLE_CHARS} characters.` };
-    }
-    totalChars += mm.content.length;
-    const reason = screenPrompt(mm.content);
-    if (reason) {
-      return { ok: false, status: 400, reason: `Message blocked by LLM guardrail: ${reason}` };
-    }
-  }
-  if (totalChars > MAX_TOTAL_CHARS) {
-    return { ok: false, status: 413, reason: `Total message size exceeds ${MAX_TOTAL_CHARS} characters.` };
-  }
-  if (b.temperature !== void 0 && (typeof b.temperature !== "number" || b.temperature > MAX_TEMPERATURE)) {
-    return { ok: false, status: 400, reason: `'temperature' must be a number \u2264 ${MAX_TEMPERATURE}.` };
-  }
-  if (b.maxTokens !== void 0 && (typeof b.maxTokens !== "number" || !Number.isFinite(b.maxTokens) || b.maxTokens > MAX_TOKENS)) {
-    return { ok: false, status: 400, reason: `'maxTokens' must be a number \u2264 ${MAX_TOKENS}.` };
-  }
-  return { ok: true };
-}
-var pendingStates = /* @__PURE__ */ new Map();
-var STATE_TTL_MS = 10 * 6e4;
-var stateSweeper = setInterval(() => {
-  const now = Date.now();
-  for (const [state, auth] of Array.from(pendingStates)) {
-    if (now - auth.createdAt > STATE_TTL_MS) pendingStates.delete(state);
-  }
-}, 6e4);
-if (typeof stateSweeper.unref === "function") stateSweeper.unref();
-function issueAuthState(auth) {
-  const now = Date.now();
-  for (const [state2, a] of Array.from(pendingStates)) {
-    if (now - a.createdAt > STATE_TTL_MS) pendingStates.delete(state2);
-  }
-  const state = crypto7.randomBytes(24).toString("hex");
-  pendingStates.set(state, auth);
-  return state;
-}
-function consumeAuthState(state) {
-  const auth = pendingStates.get(state);
-  if (!auth) return null;
-  pendingStates.delete(state);
-  if (Date.now() - auth.createdAt > STATE_TTL_MS) return null;
-  return auth;
-}
-function corsPolicy(allowedOrigins) {
-  const allowed = new Set(allowedOrigins);
-  return (req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin && allowed.has(origin)) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Vary", "Origin");
-    } else if (origin) {
-      if (req.method === "OPTIONS") {
-        res.setHeader("Vary", "Origin");
-        return res.sendStatus(204);
+    res.json({ blocked: false });
+  });
+  app2.post("/api/v1/warroom/alert/:id/continue", authenticateLicenseKey2, async (req, res) => {
+    await clearSlot(req.lyceumAccount.licenseKey, "activeAlert");
+    res.json({ cleared: true, by: req.lyceumAccount.email ?? "operator" });
+  });
+  app2.post("/api/v1/warroom/alert/:id/brake", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const policy = await readSlot(
+      licenseKey,
+      "escalationPolicy",
+      DEFAULT_ESCALATION
+    );
+    const result = await engageBrake({
+      licenseKey,
+      reason: "Operator pulled the emergency brake from a red alert.",
+      policy,
+      stopAll: async () => {
+        const plans = await listPlans(licenseKey);
+        const running = plans.filter((p) => ["executing", "approved"].includes(p.status));
+        for (const p of running) {
+          await haltPlan({ licenseKey, planId: p.id, reason: "Emergency brake." });
+        }
+        const workers = await listWorkers(licenseKey);
+        return { agents: workers.length, plans: running.length };
       }
-      return next();
+    });
+    await clearSlot(licenseKey, "activeAlert");
+    res.json(result);
+  });
+  app2.get("/api/v1/warroom/escalation", authenticateLicenseKey2, async (req, res) => {
+    const policy = await readSlot(
+      req.lyceumAccount.licenseKey,
+      "escalationPolicy",
+      DEFAULT_ESCALATION
+    );
+    res.json({ policy, default: DEFAULT_ESCALATION });
+  });
+  app2.put("/api/v1/warroom/escalation", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const { officerMayDecide, humanThresholdPercent } = req.body ?? {};
+    const policy = await readSlot(
+      licenseKey,
+      "escalationPolicy",
+      DEFAULT_ESCALATION
+    );
+    if (typeof officerMayDecide === "boolean") policy.officerMayDecide = officerMayDecide;
+    if (typeof humanThresholdPercent === "number") {
+      policy.humanThresholdPercent = Math.max(0, Math.min(70, humanThresholdPercent));
     }
-    if (req.method === "OPTIONS") {
-      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Token");
-      res.setHeader("Access-Control-Max-Age", "86400");
-      return res.sendStatus(204);
-    }
-    next();
-  };
+    await writeSlot(licenseKey, "escalationPolicy", policy);
+    res.json({ policy });
+  });
+  app2.get("/api/v1/warroom/feed", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const limit = Math.min(Number(req.query.limit) || 60, 200);
+    const breaches = await pendingBreaches(licenseKey, limit);
+    const account = req.lyceumAccount;
+    const events = breaches.map((b, i) => ({
+      id: b.id ?? `ev${i}`,
+      at: b.createdAt ?? Date.now(),
+      actor: b.actorId ?? "system",
+      text: b.summary ?? b.code ?? "blocked",
+      level: "block"
+    }));
+    res.json({
+      events,
+      metrics: {
+        savedCents: breaches.reduce((s, b) => s + (b.preventedCents ?? 0), 0),
+        budgetRemainingCents: (account.creditsRemaining ?? 0) * 10,
+        // Labelled as an estimate in the UI. 6 minutes per blocked action is a
+        // stated assumption, not a measurement, and the panel says so.
+        hoursReclaimed: Math.round(breaches.length * 6 / 60 * 10) / 10,
+        blocked: breaches.length
+      }
+    });
+  });
 }
 
 // server/lib/integrations.ts
@@ -5218,6 +5719,315 @@ function renderCallbackSuccessPage(providerName) {
   <script>try { window.close(); } catch (e) {}</script>
 </body>
 </html>`;
+}
+
+// server/routes/integrations.ts
+function registerIntegrationsRoutes(app2, authenticateLicenseKey2) {
+  app2.get("/api/v1/integrations", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const mine = await listConnections(licenseKey);
+    res.json({
+      integrations: OAUTH_PROVIDERS.map((p) => {
+        const stored = mine[p.id];
+        const live = stored ? publicConnection(stored) : void 0;
+        const configured = isProviderConfigured(p);
+        return {
+          id: p.id,
+          name: p.name,
+          emoji: p.emoji,
+          blurb: p.blurb,
+          auth: "oauth",
+          scopes: p.scopes,
+          scopeLabels: p.scopeLabels,
+          // Honest state: a card reads "connected" only when a connection
+          // exists. Every card is connectable — either to the real provider
+          // (mode: real) or through the sandbox consent flow (mode: sandbox).
+          mode: configured ? "real" : "sandbox",
+          state: live ? "connected" : "available",
+          blockedReason: void 0,
+          connectedAs: live?.connectedAs,
+          connectedAt: live?.connectedAt,
+          connectedMode: live?.mode
+        };
+      })
+    });
+  });
+  app2.post("/api/v1/integrations/:id/authorize", authenticateLicenseKey2, async (req, res) => {
+    const provider = providerFor(req.params.id);
+    if (!provider) return res.status(404).json({ error: "Unknown integration." });
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const redirectUri = `${origin}/api/v1/integrations/callback`;
+    const state = issueAuthState({
+      provider: provider.id,
+      licenseKey: req.lyceumAccount.licenseKey,
+      mode: isProviderConfigured(provider) ? "real" : "sandbox",
+      createdAt: Date.now()
+    });
+    const outcome = buildAuthorizeUrl(provider, { origin, state, redirectUri });
+    res.json({ authorizeUrl: outcome.authorizeUrl, mode: outcome.mode, notice: outcome.notice });
+  });
+  app2.get("/api/v1/integrations/:id/sandbox-auth", async (req, res) => {
+    const provider = providerFor(req.params.id);
+    const state = String(req.query.state ?? "");
+    if (!provider || !state) {
+      return res.status(400).send("Invalid integration request.");
+    }
+    const origin = `${req.protocol}://${req.get("host")}`;
+    res.type("html").send(renderAuthPage({ provider, state, origin }));
+  });
+  app2.get("/api/v1/integrations/callback", async (req, res) => {
+    const state = String(req.query.state ?? "");
+    const code = String(req.query.code ?? "");
+    const auth = consumeAuthState(state);
+    if (!auth) {
+      return res.status(400).send("This link is invalid or has expired. Go back and try again.");
+    }
+    const provider = providerFor(auth.provider);
+    if (!provider) {
+      return res.status(400).send("Unknown integration.");
+    }
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const redirectUri = `${origin}/api/v1/integrations/callback`;
+    try {
+      let connectedAs = `${provider.name} sandbox account`;
+      if (auth.mode === "real") {
+        if (!code) {
+          return res.status(400).send(`${provider.name} returned no authorization code.`);
+        }
+        const exchanged = await exchangeCode(provider, code, redirectUri);
+        connectedAs = exchanged.connectedAs;
+      }
+      await saveConnection(auth.licenseKey, provider.id, {
+        provider: provider.id,
+        connectedAs,
+        connectedAt: Date.now(),
+        mode: auth.mode
+      });
+      res.type("html").send(renderCallbackSuccessPage(provider.name));
+    } catch (err) {
+      res.status(502).type("html").send(`<h3>Connection failed</h3><p>${String(err instanceof Error ? err.message : err)}</p>`);
+    }
+  });
+  app2.delete("/api/v1/integrations/:id", authenticateLicenseKey2, async (req, res) => {
+    await removeConnection(req.lyceumAccount.licenseKey, req.params.id);
+    res.json({ disconnected: true });
+  });
+  app2.get("/api/v1/cloud", authenticateLicenseKey2, async (req, res) => {
+    res.json({
+      config: await readSlot(req.lyceumAccount.licenseKey, "cloudConfig", null) ?? {
+        provider: "lyceum",
+        verified: true
+      }
+    });
+  });
+}
+
+// server/routes/workforce.ts
+init_firestore();
+function registerWorkforceRoutes(app2, authenticateLicenseKey2) {
+  const mcpUrlFor = (req, token) => `${req.protocol}://${req.get("host")}/api/mcp/w/${token}`;
+  app2.get("/api/v1/workers", authenticateLicenseKey2, async (req, res) => {
+    const workers = await listWorkers(req.lyceumAccount.licenseKey);
+    res.json({
+      ephemeralStore: isEphemeralStore(),
+      workers: workers.map((w) => ({
+        id: w.id,
+        name: w.name,
+        role: w.role,
+        departmentId: w.departmentId,
+        departmentName: w.departmentName,
+        model: w.model,
+        tokensUsed: w.tokensUsed,
+        stepsCompleted: w.stepsCompleted,
+        lastSeenAt: w.lastSeenAt,
+        // Full URL: this is the thing the customer pastes into their client,
+        // and they will need it again every time they set up a new machine.
+        mcpUrl: mcpUrlFor(req, w.mcpToken)
+      }))
+    });
+  });
+  app2.post("/api/v1/workers", authenticateLicenseKey2, async (req, res) => {
+    const { name, role, departmentId, departmentName, model } = req.body ?? {};
+    if (!name || !departmentId) {
+      return res.status(400).json({ error: "name and departmentId are required" });
+    }
+    const worker = await createWorker({
+      licenseKey: req.lyceumAccount.licenseKey,
+      name,
+      role: role || "Assistant",
+      departmentId,
+      departmentName: departmentName || departmentId,
+      model: model || "gpt-4o"
+    });
+    res.json({ worker: { ...worker, mcpUrl: mcpUrlFor(req, worker.mcpToken) } });
+  });
+  app2.post("/api/v1/workers/:id/rotate", authenticateLicenseKey2, async (req, res) => {
+    const token = await rotateWorkerToken(req.lyceumAccount.licenseKey, req.params.id);
+    if (!token) return res.status(404).json({ error: "Worker not found" });
+    res.json({ mcpUrl: mcpUrlFor(req, token) });
+  });
+  app2.delete("/api/v1/workers/:id", authenticateLicenseKey2, async (req, res) => {
+    const ok = await revokeWorker(req.lyceumAccount.licenseKey, req.params.id);
+    if (!ok) return res.status(404).json({ error: "Worker not found" });
+    res.json({ revoked: true });
+  });
+  app2.get("/api/v1/missions", authenticateLicenseKey2, async (req, res) => {
+    const missions = await listMissions(
+      req.lyceumAccount.licenseKey,
+      typeof req.query.department === "string" ? req.query.department : void 0
+    );
+    res.json({ missions: missions.map((m) => ({ ...m, progress: progressOf(m) })) });
+  });
+  app2.post("/api/v1/missions", authenticateLicenseKey2, async (req, res) => {
+    const { department, title, goal, headName, steps } = req.body ?? {};
+    if (!department || !title) {
+      return res.status(400).json({ error: "department and title are required" });
+    }
+    const mission = await createMission({
+      licenseKey: req.lyceumAccount.licenseKey,
+      department,
+      title,
+      goal,
+      headName: headName || "You",
+      steps
+    });
+    res.json({ mission });
+  });
+  app2.patch("/api/v1/missions/:id/steps/:stepId", authenticateLicenseKey2, async (req, res) => {
+    const { status, note, addTokens } = req.body ?? {};
+    const updated = await updateStep({
+      licenseKey: req.lyceumAccount.licenseKey,
+      missionId: req.params.id,
+      stepId: req.params.stepId,
+      status,
+      note,
+      addTokens
+    });
+    if (!updated) return res.status(404).json({ error: "Task or step not found" });
+    res.json({ mission: { ...updated, progress: progressOf(updated) } });
+  });
+}
+
+// server/routes/governance.ts
+function registerGovernanceRoutes(app2, authenticateLicenseKey2) {
+  app2.get("/api/v1/proxy-tokens", authenticateLicenseKey2, async (req, res) => {
+    const tokens = await listProxyTokens(req.lyceumAccount.licenseKey);
+    res.json({
+      // The token itself is only shown at mint time; listing returns a prefix
+      // so a leaked screenshot of this page isn't a working credential.
+      tokens: tokens.map((t) => ({
+        preview: `${t.token.slice(0, 16)}\u2026`,
+        label: t.label,
+        defaultUpstream: t.defaultUpstream,
+        policy: t.policy,
+        createdAt: t.createdAt,
+        lastUsedAt: t.lastUsedAt,
+        revoked: !!t.revokedAt
+      }))
+    });
+  });
+  app2.post("/api/v1/proxy-tokens", authenticateLicenseKey2, async (req, res) => {
+    const { label, defaultUpstream, policy } = req.body ?? {};
+    const record = await mintProxyToken({
+      licenseKey: req.lyceumAccount.licenseKey,
+      label,
+      defaultUpstream,
+      policy
+    });
+    res.json({
+      token: record.token,
+      baseUrl: `${req.protocol}://${req.get("host")}/t/${record.token}/v1`,
+      // Said explicitly because there is no second chance to copy it.
+      notice: "Copy this now \u2014 the full token is not shown again."
+    });
+  });
+  app2.delete("/api/v1/proxy-tokens/:token", authenticateLicenseKey2, async (req, res) => {
+    const ok = await revokeProxyToken(req.lyceumAccount.licenseKey, req.params.token);
+    if (!ok) return res.status(404).json({ error: "Token not found" });
+    res.json({ revoked: true });
+  });
+  app2.patch("/api/v1/proxy-tokens/:token/policy", authenticateLicenseKey2, async (req, res) => {
+    const ok = await updateProxyPolicy(
+      req.lyceumAccount.licenseKey,
+      req.params.token,
+      req.body ?? {}
+    );
+    if (!ok) return res.status(404).json({ error: "Token not found" });
+    res.json({ updated: true });
+  });
+  app2.get("/api/v1/decisions", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const breaches = await pendingBreaches(licenseKey, 20);
+    const cards = await Promise.all(
+      breaches.map(async (b) => {
+        const summary = await sessionSummary(licenseKey, b.sessionId);
+        const live = await breaker.snapshot(b.sessionId);
+        return {
+          breachNodeId: b.id,
+          sessionId: b.sessionId,
+          taskName: b.payload?.excerpt?.slice(0, 80) ?? b.sessionId,
+          reason: b.summary,
+          breachCode: b.breachCode,
+          observed: b.payload?.observed,
+          limit: b.payload?.limit,
+          model: b.model,
+          occurredAt: b.occurredAt,
+          evaluatedInMs: b.evaluatedInMs,
+          spend: {
+            spentCents: live.spentCents,
+            // The ceiling the breach was measured against.
+            limitCents: typeof b.payload?.limit === "number" ? b.payload.limit : null
+          },
+          session: summary
+        };
+      })
+    );
+    res.json({ cards });
+  });
+  app2.post("/api/v1/decisions/:breachNodeId", authenticateLicenseKey2, async (req, res) => {
+    const licenseKey = req.lyceumAccount.licenseKey;
+    const { decision, sessionId, grantCents, newLimits, note, memberId, memberName } = req.body ?? {};
+    if (!decision || !sessionId) {
+      return res.status(400).json({ error: "decision and sessionId are required" });
+    }
+    if (decision === "approve") {
+      await breaker.raiseBudget(sessionId, grantCents ?? 100);
+    } else if (decision === "abort") {
+    } else if (decision === "modify" && newLimits) {
+      if (typeof newLimits.grantCents === "number") {
+        await breaker.raiseBudget(sessionId, newLimits.grantCents);
+      }
+    }
+    const node = await recordHumanApproval({
+      licenseKey,
+      sessionId,
+      memberId: memberId ?? "member-owner",
+      memberName: memberName ?? "You",
+      decision,
+      breachNodeId: req.params.breachNodeId,
+      note,
+      grantedCents: decision === "approve" ? grantCents ?? 100 : newLimits?.grantCents,
+      newLimits
+    });
+    res.json({ recorded: true, decisionNodeId: node.id, state: await breaker.snapshot(sessionId) });
+  });
+  app2.get("/api/v1/evidence/:nodeId/lineage", authenticateLicenseKey2, async (req, res) => {
+    const trail = await lineage(req.lyceumAccount.licenseKey, req.params.nodeId);
+    res.json({
+      lineage: trail.map(({ depth, node, via }) => ({
+        depth,
+        via,
+        id: node.id,
+        kind: node.kind,
+        actor: { kind: node.actorKind, label: node.actorLabel ?? node.actorId },
+        summary: node.summary,
+        costCents: node.costCents,
+        breachCode: node.breachCode,
+        occurredAt: node.occurredAt,
+        pos: node.pos
+      }))
+    });
+  });
 }
 
 // server/index.ts
@@ -5636,696 +6446,12 @@ function createApiApp() {
     handleMcpRequest
   );
   app2.all("/api/mcp", mcpLimiter, authenticateLicenseKey, handleMcpRequest);
-  const mcpUrlFor = (req, token) => `${req.protocol}://${req.get("host")}/api/mcp/w/${token}`;
-  app2.get("/api/v1/brain", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    let docs = await listDocuments(licenseKey);
-    if (docs.length === 0) {
-      await seedBrain(licenseKey);
-      docs = await listDocuments(licenseKey);
-    }
-    res.json({
-      ephemeralStore: isEphemeralStore(),
-      departments: DEPARTMENTS.map((d) => ({
-        ...d,
-        scope: scopeFor(d.id),
-        tools: scopeForDepartment(d.id),
-        documentCount: docs.filter((doc) => doc.path.startsWith(`departments/${d.id}/`)).length
-      })),
-      globalNeverAllowed: GLOBAL_NEVER_ALLOWED,
-      failover: DEFAULT_FAILOVER,
-      documents: docs.map((d) => ({
-        id: d.id,
-        path: d.path,
-        title: d.title,
-        alwaysInclude: d.alwaysInclude,
-        origin: d.origin,
-        updatedAt: d.updatedAt,
-        preview: d.body.slice(0, 240)
-      }))
-    });
-  });
-  app2.post("/api/v1/brain/documents", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const { title, body, department } = req.body ?? {};
-    if (!title || !body) {
-      return res.status(400).json({ error: "title and body are required" });
-    }
-    try {
-      const result = await fileDocument({
-        licenseKey,
-        title: String(title),
-        body: String(body),
-        department
-      });
-      res.status(201).json(result);
-    } catch (err) {
-      if (err instanceof IngestBlockedError) {
-        return res.status(422).json({
-          error: err.message,
-          findings: err.verdict.findings,
-          hint: "This document contains instructions aimed at the assistant. If it is genuinely yours, remove those lines and try again."
-        });
-      }
-      throw err;
-    }
-  });
-  app2.post("/api/v1/brain/classify", authenticateLicenseKey, async (req, res) => {
-    const { title, body } = req.body ?? {};
-    if (!title && !body) return res.status(400).json({ error: "title or body is required" });
-    res.json(await classify(String(title ?? ""), String(body ?? "")));
-  });
-  app2.delete("/api/v1/brain/documents", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const path3 = String(req.query.path ?? "");
-    if (!path3) return res.status(400).json({ error: "path is required" });
-    const ok = await deleteDocument(licenseKey, path3);
-    res.json({ deleted: ok });
-  });
-  app2.post("/api/v1/brain/preview", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const { department, query, agentName, role } = req.body ?? {};
-    if (!department || !query) {
-      return res.status(400).json({ error: "department and query are required" });
-    }
-    const context = await routeContext({
-      licenseKey,
-      department,
-      query: String(query)
-    });
-    res.json({
-      scope: context.scope,
-      empty: context.empty,
-      documents: context.documents.map((d) => ({ path: d.path, title: d.title })),
-      systemPrompt: buildSystemPrompt({
-        context,
-        agentName: String(agentName || "Agent"),
-        role: String(role || "assistant")
-      })
-    });
-  });
-  app2.post("/api/v1/pillars/factcheck", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const { department, query, output } = req.body ?? {};
-    if (!department || !output) {
-      return res.status(400).json({ error: "department and output are required" });
-    }
-    const context = await routeContext({
-      licenseKey,
-      department,
-      query: String(query ?? output)
-    });
-    res.json(verifyOutput({ output: String(output), context: context.groundingText }));
-  });
-  app2.post("/api/v1/pillars/arbitrate", authenticateLicenseKey, async (req, res) => {
-    const positions = req.body?.positions;
-    if (!Array.isArray(positions)) {
-      return res.status(400).json({ error: "positions[] is required" });
-    }
-    res.json(arbitrate(positions));
-  });
-  app2.get("/api/v1/redteam/corpus", authenticateLicenseKey, async (_req, res) => {
-    res.json({ categories: corpusSummary() });
-  });
-  app2.post("/api/v1/redteam/run", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const run = await runRedTeam({
-      licenseKey,
-      departments: req.body?.departments,
-      categories: req.body?.categories
-    });
-    const contributed = [];
-    if (req.body?.contributeToHive !== false) {
-      for (const finding of run.findings) {
-        const attack = (await Promise.resolve().then(() => (init_attacks(), attacks_exports))).ATTACKS.find(
-          (a) => a.id === finding.attackId
-        );
-        if (!attack) continue;
-        const result = immunityRegistry.report({
-          licenseKey,
-          payload: attack.payload,
-          guard: attack.expect.guard,
-          category: finding.category,
-          severity: finding.severity
-        });
-        contributed.push({
-          signature: result.signature?.id ?? "(not shared)",
-          stage: result.signature?.stage ?? "refused",
-          reason: result.refusedReason ?? result.decision?.reason
-        });
-      }
-    }
-    res.json({ run, summary: summarise(run), contributed });
-  });
-  app2.get("/api/v1/hive", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const active = immunityRegistry.activeFor(licenseKey);
-    res.json({
-      // Every field here is structural. There is no endpoint that returns
-      // another workspace's traffic, because no such data is ever stored.
-      enforcedHere: active.length,
-      signatures: immunityRegistry.all().map((s) => ({
-        id: s.id,
-        category: s.category,
-        severity: s.severity,
-        skeleton: s.skeleton,
-        observedBy: s.observedBy,
-        stage: s.stage,
-        falsePositiveRate: s.falsePositiveRate,
-        enforcedHere: active.some((a) => a.id === s.id),
-        rejectedReason: s.rejectedReason
-      }))
-    });
-  });
-  app2.post("/api/v1/hive/screen", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const payload = String(req.body?.payload ?? "");
-    if (!payload) return res.status(400).json({ error: "payload is required" });
-    const result = immunityRegistry.screen(licenseKey, payload);
-    res.json({
-      blocked: result.blocked,
-      matchedSignature: result.signature?.id,
-      category: result.signature?.category
-    });
-  });
-  app2.get("/api/v1/healing/prompts/:promptId", authenticateLicenseKey, async (req, res) => {
-    res.json({ history: promptRegistry.history(req.params.promptId) });
-  });
-  app2.post("/api/v1/healing/rollback", authenticateLicenseKey, async (req, res) => {
-    const { promptId, toVersion } = req.body ?? {};
-    if (!promptId || typeof toVersion !== "number") {
-      return res.status(400).json({ error: "promptId and toVersion are required" });
-    }
-    const version = promptRegistry.rollback(String(promptId), toVersion);
-    if (!version) return res.status(404).json({ error: "No such prompt version." });
-    res.json({ rolledBackTo: version });
-  });
-  app2.get("/api/v1/audit", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const limit = Math.min(Number(req.query.limit) || 100, 500);
-    const breaches = await pendingBreaches(licenseKey, limit);
-    res.json({
-      entries: breaches.map((b) => ({
-        id: b.id,
-        at: b.createdAt ?? b.at,
-        actor: b.actorId ?? b.actor ?? "unknown",
-        actorKind: b.actorKind ?? "ai",
-        action: b.kind ?? "breach",
-        outcome: "blocked",
-        reason: b.summary ?? b.reason,
-        code: b.code,
-        sessionId: b.sessionId
-      })),
-      note: "Every entry is a real recorded event. Nothing here is reconstructed after the fact \u2014 the record is written at the moment the decision is made."
-    });
-  });
-  app2.get("/api/v1/roi", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const days = Math.min(Number(req.query.days) || 30, 90);
-    const periodEnd = Date.now();
-    const periodStart = periodEnd - days * 864e5;
-    const breaches = await pendingBreaches(licenseKey, 500);
-    const events = breaches.map((b) => ({
-      at: b.createdAt ?? Date.now(),
-      kind: b.code === "LOOP_DETECTED" ? "loop_stopped" : b.code === "BUDGET_EXCEEDED" ? "budget_breach" : b.code === "SCOPE_VIOLATION" ? "scope_violation" : "budget_breach",
-      preventedCents: b.preventedCents ?? 0
-    }));
-    const subscriptionCents = Number(req.query.subscriptionCents) || 0;
-    res.json(
-      buildRoiReport({
-        events,
-        periodStart,
-        periodEnd,
-        subscriptionCents,
-        attacksRepelled: Number(req.query.attacksRepelled) || 0
-      })
-    );
-  });
-  let healingPolicy = { ...DEFAULT_HEALING_POLICY };
-  app2.get("/api/v1/healing/policy", authenticateLicenseKey, async (_req, res) => {
-    res.json({ policy: healingPolicy, default: DEFAULT_HEALING_POLICY });
-  });
-  app2.put("/api/v1/healing/policy", authenticateLicenseKey, async (req, res) => {
-    const { autonomousHealingEnabled, maxAutonomousRiskPercent, excludedKinds } = req.body ?? {};
-    if (typeof autonomousHealingEnabled === "boolean") {
-      healingPolicy.autonomousHealingEnabled = autonomousHealingEnabled;
-    }
-    if (typeof maxAutonomousRiskPercent === "number") {
-      healingPolicy.maxAutonomousRiskPercent = Math.max(0, Math.min(70, maxAutonomousRiskPercent));
-    }
-    if (Array.isArray(excludedKinds)) healingPolicy.excludedKinds = excludedKinds;
-    res.json({ policy: healingPolicy });
-  });
-  app2.get("/api/v1/plans", authenticateLicenseKey, async (req, res) => {
-    const plans = await listPlans(req.lyceumAccount.licenseKey);
-    res.json({ plans: plans.map((p) => ({ ...p, summary: planSummary(p) })) });
-  });
-  app2.get("/api/v1/plans/:id", authenticateLicenseKey, async (req, res) => {
-    const plan = await getPlan(req.lyceumAccount.licenseKey, req.params.id);
-    if (!plan) return res.status(404).json({ error: "No such plan." });
-    res.json({ plan, summary: planSummary(plan) });
-  });
-  app2.post("/api/v1/plans", authenticateLicenseKey, async (req, res) => {
-    const { agentId, agentName, department, goal, questions } = req.body ?? {};
-    if (!goal || !agentId) {
-      return res.status(400).json({ error: "goal and agentId are required" });
-    }
-    const plan = await createPlan({
-      licenseKey: req.lyceumAccount.licenseKey,
-      agentId: String(agentId),
-      agentName: String(agentName ?? agentId),
-      department: String(department ?? "dev_ops"),
-      goal: String(goal),
-      questions: Array.isArray(questions) ? questions : []
-    });
-    res.status(201).json({ plan });
-  });
-  app2.post("/api/v1/plans/:id/answers", authenticateLicenseKey, async (req, res) => {
-    const plan = await answerQuestions({
-      licenseKey: req.lyceumAccount.licenseKey,
-      planId: req.params.id,
-      answers: req.body?.answers ?? []
-    });
-    if (!plan) return res.status(404).json({ error: "No such plan." });
-    res.json({ plan });
-  });
-  app2.post("/api/v1/plans/:id/steps", authenticateLicenseKey, async (req, res) => {
-    const { plan, error } = await submitPlan({
-      licenseKey: req.lyceumAccount.licenseKey,
-      planId: req.params.id,
-      steps: req.body?.steps ?? []
-    });
-    if (!plan) return res.status(400).json({ error });
-    res.json({ plan });
-  });
-  app2.post("/api/v1/plans/:id/approve", authenticateLicenseKey, async (req, res) => {
-    const { plan, error } = await approvePlan({
-      licenseKey: req.lyceumAccount.licenseKey,
-      planId: req.params.id,
-      by: req.lyceumAccount.email ?? "operator",
-      version: Number(req.body?.version)
-    });
-    if (!plan) return res.status(409).json({ error });
-    res.json({ plan });
-  });
-  app2.post("/api/v1/plans/:id/revise", authenticateLicenseKey, async (req, res) => {
-    const { plan, error } = await requestRevision({
-      licenseKey: req.lyceumAccount.licenseKey,
-      planId: req.params.id,
-      by: req.lyceumAccount.email ?? "operator",
-      note: String(req.body?.note ?? "")
-    });
-    if (!plan) return res.status(400).json({ error });
-    res.json({ plan });
-  });
-  app2.post("/api/v1/plans/:id/execute", authenticateLicenseKey, async (req, res) => {
-    const { plan, error } = await beginExecution({
-      licenseKey: req.lyceumAccount.licenseKey,
-      planId: req.params.id
-    });
-    if (!plan) return res.status(409).json({ error });
-    res.json({ plan });
-  });
-  const activeAlerts = /* @__PURE__ */ new Map();
-  let escalationPolicy = { ...DEFAULT_ESCALATION };
-  app2.get("/api/v1/warroom/alert", authenticateLicenseKey, async (req, res) => {
-    res.json({ alert: activeAlerts.get(req.lyceumAccount.licenseKey) ?? null });
-  });
-  app2.post("/api/v1/warroom/intent", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const intent = String(req.body?.intent ?? "");
-    const danger = scanForDanger(intent);
-    if (danger) {
-      const alert = {
-        id: `alert_${Date.now().toString(36)}`,
-        agentId: String(req.body?.agentId ?? "unknown"),
-        agentName: String(req.body?.agentName ?? req.body?.agentId ?? "An agent"),
-        planId: req.body?.planId,
-        stepTitle: req.body?.stepTitle,
-        danger,
-        raisedAt: Date.now()
-      };
-      activeAlerts.set(licenseKey, alert);
-      return res.status(423).json({ blocked: true, alert });
-    }
-    res.json({ blocked: false });
-  });
-  app2.post("/api/v1/warroom/alert/:id/continue", authenticateLicenseKey, async (req, res) => {
-    activeAlerts.delete(req.lyceumAccount.licenseKey);
-    res.json({ cleared: true, by: req.lyceumAccount.email ?? "operator" });
-  });
-  app2.post("/api/v1/warroom/alert/:id/brake", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const result = await engageBrake({
-      licenseKey,
-      reason: "Operator pulled the emergency brake from a red alert.",
-      policy: escalationPolicy,
-      stopAll: async () => {
-        const plans = await listPlans(licenseKey);
-        const running = plans.filter((p) => ["executing", "approved"].includes(p.status));
-        for (const p of running) {
-          await haltPlan({ licenseKey, planId: p.id, reason: "Emergency brake." });
-        }
-        const workers = await listWorkers(licenseKey);
-        return { agents: workers.length, plans: running.length };
-      }
-    });
-    activeAlerts.delete(licenseKey);
-    res.json(result);
-  });
-  app2.get("/api/v1/warroom/escalation", authenticateLicenseKey, async (_req, res) => {
-    res.json({ policy: escalationPolicy, default: DEFAULT_ESCALATION });
-  });
-  app2.put("/api/v1/warroom/escalation", authenticateLicenseKey, async (req, res) => {
-    const { officerMayDecide, humanThresholdPercent } = req.body ?? {};
-    if (typeof officerMayDecide === "boolean") escalationPolicy.officerMayDecide = officerMayDecide;
-    if (typeof humanThresholdPercent === "number") {
-      escalationPolicy.humanThresholdPercent = Math.max(0, Math.min(70, humanThresholdPercent));
-    }
-    res.json({ policy: escalationPolicy });
-  });
-  app2.get("/api/v1/warroom/feed", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const limit = Math.min(Number(req.query.limit) || 60, 200);
-    const breaches = await pendingBreaches(licenseKey, limit);
-    const account = req.lyceumAccount;
-    const events = breaches.map((b, i) => ({
-      id: b.id ?? `ev${i}`,
-      at: b.createdAt ?? Date.now(),
-      actor: b.actorId ?? "system",
-      text: b.summary ?? b.code ?? "blocked",
-      level: "block"
-    }));
-    res.json({
-      events,
-      metrics: {
-        savedCents: breaches.reduce((s, b) => s + (b.preventedCents ?? 0), 0),
-        budgetRemainingCents: (account.creditsRemaining ?? 0) * 10,
-        // Labelled as an estimate in the UI. 6 minutes per blocked action is a
-        // stated assumption, not a measurement, and the panel says so.
-        hoursReclaimed: Math.round(breaches.length * 6 / 60 * 10) / 10,
-        blocked: breaches.length
-      }
-    });
-  });
-  const connections = /* @__PURE__ */ new Map();
-  app2.get("/api/v1/integrations", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const mine = connections.get(licenseKey) ?? /* @__PURE__ */ new Map();
-    res.json({
-      integrations: OAUTH_PROVIDERS.map((p) => {
-        const live = mine.get(p.id);
-        const configured = isProviderConfigured(p);
-        return {
-          id: p.id,
-          name: p.name,
-          emoji: p.emoji,
-          blurb: p.blurb,
-          auth: "oauth",
-          scopes: p.scopes,
-          scopeLabels: p.scopeLabels,
-          // Honest state: a card reads "connected" only when a connection
-          // exists. Every card is connectable — either to the real provider
-          // (mode: real) or through the sandbox consent flow (mode: sandbox).
-          mode: configured ? "real" : "sandbox",
-          state: live ? "connected" : "available",
-          blockedReason: void 0,
-          connectedAs: live?.connectedAs,
-          connectedAt: live?.connectedAt,
-          connectedMode: live?.mode
-        };
-      })
-    });
-  });
-  app2.post("/api/v1/integrations/:id/authorize", authenticateLicenseKey, async (req, res) => {
-    const provider = providerFor(req.params.id);
-    if (!provider) return res.status(404).json({ error: "Unknown integration." });
-    const origin = `${req.protocol}://${req.get("host")}`;
-    const redirectUri = `${origin}/api/v1/integrations/callback`;
-    const state = issueAuthState({
-      provider: provider.id,
-      licenseKey: req.lyceumAccount.licenseKey,
-      mode: isProviderConfigured(provider) ? "real" : "sandbox",
-      createdAt: Date.now()
-    });
-    const outcome = buildAuthorizeUrl(provider, { origin, state, redirectUri });
-    res.json({ authorizeUrl: outcome.authorizeUrl, mode: outcome.mode, notice: outcome.notice });
-  });
-  app2.get("/api/v1/integrations/:id/sandbox-auth", async (req, res) => {
-    const provider = providerFor(req.params.id);
-    const state = String(req.query.state ?? "");
-    if (!provider || !state) {
-      return res.status(400).send("Invalid integration request.");
-    }
-    const origin = `${req.protocol}://${req.get("host")}`;
-    res.type("html").send(renderAuthPage({ provider, state, origin }));
-  });
-  app2.get("/api/v1/integrations/callback", async (req, res) => {
-    const state = String(req.query.state ?? "");
-    const code = String(req.query.code ?? "");
-    const auth = consumeAuthState(state);
-    if (!auth) {
-      return res.status(400).send("This link is invalid or has expired. Go back and try again.");
-    }
-    const provider = providerFor(auth.provider);
-    if (!provider) {
-      return res.status(400).send("Unknown integration.");
-    }
-    const origin = `${req.protocol}://${req.get("host")}`;
-    const redirectUri = `${origin}/api/v1/integrations/callback`;
-    try {
-      let connectedAs = `${provider.name} sandbox account`;
-      if (auth.mode === "real") {
-        if (!code) {
-          return res.status(400).send(`${provider.name} returned no authorization code.`);
-        }
-        const exchanged = await exchangeCode(provider, code, redirectUri);
-        connectedAs = exchanged.connectedAs;
-      }
-      const mine = connections.get(auth.licenseKey) ?? /* @__PURE__ */ new Map();
-      mine.set(provider.id, {
-        connectedAs,
-        connectedAt: Date.now(),
-        mode: auth.mode,
-        scopes: provider.scopes
-      });
-      connections.set(auth.licenseKey, mine);
-      res.type("html").send(renderCallbackSuccessPage(provider.name));
-    } catch (err) {
-      res.status(502).type("html").send(`<h3>Connection failed</h3><p>${String(err instanceof Error ? err.message : err)}</p>`);
-    }
-  });
-  app2.delete("/api/v1/integrations/:id", authenticateLicenseKey, async (req, res) => {
-    connections.get(req.lyceumAccount.licenseKey)?.delete(req.params.id);
-    res.json({ disconnected: true });
-  });
-  const cloudConfigs = /* @__PURE__ */ new Map();
-  app2.get("/api/v1/cloud", authenticateLicenseKey, async (req, res) => {
-    res.json({
-      config: cloudConfigs.get(req.lyceumAccount.licenseKey) ?? {
-        provider: "lyceum",
-        verified: true
-      }
-    });
-  });
-  app2.get("/api/v1/workers", authenticateLicenseKey, async (req, res) => {
-    const workers = await listWorkers(req.lyceumAccount.licenseKey);
-    res.json({
-      ephemeralStore: isEphemeralStore(),
-      workers: workers.map((w) => ({
-        id: w.id,
-        name: w.name,
-        role: w.role,
-        departmentId: w.departmentId,
-        departmentName: w.departmentName,
-        model: w.model,
-        tokensUsed: w.tokensUsed,
-        stepsCompleted: w.stepsCompleted,
-        lastSeenAt: w.lastSeenAt,
-        // Full URL: this is the thing the customer pastes into their client,
-        // and they will need it again every time they set up a new machine.
-        mcpUrl: mcpUrlFor(req, w.mcpToken)
-      }))
-    });
-  });
-  app2.post("/api/v1/workers", authenticateLicenseKey, async (req, res) => {
-    const { name, role, departmentId, departmentName, model } = req.body ?? {};
-    if (!name || !departmentId) {
-      return res.status(400).json({ error: "name and departmentId are required" });
-    }
-    const worker = await createWorker({
-      licenseKey: req.lyceumAccount.licenseKey,
-      name,
-      role: role || "Assistant",
-      departmentId,
-      departmentName: departmentName || departmentId,
-      model: model || "gpt-4o"
-    });
-    res.json({ worker: { ...worker, mcpUrl: mcpUrlFor(req, worker.mcpToken) } });
-  });
-  app2.post("/api/v1/workers/:id/rotate", authenticateLicenseKey, async (req, res) => {
-    const token = await rotateWorkerToken(req.lyceumAccount.licenseKey, req.params.id);
-    if (!token) return res.status(404).json({ error: "Worker not found" });
-    res.json({ mcpUrl: mcpUrlFor(req, token) });
-  });
-  app2.delete("/api/v1/workers/:id", authenticateLicenseKey, async (req, res) => {
-    const ok = await revokeWorker(req.lyceumAccount.licenseKey, req.params.id);
-    if (!ok) return res.status(404).json({ error: "Worker not found" });
-    res.json({ revoked: true });
-  });
-  app2.get("/api/v1/missions", authenticateLicenseKey, async (req, res) => {
-    const missions = await listMissions(
-      req.lyceumAccount.licenseKey,
-      typeof req.query.department === "string" ? req.query.department : void 0
-    );
-    res.json({ missions: missions.map((m) => ({ ...m, progress: progressOf(m) })) });
-  });
-  app2.post("/api/v1/missions", authenticateLicenseKey, async (req, res) => {
-    const { department, title, goal, headName, steps } = req.body ?? {};
-    if (!department || !title) {
-      return res.status(400).json({ error: "department and title are required" });
-    }
-    const mission = await createMission({
-      licenseKey: req.lyceumAccount.licenseKey,
-      department,
-      title,
-      goal,
-      headName: headName || "You",
-      steps
-    });
-    res.json({ mission });
-  });
-  app2.patch("/api/v1/missions/:id/steps/:stepId", authenticateLicenseKey, async (req, res) => {
-    const { status, note, addTokens } = req.body ?? {};
-    const updated = await updateStep({
-      licenseKey: req.lyceumAccount.licenseKey,
-      missionId: req.params.id,
-      stepId: req.params.stepId,
-      status,
-      note,
-      addTokens
-    });
-    if (!updated) return res.status(404).json({ error: "Task or step not found" });
-    res.json({ mission: { ...updated, progress: progressOf(updated) } });
-  });
-  app2.get("/api/v1/proxy-tokens", authenticateLicenseKey, async (req, res) => {
-    const tokens = await listProxyTokens(req.lyceumAccount.licenseKey);
-    res.json({
-      // The token itself is only shown at mint time; listing returns a prefix
-      // so a leaked screenshot of this page isn't a working credential.
-      tokens: tokens.map((t) => ({
-        preview: `${t.token.slice(0, 16)}\u2026`,
-        label: t.label,
-        defaultUpstream: t.defaultUpstream,
-        policy: t.policy,
-        createdAt: t.createdAt,
-        lastUsedAt: t.lastUsedAt,
-        revoked: !!t.revokedAt
-      }))
-    });
-  });
-  app2.post("/api/v1/proxy-tokens", authenticateLicenseKey, async (req, res) => {
-    const { label, defaultUpstream, policy } = req.body ?? {};
-    const record = await mintProxyToken({
-      licenseKey: req.lyceumAccount.licenseKey,
-      label,
-      defaultUpstream,
-      policy
-    });
-    res.json({
-      token: record.token,
-      baseUrl: `${req.protocol}://${req.get("host")}/t/${record.token}/v1`,
-      // Said explicitly because there is no second chance to copy it.
-      notice: "Copy this now \u2014 the full token is not shown again."
-    });
-  });
-  app2.delete("/api/v1/proxy-tokens/:token", authenticateLicenseKey, async (req, res) => {
-    const ok = await revokeProxyToken(req.lyceumAccount.licenseKey, req.params.token);
-    if (!ok) return res.status(404).json({ error: "Token not found" });
-    res.json({ revoked: true });
-  });
-  app2.patch("/api/v1/proxy-tokens/:token/policy", authenticateLicenseKey, async (req, res) => {
-    const ok = await updateProxyPolicy(
-      req.lyceumAccount.licenseKey,
-      req.params.token,
-      req.body ?? {}
-    );
-    if (!ok) return res.status(404).json({ error: "Token not found" });
-    res.json({ updated: true });
-  });
-  app2.get("/api/v1/decisions", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const breaches = await pendingBreaches(licenseKey, 20);
-    const cards = await Promise.all(
-      breaches.map(async (b) => {
-        const summary = await sessionSummary(licenseKey, b.sessionId);
-        const live = await breaker.snapshot(b.sessionId);
-        return {
-          breachNodeId: b.id,
-          sessionId: b.sessionId,
-          taskName: b.payload?.excerpt?.slice(0, 80) ?? b.sessionId,
-          reason: b.summary,
-          breachCode: b.breachCode,
-          observed: b.payload?.observed,
-          limit: b.payload?.limit,
-          model: b.model,
-          occurredAt: b.occurredAt,
-          evaluatedInMs: b.evaluatedInMs,
-          spend: {
-            spentCents: live.spentCents,
-            // The ceiling the breach was measured against.
-            limitCents: typeof b.payload?.limit === "number" ? b.payload.limit : null
-          },
-          session: summary
-        };
-      })
-    );
-    res.json({ cards });
-  });
-  app2.post("/api/v1/decisions/:breachNodeId", authenticateLicenseKey, async (req, res) => {
-    const licenseKey = req.lyceumAccount.licenseKey;
-    const { decision, sessionId, grantCents, newLimits, note, memberId, memberName } = req.body ?? {};
-    if (!decision || !sessionId) {
-      return res.status(400).json({ error: "decision and sessionId are required" });
-    }
-    if (decision === "approve") {
-      await breaker.raiseBudget(sessionId, grantCents ?? 100);
-    } else if (decision === "abort") {
-    } else if (decision === "modify" && newLimits) {
-      if (typeof newLimits.grantCents === "number") {
-        await breaker.raiseBudget(sessionId, newLimits.grantCents);
-      }
-    }
-    const node = await recordHumanApproval({
-      licenseKey,
-      sessionId,
-      memberId: memberId ?? "member-owner",
-      memberName: memberName ?? "You",
-      decision,
-      breachNodeId: req.params.breachNodeId,
-      note,
-      grantedCents: decision === "approve" ? grantCents ?? 100 : newLimits?.grantCents,
-      newLimits
-    });
-    res.json({ recorded: true, decisionNodeId: node.id, state: await breaker.snapshot(sessionId) });
-  });
-  app2.get("/api/v1/evidence/:nodeId/lineage", authenticateLicenseKey, async (req, res) => {
-    const trail = await lineage(req.lyceumAccount.licenseKey, req.params.nodeId);
-    res.json({
-      lineage: trail.map(({ depth, node, via }) => ({
-        depth,
-        via,
-        id: node.id,
-        kind: node.kind,
-        actor: { kind: node.actorKind, label: node.actorLabel ?? node.actorId },
-        summary: node.summary,
-        costCents: node.costCents,
-        breachCode: node.breachCode,
-        occurredAt: node.occurredAt,
-        pos: node.pos
-      }))
-    });
-  });
+  registerBrainRoutes(app2, authenticateLicenseKey);
+  registerAutonomyRoutes(app2, authenticateLicenseKey);
+  registerPlansRoutes(app2, authenticateLicenseKey);
+  registerIntegrationsRoutes(app2, authenticateLicenseKey);
+  registerWorkforceRoutes(app2, authenticateLicenseKey);
+  registerGovernanceRoutes(app2, authenticateLicenseKey);
   return app2;
 }
 async function startServer() {

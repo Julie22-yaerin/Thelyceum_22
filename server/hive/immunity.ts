@@ -36,6 +36,7 @@
  */
 
 import crypto from "crypto";
+import { getDb } from "../db/firestore.js";
 import type { AttackCategory, Severity } from "../redteam/attacks.js";
 
 export type SignatureStage = "quarantine" | "canary" | "global" | "rejected";
@@ -367,33 +368,56 @@ export function isEnforcedFor(sig: ThreatSignature, licenseKey: string): boolean
 /**
  * Shared across tenants by design — it is the only cross-tenant structure in
  * the platform, and it holds no tenant data, only skeletons and counts.
+ *
+ * Firestore-backed rather than in-process. On one instance a Map was fine; on
+ * two it silently split the network in half — a signature corroborated by
+ * three workspaces on instance A would still read as "seen once" on instance
+ * B, so the same attack got quarantined twice and never reached anyone. A
+ * shared-immunity feature that is not actually shared is worse than none,
+ * because the dashboard says you are protected.
+ *
+ * `reporters` is stored as an array of license keys on the signature document
+ * so `observedBy` counts DISTINCT sources across instances. It is never
+ * returned by any API — only its length is.
  */
-class ImmunityRegistry {
-  private byFingerprint = new Map<string, ThreatSignature>();
-  /** Which workspaces reported each fingerprint, so `observedBy` counts
-   *  distinct sources without ever exposing who they were. */
-  private reporters = new Map<string, Set<string>>();
 
+interface StoredSignature extends ThreatSignature {
+  /** License keys that reported this. Server-side only; never serialised out. */
+  reporters: string[];
+}
+
+const signatureCollection = () => getDb().collection("threatSignatures");
+
+class ImmunityRegistry {
   /** Contribute an observation. Returns null when nothing shareable came out. */
-  report(params: {
+  async report(params: {
     licenseKey: string;
     payload: string;
     guard: ThreatSignature["guard"];
     category: AttackCategory;
     severity: Severity;
-  }): { signature: ThreatSignature | null; decision?: PromotionDecision; refusedReason?: string } {
+  }): Promise<{
+    signature: ThreatSignature | null;
+    decision?: PromotionDecision;
+    refusedReason?: string;
+  }> {
     const extracted = extractSignature(params);
     if (!extracted.signature) return { signature: null, refusedReason: extracted.refusedReason };
 
     const sig = extracted.signature;
-    const existing = this.byFingerprint.get(sig.fingerprint);
-    const seen = this.reporters.get(sig.fingerprint) ?? new Set<string>();
-    seen.add(params.licenseKey);
-    this.reporters.set(sig.fingerprint, seen);
+    const ref = signatureCollection().doc(sig.fingerprint);
+    const snap = await ref.get();
+    const existing = snap.exists ? (snap.data() as StoredSignature) : null;
 
-    const merged: ThreatSignature = existing
-      ? { ...existing, observedBy: seen.size, severity: worst(existing.severity, sig.severity) }
-      : { ...sig, observedBy: seen.size };
+    const reporters = new Set(existing?.reporters ?? []);
+    reporters.add(params.licenseKey);
+
+    const merged: StoredSignature = {
+      ...(existing ?? sig),
+      observedBy: reporters.size,
+      severity: existing ? worst(existing.severity, sig.severity) : sig.severity,
+      reporters: Array.from(reporters),
+    };
 
     const decision = evaluateForPromotion(merged);
     merged.stage = decision.stage;
@@ -401,33 +425,55 @@ class ImmunityRegistry {
     if (decision.stage === "global" && !merged.promotedAt) merged.promotedAt = Date.now();
     if (decision.stage === "rejected") merged.rejectedReason = decision.reason;
 
-    this.byFingerprint.set(sig.fingerprint, merged);
-    return { signature: merged, decision };
+    await ref.set(merged);
+    return { signature: stripReporters(merged), decision };
   }
 
   /** Signatures this workspace should currently enforce. */
-  activeFor(licenseKey: string): ThreatSignature[] {
-    return Array.from(this.byFingerprint.values()).filter(
-      (s) => s.stage !== "rejected" && isEnforcedFor(s, licenseKey)
-    );
+  async activeFor(licenseKey: string): Promise<ThreatSignature[]> {
+    const all = await this.all();
+    return all.filter((s) => s.stage !== "rejected" && isEnforcedFor(s, licenseKey));
   }
 
   /** Check an incoming payload against this workspace's active immunity. */
-  screen(licenseKey: string, payload: string): { blocked: boolean; signature?: ThreatSignature } {
-    for (const sig of this.activeFor(licenseKey)) {
+  async screen(
+    licenseKey: string,
+    payload: string
+  ): Promise<{ blocked: boolean; signature?: ThreatSignature }> {
+    for (const sig of await this.activeFor(licenseKey)) {
       if (matchesSignature(payload, sig)) return { blocked: true, signature: sig };
     }
     return { blocked: false };
   }
 
-  all(): ThreatSignature[] {
-    return Array.from(this.byFingerprint.values()).sort((a, b) => b.createdAt - a.createdAt);
+  async all(): Promise<ThreatSignature[]> {
+    const snap = await signatureCollection().get();
+    return (snap.docs ?? [])
+      .map((d) => stripReporters(d.data() as StoredSignature))
+      .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  reset(): void {
-    this.byFingerprint.clear();
-    this.reporters.clear();
+  /** Test helper. Never called by the server. */
+  async reset(): Promise<void> {
+    const snap = await signatureCollection().get();
+    for (const d of snap.docs ?? []) {
+      const data = d.data() as StoredSignature;
+      await signatureCollection().doc(data.fingerprint).delete?.();
+    }
   }
+}
+
+/**
+ * Drop the reporter list before a signature leaves the server.
+ *
+ * Enforced by construction: this builds a new object rather than deleting a
+ * key, so a field added to StoredSignature later cannot leak by being
+ * forgotten. Which workspaces were attacked is exactly the cross-tenant fact
+ * this system must never disclose.
+ */
+function stripReporters(s: StoredSignature): ThreatSignature {
+  const { reporters, ...rest } = s;
+  return rest;
 }
 
 function worst(a: Severity, b: Severity): Severity {

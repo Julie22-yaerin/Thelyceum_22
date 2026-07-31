@@ -52,6 +52,13 @@ class FakeCollection {
     };
   }
 
+
+  /** Whole-collection read. Real Firestore supports this; the double did not. */
+  async get() {
+    const rows = Array.from(this.store.values());
+    return { docs: rows.map((r) => ({ data: () => ({ ...r.data }) })), empty: rows.length === 0 };
+  }
+
   where(field: string, _op: string, value: unknown) {
     const rows = Array.from(this.store.values()).filter((d) => d.data[field] === value);
     return makeQuery(rows);

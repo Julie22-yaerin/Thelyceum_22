@@ -26,6 +26,7 @@
  */
 
 import type { FailureKind, Incident } from "./incidents.js";
+import { getDb } from "../db/firestore.js";
 import {
   assessRisk,
   decideHealing,
@@ -208,18 +209,43 @@ function judge(output: string, kind: FailureKind): string | null {
 /**
  * In-process prompt registry.
  *
- * Deliberately RAM-only and per-instance. A healed prompt is an emergency
- * measure, and an emergency measure that silently persists across a deploy is
- * how a workspace ends up running a prompt nobody remembers approving. The
- * incident record is durable; the swap is not. An operator promotes it to
- * permanent by editing the prompt themselves.
+ * Firestore-backed, versioned, and reversible.
+ *
+ * It was RAM-only, on the argument that an emergency measure should not
+ * outlive the process. That argument does not survive two instances: a healed
+ * prompt applied on instance A left instance B running the broken one, so the
+ * same failure kept firing while the dashboard said it was fixed — and the
+ * rollback an operator had been promised only rolled back one of them.
+ *
+ * Durable and visible is the safer trade. Every version records whether a
+ * human or the healer wrote it, and `rollback()` restores the exact previous
+ * text — "it fixed itself overnight" is only reassuring if you can also undo
+ * it, from any instance.
  */
 class PromptRegistry {
-  private versions = new Map<string, PromptVersion[]>();
+  private collection() {
+    return getDb().collection("promptVersions");
+  }
 
-  register(promptId: string, text: string, origin: PromptVersion["origin"] = "human"): PromptVersion {
-    const history = this.versions.get(promptId) ?? [];
-    for (const v of history) v.active = false;
+  /** Composite id so versions of one prompt sort and fetch together. */
+  private docId(promptId: string, version: number): string {
+    return `${promptId}__v${String(version).padStart(4, "0")}`;
+  }
+
+  async register(
+    promptId: string,
+    text: string,
+    origin: PromptVersion["origin"] = "human"
+  ): Promise<PromptVersion> {
+    const history = await this.history(promptId);
+    // Deactivate the current one first. Two active versions would make
+    // `active()` non-deterministic, and a prompt that differs by instance is
+    // the exact failure this store exists to prevent.
+    for (const v of history) {
+      if (v.active) {
+        await this.collection().doc(this.docId(promptId, v.version)).set({ active: false }, { merge: true });
+      }
+    }
     const version: PromptVersion = {
       id: `pv_${promptId}_${history.length + 1}`,
       promptId,
@@ -229,38 +255,52 @@ class PromptRegistry {
       createdAt: Date.now(),
       active: true,
     };
-    this.versions.set(promptId, [...history, version]);
+    await this.collection().doc(this.docId(promptId, version.version)).set(version);
     return version;
   }
 
   /** Swap in a healed prompt. Returns the new version. */
-  hotSwap(promptId: string, text: string, incidentId: string): PromptVersion {
-    const version = this.register(promptId, text, "healer");
+  async hotSwap(promptId: string, text: string, incidentId: string): Promise<PromptVersion> {
+    const version = await this.register(promptId, text, "healer");
     version.fromIncidentId = incidentId;
+    await this.collection()
+      .doc(this.docId(promptId, version.version))
+      .set({ fromIncidentId: incidentId }, { merge: true });
     return version;
   }
 
-  active(promptId: string): PromptVersion | null {
-    return (this.versions.get(promptId) ?? []).find((v) => v.active) ?? null;
+  async active(promptId: string): Promise<PromptVersion | null> {
+    return (await this.history(promptId)).find((v) => v.active) ?? null;
   }
 
-  history(promptId: string): PromptVersion[] {
-    return [...(this.versions.get(promptId) ?? [])].reverse();
+  /** Newest first. */
+  async history(promptId: string): Promise<PromptVersion[]> {
+    const snap = await this.collection().where("promptId", "==", promptId).get();
+    return (snap.docs ?? [])
+      .map((d) => d.data() as PromptVersion)
+      .sort((a, b) => b.version - a.version);
   }
 
   /** Undo — reactivate a previous version. The escape hatch that makes the rest safe. */
-  rollback(promptId: string, toVersion: number): PromptVersion | null {
-    const history = this.versions.get(promptId);
-    if (!history) return null;
+  async rollback(promptId: string, toVersion: number): Promise<PromptVersion | null> {
+    const history = await this.history(promptId);
     const target = history.find((v) => v.version === toVersion);
     if (!target) return null;
-    for (const v of history) v.active = false;
-    target.active = true;
-    return target;
+    for (const v of history) {
+      await this.collection()
+        .doc(this.docId(promptId, v.version))
+        .set({ active: v.version === toVersion }, { merge: true });
+    }
+    return { ...target, active: true };
   }
 
-  reset(): void {
-    this.versions.clear();
+  /** Test helper. Never called by the server. */
+  async reset(): Promise<void> {
+    const snap = await this.collection().get();
+    for (const d of snap.docs ?? []) {
+      const v = d.data() as PromptVersion;
+      await this.collection().doc(this.docId(v.promptId, v.version)).delete?.();
+    }
   }
 }
 
@@ -349,9 +389,9 @@ export async function healIncident(params: {
 
     // The fix works. Whether it may be applied without a person is a separate
     // question, and the healer does not get to answer it for itself.
-    const priorHeals = promptRegistry
-      .history(incident.promptId)
-      .filter((v) => v.origin === "healer").length;
+    const priorHeals = (await promptRegistry.history(incident.promptId)).filter(
+      (v) => v.origin === "healer"
+    ).length;
 
     const risk = assessRisk({
       incident,
@@ -378,7 +418,7 @@ export async function healIncident(params: {
       };
     }
 
-    const newVersion = promptRegistry.hotSwap(incident.promptId, candidate, incident.id);
+    const newVersion = await promptRegistry.hotSwap(incident.promptId, candidate, incident.id);
     return {
       ...base,
       healed: true,
