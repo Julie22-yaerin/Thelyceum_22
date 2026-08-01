@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Copy, FileText, Loader2, ShieldCheck, TrendingUp } from "lucide-react";
+import { AlertTriangle, Copy, FileText, History, Loader2, RefreshCw, ShieldCheck, TrendingUp, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SavingsLine {
@@ -56,6 +56,183 @@ interface AuditEntry {
 }
 
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+interface RetroactiveReport {
+  callCount: number;
+  totalCostCents: number | null;
+  costCoverage: number;
+  loops: { startIndex: number; count: number; costCents: number; sample: string }[];
+  loopCostCents: number;
+  commitmentCandidates: { index: number; at: number; text: string; matched: string }[];
+  limitations: string[];
+  narrative: string;
+}
+
+const SAMPLE_EXPORT = JSON.stringify(
+  {
+    calls: [
+      { at: Date.now() - 86400000, costCents: 8, promptPreview: "summarize ticket #4471" },
+      { at: Date.now() - 86300000, costCents: 12, promptPreview: "reconcile batch — parse error" },
+      { at: Date.now() - 86290000, costCents: 12, promptPreview: "reconcile batch — parse error" },
+      { at: Date.now() - 86280000, costCents: 12, promptPreview: "reconcile batch — parse error" },
+      {
+        at: Date.now() - 86000000,
+        costCents: 9,
+        promptPreview: "pricing question",
+        responsePreview: "Sure, I can do $149/month for you, guaranteed 99.9% uptime.",
+      },
+    ],
+  },
+  null,
+  2
+);
+
+/**
+ * Retroactive analysis — run before anyone is a paying customer.
+ *
+ * Every other panel in this app requires traffic that has already gone
+ * through The Lyceum. This is the exception on purpose: a prospect deciding
+ * whether to buy has months of a provider's own usage export and no way to
+ * see, without paying first, whether this would have caught anything in it.
+ * Nothing here is stored — the export is the prospect's data before they are
+ * a customer, and it should not need to become ours to get an answer.
+ */
+function RetroactivePanel({ licenseKey }: { licenseKey: string }) {
+  const [input, setInput] = useState("");
+  const [report, setReport] = useState<RetroactiveReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const run = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const parsed = JSON.parse(input);
+      const calls = Array.isArray(parsed) ? parsed : parsed.calls;
+      if (!Array.isArray(calls)) {
+        setError('Expected {"calls": [...]} or a bare array of call records.');
+        return;
+      }
+      const res = await fetch("/api/v1/roi/retroactive", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${licenseKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ calls }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setError(d.error ?? `Request failed (${res.status}).`);
+        return;
+      }
+      setReport(d);
+    } catch {
+      setError("That is not valid JSON. Paste an export shaped like the example below.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-sm font-semibold text-ws-text mb-1 flex items-center gap-1.5">
+        <History className="w-3.5 h-3.5 text-ws-text-soft" />
+        Check your past spend
+      </h2>
+      <p className="text-[12px] text-ws-text-muted mb-3 leading-relaxed max-w-2xl">
+        Not a customer yet, or just want to see what an old bill was actually paying for? Paste an
+        export of past API calls — from your provider's usage dashboard, a log file, anything with a
+        timestamp and ideally the prompt text. Nothing here is stored.
+      </p>
+
+      <textarea
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder={SAMPLE_EXPORT}
+        rows={6}
+        className="w-full px-3 py-2.5 rounded-lg border border-ws-border bg-ws-bg text-[12px] font-mono placeholder:text-ws-text-muted/60 focus:outline-none focus:border-teal resize-y mb-2"
+      />
+      <div className="flex items-center gap-2 mb-4">
+        <button
+          onClick={run}
+          disabled={loading || !input.trim()}
+          className="h-8 px-3 rounded-lg text-[12px] font-medium bg-teal text-white hover:bg-teal-dark disabled:opacity-40 inline-flex items-center gap-1.5"
+        >
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+          Analyze
+        </button>
+        <button
+          onClick={() => setInput(SAMPLE_EXPORT)}
+          className="text-[11px] text-ws-text-muted hover:text-ws-text-soft"
+        >
+          Use the example
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 mb-4">
+          <p className="text-[12px] text-red-700">{error}</p>
+        </div>
+      )}
+
+      {report && (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-ws-border bg-ws-subtle p-3.5">
+            <p className="text-[12px] text-ws-text leading-relaxed">{report.narrative}</p>
+          </div>
+
+          <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
+            <div className="rounded-lg border border-ws-border bg-ws-bg p-2.5">
+              <p className="text-lg font-semibold text-ws-text tabular-nums">{report.callCount}</p>
+              <p className="text-[10px] text-ws-text-muted">calls reviewed</p>
+            </div>
+            <div className="rounded-lg border border-ws-border bg-ws-bg p-2.5">
+              <p className="text-lg font-semibold text-ws-text tabular-nums">
+                {report.totalCostCents !== null ? usd(report.totalCostCents) : "—"}
+              </p>
+              <p className="text-[10px] text-ws-text-muted">
+                {report.totalCostCents !== null ? "total spend" : "incomplete cost data"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+              <p className="text-lg font-semibold text-amber-900 tabular-nums">{report.loops.length}</p>
+              <p className="text-[10px] text-amber-800">loop(s) found</p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+                {report.commitmentCandidates.length}
+              </p>
+              <p className="text-[10px] text-amber-800">figures to review</p>
+            </div>
+          </div>
+
+          {report.loops.map((l, i) => (
+            <div key={i} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-[12px] text-amber-900">
+                <strong>{l.count}× in a row:</strong> "{l.sample}"
+                {l.costCents > 0 && <> — {usd(l.costCents)}</>}
+              </p>
+            </div>
+          ))}
+
+          {report.commitmentCandidates.map((c, i) => (
+            <div key={i} className="rounded-lg border border-ws-border bg-ws-bg p-3">
+              <p className="text-[11px] text-ws-text-muted mb-1">Matched: {c.matched}</p>
+              <p className="text-[12px] text-ws-text-soft">"{c.text}"</p>
+            </div>
+          ))}
+
+          <div className="flex items-start gap-2 text-[11px] text-ws-text-muted">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" />
+            <div className="space-y-1">
+              {report.limitations.map((l, i) => (
+                <p key={i}>{l}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function RoiPanel({ licenseKey }: { licenseKey: string }) {
   const [report, setReport] = useState<RoiReport | null>(null);
@@ -101,6 +278,8 @@ export default function RoiPanel({ licenseKey }: { licenseKey: string }) {
 
   return (
     <div className="space-y-6">
+      <RetroactivePanel licenseKey={licenseKey} />
+
       <section>
         <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
           <h2 className="text-sm font-semibold text-ws-text flex items-center gap-1.5">

@@ -4940,6 +4940,111 @@ function publicConnection(c) {
   };
 }
 
+// server/analytics/retroactive.ts
+var COMMITMENT2 = /\b(?:guarantee|guaranteed|we\s+will\s+deliver|SLA\s+of|refund\s+within)\b/i;
+var FIGURE = /\$\s?\d[\d,]*(?:\.\d+)?|\b\d+(?:\.\d+)?%/g;
+function findLoops(calls) {
+  const findings = [];
+  let i = 0;
+  while (i < calls.length) {
+    const key = calls[i].promptPreview;
+    if (!key) {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < calls.length && calls[j].promptPreview === key) j++;
+    const runLength = j - i;
+    if (runLength >= 3) {
+      findings.push({
+        startIndex: i,
+        count: runLength,
+        costCents: calls.slice(i, j).reduce((s, c) => s + (c.costCents ?? 0), 0),
+        sample: key.slice(0, 140)
+      });
+    }
+    i = j;
+  }
+  return findings;
+}
+function findCommitmentCandidates(calls) {
+  const out = [];
+  calls.forEach((c, index) => {
+    const text = c.responsePreview;
+    if (!text) return;
+    if (!COMMITMENT2.test(text) && !FIGURE.test(text)) return;
+    const figures = text.match(FIGURE) ?? [];
+    if (figures.length === 0 && !COMMITMENT2.test(text)) return;
+    out.push({
+      index,
+      at: c.at,
+      text: text.slice(0, 160),
+      matched: figures.length > 0 ? figures.join(", ") : "guarantee language"
+    });
+  });
+  return out;
+}
+function analyzeRetroactive(calls) {
+  const withCost = calls.filter((c) => typeof c.costCents === "number");
+  const costCoverage = calls.length === 0 ? 0 : withCost.length / calls.length;
+  const totalCostCents = costCoverage === 1 ? withCost.reduce((s, c) => s + c.costCents, 0) : null;
+  const loops = findLoops(calls);
+  const loopCostCents = loops.reduce((s, l) => s + l.costCents, 0);
+  const commitmentCandidates = findCommitmentCandidates(calls);
+  const limitations = [];
+  if (costCoverage < 1) {
+    limitations.push(
+      `${Math.round((1 - costCoverage) * 100)}% of rows had no cost figure, so total spend is not shown \u2014 a partial total would look precise and not be.`
+    );
+  }
+  if (calls.every((c) => !c.promptPreview)) {
+    limitations.push(
+      "No prompt text was in this export, so loops could not be checked \u2014 only exact repeated prompts are detectable this way, and providers do not always export them."
+    );
+  }
+  limitations.push(
+    "Commitment candidates are NOT confirmed hallucinations \u2014 confirming that needs the knowledge base each response should have matched, which does not exist for calls made before The Lyceum was in the loop. Review these yourself."
+  );
+  const narrative = buildNarrative2({
+    callCount: calls.length,
+    totalCostCents,
+    loops,
+    loopCostCents,
+    commitmentCandidates
+  });
+  return {
+    callCount: calls.length,
+    totalCostCents,
+    costCoverage,
+    loops,
+    loopCostCents,
+    commitmentCandidates,
+    limitations,
+    narrative
+  };
+}
+function buildNarrative2(p) {
+  if (p.callCount === 0) return "No calls in this export.";
+  const usd = (c) => `$${(c / 100).toFixed(2)}`;
+  const parts = [`Reviewed ${p.callCount} historical calls.`];
+  if (p.loops.length > 0) {
+    parts.push(
+      `Found ${p.loops.length} run(s) of an identical prompt repeated 3+ times in a row \u2014 the pattern this product's loop breaker would have stopped at call 3. ` + (p.loopCostCents > 0 ? `Those runs alone cost ${usd(p.loopCostCents)}.` : `Cost per call was not in this export, so a dollar figure is not shown for them.`)
+    );
+  } else {
+    parts.push("No repeated-prompt loops found in what this export could show.");
+  }
+  if (p.commitmentCandidates.length > 0) {
+    parts.push(
+      `${p.commitmentCandidates.length} response(s) contain a specific figure or a guarantee \u2014 worth checking by hand against what you actually offer, since this export cannot confirm whether they were grounded.`
+    );
+  }
+  parts.push(
+    "This is what could be found without having been there when the calls were made. Going forward, the live pipeline catches the same patterns before the call is made, not after the invoice arrives."
+  );
+  return parts.join(" ");
+}
+
 // server/routes/autonomy.ts
 function registerAutonomyRoutes(app2, authenticateLicenseKey2) {
   app2.get("/api/v1/redteam/corpus", authenticateLicenseKey2, async (_req, res) => {
@@ -5036,6 +5141,23 @@ function registerAutonomyRoutes(app2, authenticateLicenseKey2) {
       })),
       note: "Every entry is a real recorded event. Nothing here is reconstructed after the fact \u2014 the record is written at the moment the decision is made."
     });
+  });
+  app2.post("/api/v1/roi/retroactive", authenticateLicenseKey2, async (req, res) => {
+    const calls = req.body?.calls;
+    if (!Array.isArray(calls) || calls.length === 0) {
+      return res.status(400).json({ error: "calls must be a non-empty array" });
+    }
+    if (calls.length > 5e3) {
+      return res.status(413).json({ error: "5,000 rows max per analysis \u2014 split larger exports." });
+    }
+    const parsed = calls.map((c) => ({
+      at: Number(c.at) || Date.now(),
+      costCents: typeof c.costCents === "number" ? c.costCents : void 0,
+      model: typeof c.model === "string" ? c.model : void 0,
+      promptPreview: typeof c.promptPreview === "string" ? c.promptPreview.slice(0, 500) : void 0,
+      responsePreview: typeof c.responsePreview === "string" ? c.responsePreview.slice(0, 500) : void 0
+    }));
+    res.json(analyzeRetroactive(parsed));
   });
   app2.get("/api/v1/roi", authenticateLicenseKey2, async (req, res) => {
     const licenseKey = req.lyceumAccount.licenseKey;

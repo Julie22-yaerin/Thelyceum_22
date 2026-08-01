@@ -16,6 +16,7 @@ import { pendingBreaches } from "../db/evidenceGraph.js";
 import { buildRoiReport, type UsageEvent } from "../analytics/roi.js";
 import { DEFAULT_HEALING_POLICY, type HealingPolicy } from "../healing/riskAssessment.js";
 import { readSlot, writeSlot } from "../db/workspaceState.js";
+import { analyzeRetroactive, type HistoricalCall } from "../analytics/retroactive.js";
 
 type Authenticate = express.RequestHandler;
 
@@ -146,6 +147,30 @@ export function registerAutonomyRoutes(app: express.Express, authenticateLicense
   });
 
   // ── ROI ──────────────────────────────────────────────────────────────────
+
+  // ── Retroactive analysis ─────────────────────────────────────────────────
+  // For a prospect who has not turned this on yet: paste an export of past
+  // API calls and see what could have been caught, using their own data
+  // rather than a demo. Stateless — nothing here is stored, because this
+  // export is the prospect's data before they are even a customer.
+
+  app.post("/api/v1/roi/retroactive", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
+    const calls = req.body?.calls;
+    if (!Array.isArray(calls) || calls.length === 0) {
+      return res.status(400).json({ error: "calls must be a non-empty array" });
+    }
+    if (calls.length > 5000) {
+      return res.status(413).json({ error: "5,000 rows max per analysis — split larger exports." });
+    }
+    const parsed: HistoricalCall[] = calls.map((c: any) => ({
+      at: Number(c.at) || Date.now(),
+      costCents: typeof c.costCents === "number" ? c.costCents : undefined,
+      model: typeof c.model === "string" ? c.model : undefined,
+      promptPreview: typeof c.promptPreview === "string" ? c.promptPreview.slice(0, 500) : undefined,
+      responsePreview: typeof c.responsePreview === "string" ? c.responsePreview.slice(0, 500) : undefined,
+    }));
+    res.json(analyzeRetroactive(parsed));
+  });
 
   app.get("/api/v1/roi", authenticateLicenseKey, async (req: AuthedRequest, res: express.Response) => {
     const licenseKey = req.lyceumAccount!.licenseKey;
