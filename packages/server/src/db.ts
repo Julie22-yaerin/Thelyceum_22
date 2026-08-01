@@ -54,8 +54,11 @@ function migrate(db: DatabaseSync): void {
       plan                    TEXT NOT NULL,
       billing                 TEXT NOT NULL,
       status                  TEXT NOT NULL,
-      stripe_customer_id      TEXT,
-      stripe_subscription_id  TEXT,
+      ls_subscription_id      TEXT,
+      -- The key Lemon Squeezy issued and emailed. Mirrored here so day-to-day
+      -- validation is a local lookup: an outage on their side must not stop a
+      -- paying customer's agents from running.
+      license_key             TEXT UNIQUE,
       started_at              INTEGER NOT NULL,
       expires_at              INTEGER NOT NULL,
       auto_renew              INTEGER NOT NULL DEFAULT 1,
@@ -63,6 +66,30 @@ function migrate(db: DatabaseSync): void {
       created_at              INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
+
+    -- ── Waitlist ─────────────────────────────────────────────────────────
+    -- Applications, not signups. Each one is reviewed before approval, and
+    -- carries a refundable deposit so the list reflects intent rather than
+    -- idle curiosity.
+    CREATE TABLE IF NOT EXISTS waitlist (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      organisation    TEXT NOT NULL,
+      work_email      TEXT NOT NULL UNIQUE,
+      phone           TEXT NOT NULL,
+      fleet_size      TEXT,
+      note            TEXT,
+      -- pending → deposit not yet paid; paid → deposit received, awaiting
+      -- review; approved → may create an account; rejected → declined.
+      status          TEXT NOT NULL DEFAULT 'pending',
+      deposit_cents   INTEGER NOT NULL DEFAULT 0,
+      ls_order_id     TEXT,
+      reviewed_by     TEXT,
+      reviewed_at     INTEGER,
+      created_at      INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist(status, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS installs (
       id                  TEXT PRIMARY KEY,
@@ -104,12 +131,30 @@ export interface SubscriptionRow {
   plan: PlanId;
   billing: "monthly" | "annual";
   status: "active" | "locked";
-  stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
+  ls_subscription_id: string | null;
+  license_key: string | null;
   started_at: number;
   expires_at: number;
   auto_renew: number;
   locked_at: number | null;
+  created_at: number;
+}
+
+export type WaitlistStatus = "pending" | "paid" | "approved" | "rejected";
+
+export interface WaitlistRow {
+  id: string;
+  name: string;
+  organisation: string;
+  work_email: string;
+  phone: string;
+  fleet_size: string | null;
+  note: string | null;
+  status: WaitlistStatus;
+  deposit_cents: number;
+  ls_order_id: string | null;
+  reviewed_by: string | null;
+  reviewed_at: number | null;
   created_at: number;
 }
 

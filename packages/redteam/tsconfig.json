@@ -4,17 +4,19 @@
     "module": "ES2022",
     "moduleResolution": "Bundler",
     "lib": ["ES2022"],
-    "outDir": "../dist-server",
+    "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": false,
+    "declaration": true,
+    "declarationMap": true,
     "sourceMap": true,
     "resolveJsonModule": true,
+    "allowImportingTsExtensions": false,
     "noEmitOnError": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "../node_modules", "test", "../src"]
+  "exclude": ["node_modules", "dist", "test"]
 }

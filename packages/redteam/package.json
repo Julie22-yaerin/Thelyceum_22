@@ -1,0 +1,57 @@
+{
+  "name": "redteam",
+  "version": "0.1.0",
+  "description": "The red team. An adversarial rebuttal layer for AI reasoning: scans claims and plans for overconfidence, unsupported claims, confirmation bias, false dichotomies, missing trade-offs and more, then steelmans the other side. CLI + MCP server + installable skill.",
+  "type": "module",
+  "bin": {
+    "redteam": "./dist/cli.js"
+  },
+  "main": "./dist/challenge.js",
+  "exports": {
+    ".": "./dist/challenge.js",
+    "./challenge": "./dist/challenge.js",
+    "./audit": "./dist/audit.js",
+    "./config": "./dist/config.js",
+    "./mode": "./dist/mode.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "mcp:dev": "tsx src/mcp.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "chatgpt",
+    "ai-safety",
+    "red-team",
+    "rebuttal",
+    "devils-advocate",
+    "reasoning",
+    "debiasing",
+    "adversarial"
+  ],
+  "license": "MIT"
+}

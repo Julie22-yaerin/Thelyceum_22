@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { BRAKE_GUIDE, REDTEAM_GUIDE, guideFor, previewOf } from "../server/src/guides.js";
+import { BRAKE_GUIDE, REDTEAM_GUIDE, guideFor, previewOf } from "../src/guides.js";
 
 describe("guideFor", () => {
   it("resolves known products", () => {

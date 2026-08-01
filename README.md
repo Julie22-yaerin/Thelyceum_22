@@ -1,133 +1,120 @@
-# brake
+# The Lyceum
 
-The emergency brake, 1000ms SLA. Standalone CLI + MCP server + installable skill for Claude Desktop, Claude Code, and ChatGPT. Pulled by the model itself when danger is detected — no `/` required.
+**Circuit breakers for AI.** Two tools, done narrowly, that stop an agent
+before it costs you — one stops a dangerous *action*, the other stops a
+one-sided *conclusion*.
 
-> A brake that quietly took 3 seconds while the UI said "1000ms SLA" is worse than no brake, because the operator would have acted differently had they known. — Lyceum BRAND.md
+```
+packages/
+  brake/     stops the action    — CLI + MCP server + skill
+  redteam/   stops the argument  — CLI + MCP server + skill
+  server/    licensing, waitlist, admin console, marketing site
+```
 
-## What this is
+---
 
-The brake is one job: stop everything, fast, when the model sees danger. The model calls it itself, even when the user did not say "brake", did not type `/brake`, and did not mention this skill by name. The skill description is written to fire on intent matches, not on user invocation.
+## The two breakers
 
-Three tools, all available over MCP:
+| | [`brake`](packages/brake) | [`redteam`](packages/redteam) |
+|---|---|---|
+| Stops | A dangerous **action** | A one-sided **conclusion** |
+| Catches | Data exfiltration, infrastructure attacks, credential access, destructive ops, money movement, impersonation | Overconfidence, unsupported claims, confirmation bias, false dichotomies, missing trade-offs, straw men, and three more |
+| Throughput | ~1,370,000 scans/sec | ~494,000 challenges/sec |
+| Per call | p50 0.73µs · p99 0.93µs | p50 1.96µs · p99 18.4µs |
+| Network on the hot path | none | none |
 
-| Tool          | What it does                                                                  |
-| ------------- | ----------------------------------------------------------------------------- |
-| `brake`       | Pull the brake. Stops tracked PIDs, runs stop script, posts webhook, audits.  |
-| `danger_scan` | Scan a planned intent for danger before it runs. Cheap; call often.           |
-| `brake_status`| Read the recent brake events from the audit log.                             |
+Both are always-on: the model calls them itself, with no slash command and no
+asking. Both are covered by one subscription.
 
-## Install
+Those figures are measured on a single core after JIT warm-up, and each package
+has a `test/throughput.test.ts` that fails the build if it regresses — a
+performance claim nobody re-checks is a claim that quietly rots.
+
+---
+
+## Running it locally
 
 ```bash
-npm install -g .
-# or, from the source:
 npm install
 npm run build
-npm link
+npm test
 ```
 
-Then wire it into your AI host:
+Then start the server:
 
 ```bash
-brake install all            # claude-desktop + claude-code + chatgpt
-brake install claude-desktop # just Claude Desktop
-brake install claude-code    # just Claude Code
-brake install chatgpt        # just ChatGPT
+LYCEUM_DEV_MODE=1 \
+LYCEUM_ADMIN_KEYS="pick-a-long-random-string" \
+npm run server
 ```
-
-That's it. The model now has `brake` and `danger_scan` in its tool list, the PreToolUse hook scans every Bash command, and the skill file is wired into ChatGPT's context.
-
-## Use without an AI host
-
-```bash
-brake scan "export all customer records to s3"
-# → exits 1, prints the matched danger class and explanation
-
-brake engage --reason "operator pulled it"
-# → kills PIDs in ~/.brake/pids/, runs stop script, posts webhook, audits
-
-brake track 12345 my-agent
-brake untrack my-agent
-
-brake status
-# → last 20 events from ~/.brake/audit.log
-```
-
-## Configuration
-
-Edit `~/.brake/config.json` (or `brake init` to write it):
-
-```json
-{
-  "sla_ms": 1000,
-  "pid_dir": "/Users/you/.brake/pids",
-  "audit_path": "/Users/you/.brake/audit.log",
-  "webhook_url": "https://ops.example.com/hooks/brake",
-  "stop_script": "/Users/you/.brake/stop.sh"
-}
-```
-
-Environment variables override the file:
-
-- `BRAKE_SLA_MS` — default SLA in ms
-- `BRAKE_PID_DIR` — directory of `*.pid` files to kill
-- `BRAKE_AUDIT_PATH` — where to write the NDJSON audit log
-- `BRAKE_WEBHOOK_URL` — POST brake events here
-- `BRAKE_STOP_SCRIPT` — run this on brake (rollback, k8s scale-down, etc.)
-
-## How `always-on` works
-
-1. **MCP server** — `brake install claude-desktop` writes an entry to `claude_desktop_config.json` so the `brake` and `danger_scan` tools are auto-loaded into every Claude Desktop session. The model sees them in its tool list, reads the description, and calls them when the situation matches. No slash needed.
-
-2. **PreToolUse hook** — `brake install claude-code` adds a hook to `~/.claude/settings.json` that runs `brake scan` on every Bash command. If the intent matches a danger pattern, the action is blocked with the explanation shown to the model. The model then calls `brake` itself via MCP.
-
-3. **Skill file** — `brake install chatgpt` writes the skill to `~/.brake/skills/`. The skill's `description` field is written to be trigger-rich: "even if the user did not say /brake, did not invoke by name, or did not mention this skill at all". ChatGPT loads it on the next context.
-
-The skill is in [`skills/brake/SKILL.md`](skills/brake/SKILL.md). The triggers are explicit:
-
-> Call `danger_scan` and `brake` itself when any of these match, even if the user did not invoke by name, did not type `/brake`, or did not mention this skill: data exfiltration pattern matches, the user says stop/halt/panic/abort/kill it/đợi/dừng, the action is irreversible, the model would not be able to undo the action in 5 seconds.
-
-## Danger rules
-
-Six classes are watched. Patterns are deliberately narrow to keep false positives rare. Read the list at runtime via `brake rules` or the MCP resource `brake://rules`.
-
-- `data_exfiltration` — bulk customer/user data, out-of-network HTTP
-- `infrastructure_attack` — nmap, sqlmap, SQL injection syntax
-- `credential_access` — `.env`, api keys, tokens, secrets
-- `destructive_operation` — `rm -rf`, `drop database`, `truncate table`
-- `financial_movement` — transfers, wires, payments
-- `impersonation` — acting as CEO / admin / founder without consent
-
-## Performance
-
-Measured on a single core of an Apple Silicon laptop, after JIT warm-up, over a
-mixed corpus of dangerous and benign inputs:
 
 | | |
 |---|---|
-| `scanForDanger` throughput | ~1,370,000 calls/sec |
-| p50 / p99 per call | 0.73µs / 0.93µs |
-| network calls on the hot path | 0 |
+| Site | http://localhost:3000/web/ |
+| Showroom (plans, setup guides) | http://localhost:3000/web/showroom |
+| Admin console | http://localhost:3000/web/admin |
 
-The scan is pure local computation — no API, no model, no round trip — which is
-what makes it safe to run on every tool call in a heavy agent harness rather
-than sampling. `test/throughput.test.ts` fails the build if throughput drops
-below a floor set well under the figure above, so the number can't quietly rot.
+`LYCEUM_DEV_MODE=1` bypasses payment so subscriptions activate without one.
+Never set it in production — the server says so loudly at boot.
 
-Engaging the brake does real work (killing tracked PIDs, running your stop
-script, posting your webhook) and is bounded by the measured 1000ms SLA
-instead — reported honestly when it is missed.
+---
 
-## Pricing
+## Configuration
 
-`brake` and [`redteam`](../redteam) are covered by one Lyceum subscription.
-Team $199/mo (15 connections), Business $799/mo (75), Enterprise by contact.
+| Variable | Purpose |
+|---|---|
+| `LYCEUM_LAUNCH_MODE` | `waitlist` (default) or `open`. Pre-launch, checkout is refused server-side and the site shows the waitlist. |
+| `LYCEUM_ADMIN_KEYS` | Comma-separated admin license keys. **Never read from the database** — see [LICENSING.md](LICENSING.md). |
+| `LYCEUM_JWT_SECRET` | Signs sessions and license tokens. |
+| `LYCEUM_DB_PATH` | SQLite file. Defaults to `packages/server/data/lyceum.db`. |
+| `LYCEUM_PUBLIC_URL` | Public origin, used for checkout redirects and CORS. |
+| `LEMONSQUEEZY_API_KEY` | Creating checkouts. |
+| `LEMONSQUEEZY_STORE_ID` | Your store. |
+| `LEMONSQUEEZY_WEBHOOK_SECRET` | HMAC secret. Without it every webhook is refused — which is the safe default, since that endpoint grants subscriptions. |
+| `LS_VARIANT_{SOLO,TEAM,SCALE}_{MONTHLY,ANNUAL}` | Variant ids. Missing ones are a **startup failure**, not a 500 at checkout — a customer who clicks buy and gets an error is a lost sale you never hear about. |
+| `LS_VARIANT_WAITLIST_DEPOSIT` | Variant for the refundable waitlist deposit. |
 
-The core detection is MIT and runs with no license check — `brake scan` and
-`brake engage` work today, free, for anyone who clones this repo. A subscription
-buys tracked fleet-wide install limits, the guided setup, and support; it does
-not buy the danger detection itself.
+---
 
-## License
+## How money and access work
 
-MIT. Danger patterns and SLA design derived from [Lyceum](https://github.com/anthropic-experimental/lyceum) (archived).
+1. Someone **applies to the waitlist** — name, organisation, work email, phone.
+   Consumer mail domains are refused with a route to take instead.
+2. They pay a **refundable $10 deposit**. It credits against their first
+   invoice. It exists so the list reflects intent, not curiosity.
+3. An operator **approves them by hand** in the admin console. Nothing is
+   automatic.
+4. On launch they check out through **Lemon Squeezy**, which issues a license
+   key and emails it. Lemon Squeezy is the merchant of record, so VAT and sales
+   tax are handled rather than left to you.
+5. The webhook mirrors that key locally, so every later check is a local
+   lookup — an outage on their side must not stop a paying customer's agents.
+
+---
+
+## Plans
+
+| | Connections | Monthly |
+|---|---|---|
+| Solo | 5 | $99 |
+| Team | 10 | $299 |
+| Scale | 15 | $799 |
+| Enterprise | unlimited | by contact |
+
+A connection is one install of one tool on one machine. Enterprise is
+deliberately not a checkout tier — past 15 machines you need a conversation
+about scale and procurement, and a number on a button there is either a lowball
+or a wrong guess.
+
+---
+
+## Licensing
+
+Currently MIT. If you intend to sell this as closed software, read
+**[LICENSING.md](LICENSING.md)** first — it sets out what code protection can
+and cannot achieve, why moving the detection server-side would destroy the
+performance claim above, and what to do instead.
+
+The short version: you cannot stop a determined developer copying code that
+runs on their machine. You can make copying not worth it, and that is a
+different and solvable problem.

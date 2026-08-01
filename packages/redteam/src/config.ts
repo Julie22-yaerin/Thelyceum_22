@@ -1,0 +1,79 @@
+/**
+ * Configuration loaded from env vars and an optional config file at
+ * ~/.redteam/config.json. Pure: returns the resolved values without side
+ * effects, so both the CLI and the MCP server can use the same loader.
+ */
+
+import { promises as fs } from "node:fs";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { FLAW_CLASSES, type FlawClass } from "./challenge.js";
+
+export const REDTEAM_HOME = join(homedir(), ".redteam");
+export const DEFAULT_CONFIG_PATH = join(REDTEAM_HOME, "config.json");
+
+/** The rule-defined blocking set: flaws that hold the line when matched. */
+export const DEFAULT_BLOCK_ON: ReadonlySet<FlawClass> = new Set(["unsupported_claim", "confirmation_bias"]);
+
+export interface RedteamConfigFile {
+  audit_path?: string;
+  webhook_url?: string;
+  /** Flaw classes that block (exit 1 / hook block). Defaults to DEFAULT_BLOCK_ON. */
+  block_on?: string[];
+  claude_desktop_path?: string;
+  claude_code_settings_path?: string;
+}
+
+export interface ResolvedConfig {
+  auditPath: string;
+  webhookUrl?: string;
+  blockOn: ReadonlySet<FlawClass>;
+  claudeDesktopPath: string;
+  claudeCodeSettingsPath: string;
+}
+
+/** Parses an array or comma-separated string of flaw classes. Null when nothing valid was given. */
+function parseBlockOn(raw: unknown): ReadonlySet<FlawClass> | null {
+  const list = Array.isArray(raw)
+    ? raw.map((v) => String(v))
+    : typeof raw === "string"
+      ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+      : null;
+  if (list === null) return null;
+  const valid = list.filter((s) => (FLAW_CLASSES as readonly string[]).includes(s));
+  if (valid.length === 0) return null;
+  return new Set(valid as FlawClass[]);
+}
+
+export async function loadConfig(path: string = DEFAULT_CONFIG_PATH): Promise<ResolvedConfig> {
+  let file: RedteamConfigFile = {};
+  if (existsSync(path)) {
+    try {
+      file = JSON.parse(await fs.readFile(path, "utf-8")) as RedteamConfigFile;
+    } catch {
+      // Corrupt config file should not break the red team. Use defaults.
+    }
+  }
+
+  const blockOn =
+    parseBlockOn(process.env.REDTEAM_BLOCK_ON) ??
+    parseBlockOn(file.block_on) ??
+    DEFAULT_BLOCK_ON;
+
+  return {
+    auditPath: resolve(process.env.REDTEAM_AUDIT_PATH ?? file.audit_path ?? join(REDTEAM_HOME, "audit.log")),
+    webhookUrl: process.env.REDTEAM_WEBHOOK_URL ?? file.webhook_url,
+    blockOn,
+    claudeDesktopPath: resolve(
+      process.env.REDTEAM_CLAUDE_DESKTOP_PATH ??
+        file.claude_desktop_path ??
+        join(homedir(), "Library", "Application Support", "Claude", "claude_desktop_config.json")
+    ),
+    claudeCodeSettingsPath: resolve(
+      process.env.REDTEAM_CLAUDE_CODE_SETTINGS_PATH ??
+        file.claude_code_settings_path ??
+        join(homedir(), ".claude", "settings.json")
+    ),
+  };
+}

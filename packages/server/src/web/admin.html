@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin — The Lyceum</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="stylesheet" href="/web/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a href="/web/" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;">
+        <span class="logo">●</span>
+        <span class="name">The Lyceum</span>
+      </a>
+      <span class="tag">admin</span>
+    </div>
+    <nav class="nav">
+      <a href="/web/">Site</a>
+      <a href="/web/showroom">Showroom</a>
+      <a href="#" id="adminSignOut" class="hidden">Sign out</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ── Key gate ─────────────────────────────────────────────────────── -->
+    <section id="adminGate" class="card auth">
+      <h2>Admin access</h2>
+      <p class="muted small" style="margin-bottom:4px;">
+        Paste your license key. It is held in this browser tab only and sent as a
+        bearer token on each request — it is never stored in a cookie and never
+        written to the database.
+      </p>
+      <form id="adminForm">
+        <label>License key
+          <input type="password" name="key" required autocomplete="off" spellcheck="false" />
+        </label>
+        <button type="submit">Unlock</button>
+        <p class="error" id="adminError"></p>
+      </form>
+    </section>
+
+    <!-- ── Console ──────────────────────────────────────────────────────── -->
+    <section id="adminConsole" class="hidden">
+      <h1 class="section-title" style="text-align:left;margin-bottom:6px;">Waitlist</h1>
+      <p class="muted small" style="margin-bottom:24px;">
+        Applications, newest first. Nothing is approved automatically — approving
+        is what lets someone create an account.
+      </p>
+
+      <div class="admin-counts" id="adminCounts"></div>
+
+      <div class="admin-filters" id="adminFilters">
+        <button class="af active" data-status="">All</button>
+        <button class="af" data-status="pending">Awaiting deposit</button>
+        <button class="af" data-status="paid">Ready to review</button>
+        <button class="af" data-status="approved">Approved</button>
+        <button class="af" data-status="rejected">Rejected</button>
+      </div>
+
+      <div id="adminTableWrap"></div>
+
+      <h2 class="section-title" style="text-align:left;margin:48px 0 6px;">Recent admin actions</h2>
+      <p class="muted small" style="margin-bottom:16px;">
+        Who changed what. Admins are identified by a fingerprint of their key —
+        the key itself is never logged.
+      </p>
+      <div id="adminAudit"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Admin actions are recorded. This page is <code>noindex</code> and unreachable without a configured admin key.</p>
+  </footer>
+
+  <script src="/web/admin.js" type="module"></script>
+</body>
+</html>

@@ -54,7 +54,15 @@ function renderPlans() {
       <ul>${plan.features.map((f) => `<li>${f}</li>`).join("")}</ul>
       <button class="cta" data-plan="${plan.id}">Choose ${plan.name}</button>
     `;
-    el.querySelector("button").addEventListener("click", () => choosePlan(plan.id));
+    const btn = el.querySelector("button");
+    if (window.__launchMode === "waitlist") {
+      // The server refuses checkout before launch, so sending someone there
+      // would be a dead end. Point at the thing that does work instead.
+      btn.textContent = "Join the waitlist";
+      btn.addEventListener("click", () => { window.location.href = "/web/#waitlist"; });
+    } else {
+      btn.addEventListener("click", () => choosePlan(plan.id));
+    }
     plansEl.appendChild(el);
   }
 
@@ -355,10 +363,14 @@ $$(".guide-tabs .gt").forEach((b) => {
 
 (async function boot() {
   try {
-    const { plans, enterprise } = await api("/api/plans");
+    const { plans, enterprise, launchMode } = await api("/api/plans");
     window.__plans = plans;
     window.__enterprise = enterprise;
+    window.__launchMode = launchMode;
     renderPlans();
+    if (launchMode === "waitlist") {
+      document.querySelector("#launchBanner")?.removeAttribute("hidden");
+    }
   } catch (err) {
     const grid = document.querySelector("#plansGrid");
     if (grid) grid.innerHTML = "<p class='muted'>Could not load plans. Is the server running?</p>";

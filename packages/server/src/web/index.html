@@ -8,6 +8,12 @@
   <link rel="stylesheet" href="/web/styles.css" />
 </head>
 <body>
+  <!-- Rendered server-side by launch mode; hidden once LYCEUM_LAUNCH_MODE=open. -->
+  <div class="launch-banner" id="launchBanner" hidden>
+    <strong>We launch soon.</strong> Not buyable yet —
+    <a href="#waitlist">apply for the waitlist</a> and we'll bring you in as we open up.
+  </div>
+
   <header class="topbar">
     <div class="brand">
       <span class="logo">●</span>
@@ -18,7 +24,7 @@
       <a href="#performance">Performance</a>
       <a href="#products">Products</a>
       <a href="/web/showroom">Plans</a>
-      <a href="/web/showroom#plans" class="nav-cta">Get started</a>
+      <a href="#waitlist" class="nav-cta" id="navCta">Join the waitlist</a>
     </nav>
   </header>
 
@@ -151,12 +157,70 @@ redteam install all</code></pre>
         </div>
       </div>
     </section>
+
+    <!-- ── Waitlist ─────────────────────────────────────────────────── -->
+    <section id="waitlist" class="waitlist-section">
+      <h2 class="section-title">Apply for the waitlist</h2>
+      <p class="section-sub">
+        We're bringing teams on in batches so setup gets a person, not a docs link.
+        Applications are reviewed by hand — tell us who you are and what you run.
+      </p>
+
+      <div class="waitlist-card" id="waitlistCard">
+        <h2>Request access</h2>
+        <p class="sub">
+          Every field matters — we read these. If your organisation isn't running
+          agents in production yet, say so in the notes; early is fine, vague isn't.
+        </p>
+
+        <form class="waitlist-form" id="waitlistForm" novalidate>
+          <label>Your name
+            <input type="text" name="name" required autocomplete="name" />
+            <span class="field-error" data-for="name"></span>
+          </label>
+          <label>Organisation
+            <input type="text" name="organisation" required autocomplete="organization" />
+            <span class="field-error" data-for="organisation"></span>
+          </label>
+          <label>Work email
+            <input type="email" name="workEmail" required autocomplete="email" />
+            <span class="field-error" data-for="workEmail"></span>
+          </label>
+          <label>Phone (with country code)
+            <input type="tel" name="phone" required autocomplete="tel" placeholder="+84 …" />
+            <span class="field-error" data-for="phone"></span>
+          </label>
+          <label>Roughly how many machines run agents?
+            <select name="fleetSize">
+              <option value="">Prefer not to say</option>
+              <option>1–5</option>
+              <option>6–10</option>
+              <option>11–15</option>
+              <option>More than 15</option>
+            </select>
+          </label>
+          <label>Anything we should know? (optional)
+            <textarea name="note" rows="3" placeholder="What you run, what went wrong last time, what you need this to catch."></textarea>
+          </label>
+
+          <div class="deposit-note" id="depositNote">
+            <strong>There's a refundable $10 deposit.</strong> It credits in full against
+            your first invoice, and it's refunded on request if you decide not to go
+            ahead — or if we don't have a place for you. It exists so the list reflects
+            people who actually intend to use this, which is what lets us onboard in
+            small batches instead of a queue nobody moves through.
+          </div>
+
+          <button type="submit" id="waitlistSubmit">Apply</button>
+          <p class="field-error" id="waitlistError" style="text-align:center;"></p>
+        </form>
+      </div>
+    </section>
   </main>
 
   <footer>
     <p>brake stops the action, redteam attacks the argument. Both actually do the thing — the SLA is measured, not asserted.</p>
   </footer>
-  <!-- No script: the landing page is static by design. Plans, auth and the
-       gated guides all live on /web/showroom, which is where app.js loads. -->
+  <script src="/web/waitlist.js" type="module"></script>
 </body>
 </html>
