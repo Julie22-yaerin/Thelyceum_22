@@ -20,6 +20,8 @@ export interface BrakeConfigFile {
   stop_script?: string;
   claude_desktop_path?: string;
   claude_code_settings_path?: string;
+  /** Server URL for license + install registration. Default https://brake.example. */
+  server_url?: string;
 }
 
 export interface ResolvedConfig {
@@ -30,6 +32,7 @@ export interface ResolvedConfig {
   stopScript?: string;
   claudeDesktopPath: string;
   claudeCodeSettingsPath: string;
+  serverUrl: string;
 }
 
 export async function loadConfig(path: string = DEFAULT_CONFIG_PATH): Promise<ResolvedConfig> {
@@ -58,5 +61,6 @@ export async function loadConfig(path: string = DEFAULT_CONFIG_PATH): Promise<Re
         file.claude_code_settings_path ??
         join(homedir(), ".claude", "settings.json")
     ),
+    serverUrl: process.env.BRAKE_SERVER_URL ?? file.server_url ?? "https://brake.example",
   };
 }

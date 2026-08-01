@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Lyceum — circuit breakers for AI</title>
+  <meta name="description" content="brake stops a dangerous action in under a second. redteam attacks a one-sided conclusion before it's presented as settled. Both call themselves — no slash required." />
+  <link rel="stylesheet" href="/web/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">●</span>
+      <span class="name">The Lyceum</span>
+      <span class="tag">circuit breakers for AI</span>
+    </div>
+    <nav class="nav" id="nav">
+      <a href="#products">Products</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#guides">Setup</a>
+      <a href="#login" id="navLogin">Sign in</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ── Identity ─────────────────────────────────────────────────── -->
+    <section class="hero identity">
+      <p class="eyebrow">The circuit breaker company</p>
+      <h1>We stop AI before it costs you.</h1>
+      <p class="lede">
+        Two things, done narrowly and well: <strong>brake</strong> stops a dangerous
+        <em>action</em> in under a second. <strong>redteam</strong> attacks a one-sided
+        <em>conclusion</em> before it's handed to you as settled. Both are always-on —
+        the model calls them itself, no slash command, no asking.
+      </p>
+      <p class="lede-sub">
+        This category is about to get crowded with "optimize your AI spend" tools that
+        watch dashboards after the damage is done. We don't watch. We stop things,
+        measured, with the SLA reported even when we miss it.
+      </p>
+    </section>
+
+    <!-- ── Products ─────────────────────────────────────────────────── -->
+    <section id="products" class="products">
+      <div class="product-card">
+        <div class="product-head">
+          <span class="dot red"></span>
+          <h2>brake</h2>
+          <span class="paid-badge">paid</span>
+        </div>
+        <p class="product-desc">
+          The emergency brake for AI agents. Stops the model before it exfiltrates
+          data, attacks infrastructure, reads a credential, or moves money —
+          <strong>1000ms SLA, measured and reported</strong>. A brake that quietly
+          took 3 seconds while the UI said 1000ms would be worse than no brake, so a
+          miss is shown, never hidden.
+        </p>
+        <pre class="cmd-block"><code>npm install -g brake
+brake install all</code></pre>
+        <a href="#pricing" class="product-cta">See pricing →</a>
+      </div>
+
+      <div class="product-card">
+        <div class="product-head">
+          <span class="dot green"></span>
+          <h2>redteam</h2>
+          <span class="free-badge">free forever</span>
+        </div>
+        <p class="product-desc">
+          An adversarial rebuttal layer for AI reasoning. Scans a claim or plan for
+          overconfidence, unsupported claims, confirmation bias, false dichotomies,
+          missing trade-offs — then steelmans the other side, so a conclusion gets
+          tested instead of asserted.
+        </p>
+        <pre class="cmd-block"><code>npm install -g redteam
+redteam install all</code></pre>
+        <a href="#guides" class="product-cta">Setup guide →</a>
+      </div>
+    </section>
+
+    <!-- ── Pricing ────────────────────────────────────────────────────── -->
+    <section id="pricing" class="hero pricing-section">
+      <h2 class="section-title">Pricing</h2>
+      <p class="lede small">
+        redteam is free, no account, forever — it's MIT and nothing about it needs a
+        server. brake's core detection is the same: free, MIT, works today with no
+        license. What you pay for is tracked devices, the guided setup below, and
+        priority support — not the danger detection itself. We'd rather say that
+        plainly than let the price imply more than it buys.
+      </p>
+
+      <div class="billing-toggle">
+        <button class="bt active" data-cycle="monthly">Monthly</button>
+        <button class="bt" data-cycle="annual">Annual <span class="save">save ~20%</span></button>
+      </div>
+
+      <div class="plans" id="plans">
+        <!-- populated by app.js -->
+      </div>
+
+      <p class="footnote">
+        All prices in USD. Cancel anytime. Annual billed up-front as the per-month
+        equivalent × 12. The 1000ms SLA is measured — a slow brake is reported as
+        over-SLA, never hidden.
+      </p>
+    </section>
+
+    <!-- ── Guides ───────────────────────────────────────────────────── -->
+    <section id="guides" class="guides-section">
+      <h2 class="section-title">Setup guides</h2>
+      <p class="lede small">
+        Step by step, with the exact command and exactly what you should see at each
+        step. redteam's guide is open — it's free, gating it would be strange. brake's
+        first step is free too, so you can prove the danger detection works before
+        paying for anything; the rest unlocks with an active subscription.
+      </p>
+
+      <div class="guide-tabs">
+        <button class="gt active" data-product="redteam">redteam <span class="free-badge small">free</span></button>
+        <button class="gt" data-product="brake">brake <span class="paid-badge small">paid</span></button>
+      </div>
+
+      <div id="guideBody" class="guide-body">
+        <!-- populated by app.js -->
+      </div>
+    </section>
+
+    <!-- ── Auth ─────────────────────────────────────────────────────── -->
+    <section id="auth" class="card auth hidden" aria-hidden="true">
+      <h2 id="authTitle">Sign in</h2>
+      <form id="authForm">
+        <label>Email <input type="email" name="email" required autocomplete="email" /></label>
+        <label>Password
+          <input type="password" name="password" required minlength="8" autocomplete="current-password" />
+        </label>
+        <button type="submit" id="authSubmit">Sign in</button>
+        <p class="switch">
+          <a href="#" id="authSwitch">Create an account</a>
+        </p>
+        <p class="error" id="authError"></p>
+      </form>
+    </section>
+
+    <!-- ── Dashboard ────────────────────────────────────────────────── -->
+    <section id="dashboard" class="card dashboard hidden" aria-hidden="true">
+      <h2>Account</h2>
+      <p class="muted" id="dashEmail"></p>
+
+      <div class="row">
+        <div class="col">
+          <h3>Subscription</h3>
+          <div id="subBox">
+            <p><strong>Plan:</strong> <span id="subPlan">—</span></p>
+            <p><strong>Billing:</strong> <span id="subBilling">—</span></p>
+            <p><strong>Status:</strong> <span id="subStatus" class="badge">—</span></p>
+            <p><strong>Expires:</strong> <span id="subExpires">—</span></p>
+            <p><strong>Auto-renew:</strong>
+              <label class="switch">
+                <input type="checkbox" id="autoRenew" />
+                <span class="slider"></span>
+              </label>
+            </p>
+            <p class="warning" id="subWarning"></p>
+          </div>
+          <div class="actions" id="subActions">
+            <button id="btnChangePlan">Change plan</button>
+            <button id="btnCancel" class="danger hidden">Cancel subscription</button>
+          </div>
+        </div>
+
+        <div class="col">
+          <h3>AI connections <span class="muted" id="connCount">0/0</span></h3>
+          <ul id="installsList" class="installs"></ul>
+          <p class="muted small">
+            Each <code>brake install &lt;host&gt;</code> on a unique device counts as one
+            connection. Re-installing the same host on the same device is idempotent.
+          </p>
+        </div>
+      </div>
+
+      <div class="download">
+        <h3>Download CLI</h3>
+        <p class="muted">
+          After your subscription is active, the CLI tarball unlocks here. Install it
+          with <code>npm install -g brake-cli.tar.gz</code> or extract and link.
+        </p>
+        <button id="btnDownload">Download brake CLI</button>
+        <pre id="installCmd" class="cmd"></pre>
+      </div>
+
+      <div class="actions bottom">
+        <button id="btnLogout" class="ghost">Sign out</button>
+      </div>
+    </section>
+
+    <section id="locked" class="card locked hidden" aria-hidden="true">
+      <h2>Subscription locked</h2>
+      <p id="lockedReason">Your subscription has expired and auto-renew is off.</p>
+      <button id="btnRenew">Renew subscription</button>
+    </section>
+  </main>
+
+  <footer>
+    <p>Two products. brake stops the action, redteam attacks the argument. Both actually do the thing — pulling the brake stops something, and the SLA is measured, not asserted.</p>
+  </footer>
+
+  <script src="/web/app.js" type="module"></script>
+</body>
+</html>

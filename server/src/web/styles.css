@@ -1,0 +1,288 @@
+:root {
+  --bg: #0a0a0c;
+  --bg-elev: #131318;
+  --bg-card: #1a1a21;
+  --border: #2a2a33;
+  --text: #e8e8ec;
+  --text-dim: #8e8e99;
+  --accent: #ff5050;
+  --accent-dim: #b13030;
+  --green: #4ade80;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --radius: 10px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code, pre { font-family: var(--mono); font-size: 13px; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 32px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: rgba(10, 10, 12, 0.85);
+  backdrop-filter: blur(12px); z-index: 100;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo { color: var(--accent); font-size: 22px; line-height: 1; }
+.name { font-weight: 600; font-size: 18px; letter-spacing: -0.02em; }
+.tag {
+  font-size: 11px; color: var(--text-dim);
+  border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px;
+}
+.nav { display: flex; gap: 24px; }
+.nav a { color: var(--text); font-size: 14px; }
+
+main { max-width: 1100px; margin: 0 auto; padding: 48px 32px 96px; }
+
+.hero { text-align: center; padding: 32px 0 56px; }
+.hero h1 { font-size: 48px; line-height: 1.1; letter-spacing: -0.03em; margin-bottom: 16px; }
+.hero .lede { color: var(--text-dim); font-size: 18px; max-width: 640px; margin: 0 auto 32px; }
+
+.billing-toggle {
+  display: inline-flex; gap: 4px; padding: 4px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  border-radius: 999px; margin-bottom: 40px;
+}
+.billing-toggle .bt {
+  background: transparent; color: var(--text-dim);
+  border: 0; padding: 8px 20px; border-radius: 999px;
+  font-size: 14px; cursor: pointer; font-family: inherit;
+}
+.billing-toggle .bt.active { background: var(--text); color: var(--bg); }
+.billing-toggle .save { color: var(--green); font-size: 11px; margin-left: 4px; }
+.billing-toggle .bt.active .save { color: var(--accent); }
+
+.plans {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px;
+  max-width: 840px; margin: 0 auto;
+}
+.plan {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 32px; text-align: left;
+}
+.plan.featured { border-color: var(--accent); }
+.plan h3 { font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.plan .name { font-size: 28px; font-weight: 600; margin-bottom: 8px; }
+.plan .desc { color: var(--text-dim); font-size: 14px; margin-bottom: 24px; min-height: 42px; }
+.plan .price { font-size: 48px; font-weight: 700; letter-spacing: -0.03em; }
+.plan .price small { font-size: 16px; color: var(--text-dim); font-weight: 400; }
+.plan .annual { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+.plan ul { list-style: none; margin: 24px 0 32px; }
+.plan li { font-size: 14px; padding: 6px 0; color: var(--text); }
+.plan li::before { content: "✓ "; color: var(--green); margin-right: 6px; }
+.plan button.cta {
+  width: 100%; background: var(--accent); color: white;
+  border: 0; padding: 12px; border-radius: 6px;
+  font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.plan button.cta:hover { background: var(--accent-dim); }
+.plan.featured button.cta { background: white; color: var(--bg); }
+
+.footnote { color: var(--text-dim); font-size: 13px; margin-top: 40px; max-width: 720px; margin-left: auto; margin-right: auto; }
+
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 32px; max-width: 800px; margin: 0 auto 32px;
+}
+.card h2 { font-size: 24px; margin-bottom: 24px; }
+.card.hidden { display: none; }
+
+.auth { max-width: 420px; }
+.auth form { display: flex; flex-direction: column; gap: 16px; }
+.auth label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-dim); }
+.auth input {
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); padding: 10px 12px;
+  border-radius: 6px; font-size: 14px; font-family: inherit;
+}
+.auth input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.auth button {
+  background: var(--accent); color: white; border: 0;
+  padding: 12px; border-radius: 6px; font-size: 14px;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.auth .switch { text-align: center; font-size: 13px; }
+.auth .error { color: var(--red); font-size: 13px; min-height: 18px; }
+
+.dashboard .row { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 32px; }
+.dashboard h3 { font-size: 16px; margin-bottom: 12px; }
+.dashboard .col p { font-size: 14px; margin-bottom: 8px; }
+.dashboard .col p strong { color: var(--text-dim); font-weight: 500; display: inline-block; width: 100px; }
+.dashboard .muted { color: var(--text-dim); }
+.dashboard .small { font-size: 12px; margin-top: 12px; }
+
+.badge { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+.badge.active { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+.badge.locked { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+
+.switch { position: relative; display: inline-block; width: 40px; height: 22px; vertical-align: middle; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: var(--border); border-radius: 999px; transition: 0.2s;
+}
+.switch .slider::before {
+  content: ""; position: absolute; height: 16px; width: 16px;
+  left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.2s;
+}
+.switch input:checked + .slider { background: var(--accent); }
+.switch input:checked + .slider::before { transform: translateX(18px); }
+
+.warning { color: var(--amber); font-size: 13px; margin-top: 8px; }
+
+.actions { display: flex; gap: 8px; margin-top: 16px; }
+.actions button {
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); padding: 8px 14px;
+  border-radius: 6px; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+.actions button:hover { background: var(--border); }
+.actions button.danger { color: var(--red); border-color: var(--red); }
+.actions button.ghost { background: transparent; }
+.actions.bottom { margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--border); }
+
+.installs { list-style: none; }
+.installs li {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px;
+  font-size: 13px;
+}
+.installs .host { font-weight: 500; }
+.installs .device { color: var(--text-dim); font-family: var(--mono); font-size: 11px; }
+.installs .seen { color: var(--text-dim); font-size: 12px; }
+.installs button {
+  background: transparent; border: 0; color: var(--red);
+  cursor: pointer; font-size: 16px; padding: 0 4px;
+}
+
+.download {
+  margin-top: 32px; padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.download button {
+  background: var(--accent); color: white; border: 0;
+  padding: 12px 24px; border-radius: 6px; font-size: 14px;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.download .cmd {
+  margin-top: 16px; padding: 12px; background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 12px; color: var(--text-dim); overflow-x: auto;
+}
+
+.locked { text-align: center; }
+.locked button {
+  background: var(--accent); color: white; border: 0;
+  padding: 12px 24px; border-radius: 6px; font-size: 14px;
+  font-weight: 600; cursor: pointer; font-family: inherit; margin-top: 16px;
+}
+
+footer { text-align: center; padding: 48px 32px; color: var(--text-dim); font-size: 13px; border-top: 1px solid var(--border); }
+
+/* ── Identity ────────────────────────────────────────────────────────────
+   The umbrella brand ("The Lyceum") gets its own hero above the products,
+   distinct from any one product's pricing hero. */
+.identity { padding-bottom: 24px; }
+.eyebrow {
+  color: var(--accent); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px;
+}
+.hero .lede-sub { color: var(--text-dim); font-size: 15px; max-width: 620px; margin: 0 auto; }
+.hero .lede.small { font-size: 14px; max-width: 620px; }
+.section-title { font-size: 28px; letter-spacing: -0.02em; margin-bottom: 12px; text-align: center; }
+
+/* ── Products ────────────────────────────────────────────────────────────
+   Two cards, deliberately not visually identical: the dot colour marks
+   brake (danger — red) vs redteam (reasoning — green) consistently with the
+   danger/flaw-class colours used inside each product's own CLI output. */
+.products {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  padding: 24px 0 64px;
+}
+.product-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px;
+}
+.product-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.product-head h2 { font-size: 20px; letter-spacing: -0.01em; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.dot.red { background: var(--accent); }
+.dot.green { background: var(--green); }
+.paid-badge, .free-badge {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; margin-left: auto;
+}
+.paid-badge { color: var(--accent); border: 1px solid var(--accent-dim); }
+.free-badge { color: var(--green); border: 1px solid var(--green); }
+.paid-badge.small, .free-badge.small { margin-left: 6px; padding: 1px 6px; font-size: 9px; }
+.product-desc { color: var(--text-dim); font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+.product-cta { font-size: 13px; font-weight: 600; }
+
+.cmd-block {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px 16px; margin-bottom: 16px; overflow-x: auto;
+}
+.cmd-block code { color: var(--text); white-space: pre; }
+
+.pricing-section { padding-top: 24px; }
+
+/* ── Guides ──────────────────────────────────────────────────────────────
+   The gate itself is server-side (see /api/guides/:product) — this is only
+   presentation of whatever the server decided to send. */
+.guides-section { padding: 24px 0 72px; }
+.guide-tabs {
+  display: flex; gap: 8px; justify-content: center; margin: 24px 0 32px;
+}
+.guide-tabs .gt {
+  background: var(--bg-elev); border: 1px solid var(--border); color: var(--text-dim);
+  padding: 10px 18px; border-radius: 999px; font-size: 14px; font-family: inherit;
+  cursor: pointer; display: flex; align-items: center;
+}
+.guide-tabs .gt.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.guide-tabs .gt.active .free-badge.small { border-color: var(--bg); color: var(--bg); }
+.guide-tabs .gt.active .paid-badge.small { border-color: var(--bg); color: var(--bg); }
+
+.guide-body { max-width: 720px; margin: 0 auto; }
+.guide-intro { color: var(--text-dim); font-size: 14px; margin-bottom: 24px; }
+.guide-steps { list-style: none; counter-reset: none; }
+.guide-steps li {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 20px 22px; margin-bottom: 12px;
+}
+.guide-steps h4 { font-size: 15px; margin-bottom: 10px; }
+.guide-steps .expect { font-size: 13px; color: var(--green); margin-bottom: 8px; }
+.guide-steps .detail { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+
+.guide-locked {
+  text-align: center; padding: 28px; border: 1px dashed var(--border);
+  border-radius: var(--radius); margin-top: 8px;
+}
+.guide-locked p { color: var(--text-dim); font-size: 14px; margin-bottom: 14px; }
+.guide-locked button {
+  background: var(--accent); color: white; border: 0; padding: 10px 20px;
+  border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+
+@media (max-width: 720px) {
+  .hero h1 { font-size: 32px; }
+  .plans { grid-template-columns: 1fr; }
+  .products { grid-template-columns: 1fr; }
+  .dashboard .row { grid-template-columns: 1fr; }
+  .topbar { padding: 14px 16px; }
+  main { padding: 32px 16px 64px; }
+}

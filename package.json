@@ -1,7 +1,7 @@
 {
   "name": "brake",
-  "version": "0.1.0",
-  "description": "The emergency brake, 1000ms SLA. Standalone CLI + MCP server + installable skill for Claude Desktop, Claude Code, and ChatGPT. Pulled by the model itself when danger is detected — no slash required.",
+  "version": "0.2.0",
+  "description": "The emergency brake, 1000ms SLA. Standalone CLI + MCP server + license server. Pulled by the model itself when danger is detected \u2014 no slash required. Subscriptions: Starter $222/mo (3 AI), Pro $310/mo (5 AI); annual 5% off.",
   "type": "module",
   "bin": {
     "brake": "./dist/cli.js"
@@ -13,7 +13,7 @@
     "./stop-all": "./dist/stop-all.js",
     "./audit": "./dist/audit.js",
     "./config": "./dist/config.js",
-    "./install": "./dist/install.js"
+    "./license": "./dist/license.js"
   },
   "files": [
     "dist",
@@ -22,26 +22,35 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p server/tsconfig.json && node -e \"require('fs').cpSync('server/src/web','dist-server/web',{recursive:true})\"",
     "dev": "tsx src/cli.ts",
     "mcp:dev": "tsx src/mcp.ts",
+    "server": "node dist-server/index.js",
+    "server:dev": "tsx server/src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepare": "npm run build",
-    "postinstall": "echo \"brake installed. Run 'brake install all' to wire it into your AI host.\""
+    "postinstall": "echo \"brake installed. Run 'brake login' to get a license, or visit https://brake.example to subscribe.\""
   },
   "dependencies": {
+    "@hono/node-server": "^1.13.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "bcryptjs": "^2.4.3",
+    "hono": "^4.6.0",
+    "jsonwebtoken": "^9.0.2",
+    "stripe": "^17.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.5.0"
   },
   "keywords": [
     "mcp",
@@ -50,7 +59,8 @@
     "ai-safety",
     "emergency-brake",
     "agent-control",
-    "red-alert"
+    "red-alert",
+    "saas"
   ],
   "license": "MIT"
 }

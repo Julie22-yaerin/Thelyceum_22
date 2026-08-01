@@ -7,9 +7,12 @@
  *   - danger_scan    scan an intent for danger before it runs
  *   - brake_status   read recent brake events from the audit log
  *
- * The tool descriptions are written so the model calls them proactively —
- * the user does not have to say "/brake" or mention this server by name.
- * If the model sees danger, the model pulls the brake.
+ * Tool descriptions are mode-aware. In 'always' mode (default) the model
+ * calls them proactively — the user does not have to say "/brake". In
+ * 'slash' mode the descriptions tell the model to ONLY call `brake` when
+ * the user explicitly types /brake. The mode is read from
+ * `~/.brake/config.json` at startup; change it with `brake mode ...` and
+ * restart the host.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -20,31 +23,20 @@ import { scanForDanger, listDangerRules } from "./danger.js";
 import { makeStopAll } from "./stop-all.js";
 import { readAudit } from "./audit.js";
 import { loadConfig } from "./config.js";
+import { getMode, brakeDescriptionFor, dangerScanDescriptionFor } from "./mode.js";
+import { loadLicense } from "./license.js";
+
+const mode = await getMode();
+const cfg = await loadConfig();
 
 const server = new McpServer({
   name: "brake",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 server.tool(
   "brake",
-  [
-    "Pull the emergency brake. Stops every PID registered with `brake track`,",
-    "runs the configured stop script, posts to the webhook if set, and writes",
-    "an audit line. The SLA is 1000ms; a brake that quietly ran slow is reported",
-    "as over-SLA rather than hidden.",
-    "",
-    "Call this when the model itself judges the situation dangerous, NOT only",
-    "when the user says 'brake' or types /brake. The user is informed afterwards,",
-    "not asked beforehand. A brake that asks permission is not a brake.",
-    "",
-    "Trigger conditions (any one is enough):",
-    "- Intent matches a danger pattern: data exfiltration, infrastructure attack,",
-    "  credential access, destructive operation, financial movement, impersonation.",
-    "- The user says 'stop', 'halt', 'panic', 'abort', 'kill it', 'đợi', 'dừng'.",
-    "- The agent is about to do something irreversible without explicit consent.",
-    "- The model would not be able to undo the action in 5 seconds.",
-  ].join(" "),
+  brakeDescriptionFor(mode),
   {
     reason: z.string().describe("Why the brake was pulled. Logged to the audit trail."),
     sla_ms: z.number().int().min(1).max(60_000).optional()
@@ -53,7 +45,9 @@ server.tool(
       .describe("If true, do not actually stop anything; return what would happen."),
   },
   async ({ reason, sla_ms, dry_run }) => {
-    const cfg = await loadConfig();
+    // If the user has a license, surface a friendly note in the result.
+    const lic = await loadLicense().catch(() => null);
+
     const policy = sla_ms
       ? { ...DEFAULT_POLICY, brakeSlaMs: sla_ms }
       : { ...DEFAULT_POLICY, brakeSlaMs: cfg.slaMs };
@@ -70,6 +64,8 @@ server.tool(
             auditPath: cfg.auditPath,
             webhookUrl: cfg.webhookUrl ?? null,
             stopScript: cfg.stopScript ?? null,
+            mode,
+            plan: lic?.plan ?? null,
           }, null, 2),
         }],
       };
@@ -87,24 +83,14 @@ server.tool(
     });
 
     return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify({ ...result, mode, plan: lic?.plan ?? null }, null, 2) }],
     };
   }
 );
 
 server.tool(
   "danger_scan",
-  [
-    "Scan a planned action for danger before executing. Returns the matched",
-    "danger class, evidence, and explanation if the intent matches a red-alert",
-    "rule. Use this proactively before any action that touches data, credentials,",
-    "networks, or money. The model should call this itself when it judges an",
-    "action might be dangerous — the user does not have to ask.",
-    "",
-    "Rules watched: data_exfiltration, infrastructure_attack, credential_access,",
-    "destructive_operation, financial_movement, impersonation. Patterns are",
-    "deliberately narrow to keep false positives rare.",
-  ].join(" "),
+  dangerScanDescriptionFor(mode),
   {
     intent: z.string()
       .describe("What the agent is about to do. Will be scanned for danger patterns."),
@@ -131,7 +117,6 @@ server.tool(
       .describe("Max events to return. Default 20."),
   },
   async ({ limit }) => {
-    const cfg = await loadConfig();
     const events = await readAudit(limit ?? 20, cfg.auditPath);
     return {
       content: [{ type: "text", text: JSON.stringify(events, null, 2) }],
@@ -147,6 +132,18 @@ server.resource(
       uri: "brake://rules",
       mimeType: "application/json",
       text: JSON.stringify(listDangerRules(), null, 2),
+    }],
+  })
+);
+
+server.resource(
+  "brake://mode",
+  "The current brake mode. 'always' = model auto-fires brake on danger. 'slash' = brake only fires on explicit /brake.",
+  async () => ({
+    contents: [{
+      uri: "brake://mode",
+      mimeType: "application/json",
+      text: JSON.stringify({ mode, configPath: "~/.brake/config.json" }, null, 2),
     }],
   })
 );
