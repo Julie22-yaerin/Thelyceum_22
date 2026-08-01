@@ -24,36 +24,37 @@ describe("guideFor", () => {
 });
 
 describe("gating flags", () => {
-  it("redteam is never gated — it is free end to end", () => {
-    expect(REDTEAM_GUIDE.gated).toBe(false);
-  });
-
-  it("brake is gated — it is the paid product", () => {
+  it("both products are gated behind the same Lyceum subscription", () => {
+    expect(REDTEAM_GUIDE.gated).toBe(true);
     expect(BRAKE_GUIDE.gated).toBe(true);
   });
 });
 
 describe("previewOf", () => {
-  it("returns exactly the first step, not a summary of it", () => {
-    const preview = previewOf(BRAKE_GUIDE);
-    expect(preview.steps).toHaveLength(1);
-    expect(preview.steps[0]).toEqual(BRAKE_GUIDE.steps[0]);
-  });
+  for (const guide of [BRAKE_GUIDE, REDTEAM_GUIDE]) {
+    describe(guide.product, () => {
+      it("returns exactly the first step, not a summary of it", () => {
+        const preview = previewOf(guide);
+        expect(preview.steps).toHaveLength(1);
+        expect(preview.steps[0]).toEqual(guide.steps[0]);
+      });
 
-  it("the preview step is real and runnable, not a teaser", () => {
-    // If the one free step doesn't actually work, an unlicensed visitor's
-    // first experience of the product is a broken command — worse than no
-    // preview at all.
-    const preview = previewOf(BRAKE_GUIDE);
-    expect(preview.steps[0].command).toBeTruthy();
-    expect(preview.steps[0].expect).toBeTruthy();
-  });
+      it("the preview step is real and runnable, not a teaser", () => {
+        // If the one free step doesn't actually work, an unlicensed
+        // visitor's first experience of the product is a broken command —
+        // worse than no preview at all.
+        const preview = previewOf(guide);
+        expect(preview.steps[0].command).toBeTruthy();
+        expect(preview.steps[0].expect).toBeTruthy();
+      });
 
-  it("does not mutate the source guide", () => {
-    const before = BRAKE_GUIDE.steps.length;
-    previewOf(BRAKE_GUIDE);
-    expect(BRAKE_GUIDE.steps.length).toBe(before);
-  });
+      it("does not mutate the source guide", () => {
+        const before = guide.steps.length;
+        previewOf(guide);
+        expect(guide.steps.length).toBe(before);
+      });
+    });
+  }
 });
 
 describe("guide content integrity", () => {

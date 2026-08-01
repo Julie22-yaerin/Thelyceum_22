@@ -10,6 +10,7 @@
 import { randomUUID } from "node:crypto";
 import type { DbHandle, InstallRow } from "./db.js";
 import { getPlan } from "./plans.js";
+import type { SubscriptionRow } from "./db.js";
 
 export type HostType = "claude-desktop" | "claude-code" | "chatgpt";
 
@@ -46,14 +47,14 @@ export function registerInstall(db: DbHandle, input: RegisterInput): RegisterRes
 
   const sub = db.raw
     .prepare("SELECT * FROM subscriptions WHERE user_id = ?")
-    .get(input.userId) as { id: string; status: string; plan: string; expires_at: number; auto_renew: number } | undefined;
+    .get(input.userId) as SubscriptionRow | undefined;
 
   const now = Date.now();
   if (!sub || sub.status !== "active" || (sub.expires_at < now && sub.auto_renew === 0)) {
     throw new DeviceError("no_active_subscription", "no active subscription; visit brake dashboard to renew");
   }
 
-  const plan = getPlan(sub.plan as "starter" | "pro");
+  const plan = getPlan(sub.plan);
   const existing = db.raw
     .prepare("SELECT * FROM installs WHERE user_id = ? AND host_type = ? AND device_id = ?")
     .get(input.userId, input.hostType, input.deviceId) as InstallRow | undefined;

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plans — The Lyceum</title>
+  <meta name="description" content="One subscription, both circuit breakers. Team, Business, and Enterprise plans for AI operations running agents in production." />
+  <link rel="stylesheet" href="/web/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a href="/web/" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;">
+        <span class="logo">●</span>
+        <span class="name">The Lyceum</span>
+      </a>
+      <span class="tag">showroom</span>
+    </div>
+    <nav class="nav">
+      <a href="/web/">Performance</a>
+      <a href="#plans">Plans</a>
+      <a href="#guides">Setup</a>
+      <a href="#login" id="navLogin">Sign in</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ── Plans ──────────────────────────────────────────────────────── -->
+    <section id="plans" class="hero">
+      <p class="eyebrow">One subscription, both breakers</p>
+      <h1>Plans</h1>
+      <p class="lede small">
+        Priced per tracked AI host connection across your fleet, because that is what
+        scales with how much you actually run. Both brake and redteam are included at
+        every tier — they are two halves of the same job, not an upsell.
+      </p>
+
+      <div class="billing-toggle">
+        <button class="bt active" data-cycle="monthly">Monthly</button>
+        <button class="bt" data-cycle="annual">Annual <span class="save">save ~17%</span></button>
+      </div>
+
+      <div class="plans" id="plansGrid">
+        <!-- populated by app.js -->
+      </div>
+
+      <p class="footnote">
+        All prices in USD. Cancel anytime. Annual is billed up-front as the per-month
+        equivalent × 12. Each <code>install</code> on a unique device counts as one
+        connection; re-installing the same host on the same device is idempotent and
+        does not consume a second slot.
+      </p>
+    </section>
+
+    <!-- ── Guides ─────────────────────────────────────────────────────── -->
+    <section id="guides" class="guides-section">
+      <h2 class="section-title">Setup guides</h2>
+      <p class="section-sub">
+        Step by step, with the exact command and exactly what you should see at each one.
+        The first step of each guide is free and fully working — prove the tool does what
+        we say on your own machine before paying for anything. The rest unlocks with an
+        active subscription.
+      </p>
+
+      <div class="guide-tabs">
+        <button class="gt active" data-product="brake"><span class="dot red"></span> brake</button>
+        <button class="gt" data-product="redteam"><span class="dot violet"></span> redteam</button>
+      </div>
+
+      <div id="guideBody" class="guide-body">
+        <!-- populated by app.js -->
+      </div>
+    </section>
+
+    <!-- ── Auth ───────────────────────────────────────────────────────── -->
+    <section id="auth" class="card auth hidden" aria-hidden="true">
+      <h2 id="authTitle">Sign in</h2>
+      <form id="authForm">
+        <label>Email <input type="email" name="email" required autocomplete="email" /></label>
+        <label>Password
+          <input type="password" name="password" required minlength="8" autocomplete="current-password" />
+        </label>
+        <button type="submit" id="authSubmit">Sign in</button>
+        <p class="switch">
+          <a href="#" id="authSwitch">Create an account</a>
+        </p>
+        <p class="error" id="authError"></p>
+      </form>
+    </section>
+
+    <!-- ── Dashboard ──────────────────────────────────────────────────── -->
+    <section id="dashboard" class="card dashboard hidden" aria-hidden="true">
+      <h2>Account</h2>
+      <p class="muted" id="dashEmail"></p>
+
+      <div class="row">
+        <div class="col">
+          <h3>Subscription</h3>
+          <div id="subBox">
+            <p><strong>Plan:</strong> <span id="subPlan">—</span></p>
+            <p><strong>Billing:</strong> <span id="subBilling">—</span></p>
+            <p><strong>Status:</strong> <span id="subStatus" class="badge">—</span></p>
+            <p><strong>Expires:</strong> <span id="subExpires">—</span></p>
+            <p><strong>Auto-renew:</strong>
+              <label class="switch">
+                <input type="checkbox" id="autoRenew" />
+                <span class="slider"></span>
+              </label>
+            </p>
+            <p class="warning" id="subWarning"></p>
+          </div>
+          <div class="actions" id="subActions">
+            <button id="btnChangePlan">Change plan</button>
+          </div>
+        </div>
+
+        <div class="col">
+          <h3>AI connections <span class="muted" id="connCount">0/0</span></h3>
+          <ul id="installsList" class="installs"></ul>
+          <p class="muted small">
+            Each <code>brake install &lt;host&gt;</code> or <code>redteam install &lt;host&gt;</code>
+            on a unique device counts as one connection.
+          </p>
+        </div>
+      </div>
+
+      <div class="download">
+        <h3>Download CLI</h3>
+        <p class="muted">
+          With an active subscription the CLI tarball unlocks here.
+        </p>
+        <button id="btnDownload">Download brake CLI</button>
+        <pre id="installCmd" class="cmd"></pre>
+      </div>
+
+      <div class="actions bottom">
+        <button id="btnLogout" class="ghost">Sign out</button>
+      </div>
+    </section>
+
+    <section id="locked" class="card locked hidden" aria-hidden="true">
+      <h2>Subscription locked</h2>
+      <p id="lockedReason">Your subscription has expired and auto-renew is off.</p>
+      <button id="btnRenew">Renew subscription</button>
+    </section>
+  </main>
+
+  <footer>
+    <p>One plan, both breakers. The core detection in each tool is MIT and runs without a license — see the pricing note above for what a subscription actually buys.</p>
+  </footer>
+
+  <script src="/web/app.js" type="module"></script>
+</body>
+</html>

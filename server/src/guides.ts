@@ -12,11 +12,12 @@
  * source sitting right there in the open — same reason a paid cookbook sells
  * next to free recipes on the internet.
  *
- * `redteam` is free end to end, so its guide is public — gating instructions
- * for a free tool would be incoherent. `brake` is the paid product, so its
- * guide is gated; the free tier gets the first section (verify the danger
- * scan works) as a real, working preview, not a teaser that lies about what
- * comes next.
+ * Both products are gated behind the same Lyceum subscription — one plan, two
+ * circuit breakers. Each guide's first step is free and fully working, not a
+ * teaser: an unlicensed visitor can prove the danger scan and the reasoning
+ * challenge both actually work on their machine before paying for anything.
+ * The remaining steps require an active subscription, checked the same way
+ * for both products.
  */
 
 export interface GuideStep {
@@ -105,9 +106,9 @@ export const BRAKE_GUIDE: Guide = {
 
 export const REDTEAM_GUIDE: Guide = {
   product: "redteam",
-  gated: false,
+  gated: true,
   title: "Setting up redteam, step by step",
-  intro: "Free, no account needed. Same shape as the brake setup, minus the login step.",
+  intro: "Same Lyceum plan as brake — one subscription unlocks both. Same free-first-step shape.",
   steps: [
     {
       title: "1. Install",

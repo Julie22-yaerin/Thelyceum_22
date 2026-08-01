@@ -1,33 +1,36 @@
 /**
  * Plan definitions.
  *
- * ── Why these numbers, not the old $222 / $310 ──────────────────────────────
- * The core CLI is MIT-licensed and nothing in it checks for a license before
- * running — `brake scan` and `brake engage` work today, free, forever, for
- * anyone who clones the repo. That is not a bug to route around; it is the
- * license, and pricing has to be honest about what payment actually buys on
- * top of it: tracked multi-device install limits (real, enforced server-side
- * in devices.ts), the guided setup flow (see guides.ts), and priority
- * support. It does not buy the danger detection itself.
+ * ── Repriced again: $9/$29 was aimed at the wrong buyer ─────────────────────
+ * The previous version of this file argued the buyer was a solo operator
+ * paying out of pocket, and priced for that. The actual buyer is a company
+ * with a large, ongoing AI operating cost across a fleet of agents — and for
+ * that buyer, a card that reads $9/mo does not read as "cheap and honest," it
+ * reads as "not built for what I run." A team burning tens of thousands of
+ * dollars a month on inference does not evaluate a safety layer on whether it
+ * is a rounding error; they evaluate whether it is going to hold up, and the
+ * price is one of the signals they read that from before they've tried it.
  *
- * Priced for the buyer this product actually has: a solo operator or small
- * team paying out of pocket, self-serve, no procurement. $222/mo asked for
- * enterprise-procurement trust signals this product does not have yet — a
- * sales-assisted enterprise motion for a tool with no sales team reads as a
- * mistake, not confidence. The number one incident costs (a runaway agent's
- * API bill) still dwarfs a $9–29/mo subscription, which is the argument that
- * actually needs to survive contact with the buyer's own wallet.
+ * What stays true from the last version and does not change with the buyer:
+ * the CORE DETECTION IS STILL FREE. brake's danger_scan and redteam's
+ * challenge are still MIT, still run with no license check, still work for
+ * anyone who clones the repo. Pricing here is honest about that in the same
+ * way it was at $9/mo — it is not selling detection, it is selling the
+ * managed layer on top: tracked fleet-wide install limits, the guided setup,
+ * support with a real response-time commitment, and — at Enterprise — a
+ * contract instead of a credit card. Both products are covered by one
+ * subscription; there is one Lyceum plan, not two separate purchases.
  *
- * The prices here are the source of truth. Stripe is configured with
- * `price_data` computed from these at checkout time (see `stripe.ts`) — no
- * hardcoded Stripe price IDs to keep in sync.
- *
- * Annual billing is presented as a per-month figure but charged as the
- * annual total up-front. The discount is the difference between the annual
- * monthly-rate and the monthly monthly-rate.
+ * Enterprise is deliberately NOT a self-serve checkout tier. A company large
+ * enough to need this needs a person to talk to about procurement, DPAs, and
+ * fleet size that doesn't fit a fixed connection count — putting a number on
+ * a button for that buyer is either a lowball that leaves money on the table
+ * or a guess that's wrong for their actual scale. `ENTERPRISE_TIER` is a
+ * separate constant for exactly that reason: it never goes through
+ * `priceFor`/Stripe, only through a contact link.
  */
 
-export type PlanId = "starter" | "pro";
+export type PlanId = "team" | "business";
 export type BillingCycle = "monthly" | "annual";
 export type SubscriptionStatus = "active" | "locked";
 
@@ -35,7 +38,7 @@ export interface Plan {
   id: PlanId;
   name: string;
   description: string;
-  /** Max number of AI host connections (each install on each device = 1). */
+  /** Max number of AI host connections (each install on each device = 1), across both products. */
   aiConnections: number;
   /** Per-month price in cents. Annual is also charged per-month equivalent. */
   pricesCentsPerMonth: Record<BillingCycle, number>;
@@ -44,38 +47,55 @@ export interface Plan {
 
 export const PLANS: Plan[] = [
   {
-    id: "starter",
-    name: "Starter",
-    description: "For a solo operator running a couple of agents. The core detection is free either way — this is for tracked devices and the guided setup.",
-    aiConnections: 3,
+    id: "team",
+    name: "Team",
+    description: "For a team running agents in production, not just experimenting with them.",
+    aiConnections: 15,
     pricesCentsPerMonth: {
-      monthly: 900,  // $9.00 / month
-      annual: 700,   // $7.00 / month, billed annually as $84.00
+      monthly: 19900, // $199.00 / month
+      annual: 16600,  // $166.00 / month, billed annually as $1,992.00 (~17% off)
     },
     features: [
-      "Up to 3 tracked AI host connections (Claude Desktop, Claude Code, ChatGPT)",
-      "Guided, step-by-step setup — unlocked docs with copy-paste commands",
-      "Everything in the free CLI: danger_scan, 1000ms SLA, local audit log",
+      "Both circuit breakers — brake and redteam — one plan",
+      "Up to 15 tracked AI host connections",
+      "Guided, step-by-step setup for both tools",
       "Standard email support",
     ],
   },
   {
-    id: "pro",
-    name: "Pro",
-    description: "For a small team running agents across several machines.",
-    aiConnections: 10,
+    id: "business",
+    name: "Business",
+    description: "For a fleet of agents across several teams or environments.",
+    aiConnections: 75,
     pricesCentsPerMonth: {
-      monthly: 2900,  // $29.00 / month
-      annual: 2400,   // $24.00 / month, billed annually as $288.00
+      monthly: 79900, // $799.00 / month
+      annual: 66600,  // $666.00 / month, billed annually as $7,992.00 (~17% off)
     },
     features: [
-      "Up to 10 tracked AI host connections",
-      "Everything in Starter",
-      "Priority email support, < 1 business day",
-      "First access to new danger rules and new Lyceum tools",
+      "Everything in Team",
+      "Up to 75 tracked AI host connections",
+      "Priority support, < 4 business hours",
+      "First access to new danger rules, new flaw classes, and new Lyceum tools",
     ],
   },
 ];
+
+/**
+ * Not a Plan, not billed through Stripe. Shown on the pricing page as a
+ * contact card, never a checkout button — see the module comment.
+ */
+export const ENTERPRISE_TIER = {
+  name: "Enterprise",
+  description:
+    "For an AI operation with fleet-wide spend measured in the hundreds of thousands or more, where one runaway agent can cost more than a year of any plan above.",
+  features: [
+    "Unlimited tracked AI host connections",
+    "Dedicated Slack channel with the team that builds this",
+    "Custom danger and flaw-class rules for your infrastructure",
+    "Procurement-ready: DPA, security questionnaire, invoicing terms",
+  ],
+  contactEmail: "enterprise@thelyceum.dev",
+} as const;
 
 export function getPlan(id: PlanId): Plan {
   const plan = PLANS.find((p) => p.id === id);

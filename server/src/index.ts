@@ -24,7 +24,7 @@ import { z } from "zod";
 import { openDb } from "./db.js";
 import { signup, login, getUserById, verifySession, AuthError } from "./auth.js";
 import { signLicense, verifyLicense } from "./license.js";
-import { PLANS, getPlan, type PlanId, type BillingCycle } from "./plans.js";
+import { PLANS, ENTERPRISE_TIER, getPlan, type PlanId, type BillingCycle } from "./plans.js";
 import {
   createCheckoutSession,
   handleWebhookEvent,
@@ -67,7 +67,10 @@ app.use("/api/*", cors({ origin: PUBLIC_URL, credentials: true }));
 // ── Public ──────────────────────────────────────────────────────────────────
 
 app.get("/api/plans", (c) => {
-  return c.json({ plans: PLANS });
+  // Enterprise ships alongside the billable plans but is deliberately not one
+  // of them — the client renders it as a contact card. Keeping it out of
+  // `plans` means it can never be passed to checkout by accident.
+  return c.json({ plans: PLANS, enterprise: ENTERPRISE_TIER });
 });
 
 app.get("/api/health", (c) => c.json({ ok: true, devMode: DEV_MODE }));
@@ -149,7 +152,7 @@ app.get("/api/me", (c) => {
 });
 
 const CheckoutBody = z.object({
-  plan: z.enum(["starter", "pro"]),
+  plan: z.enum(["team", "business"]),
   billing: z.enum(["monthly", "annual"]),
 });
 
@@ -341,6 +344,10 @@ app.get("/web/*", async (c) => {
   // could reach this bug; fixing the build script surfaced it.
   let reqPath = c.req.path.replace(/^\/web/, "");
   if (reqPath === "" || reqPath.endsWith("/")) reqPath += "index.html";
+  // Pretty URLs: /web/showroom → showroom.html. Only when the bare path has
+  // no extension and no such file exists, so a real extensionless asset would
+  // still win.
+  else if (!reqPath.includes(".") && !existsSync(join(WEB_DIR, reqPath))) reqPath += ".html";
   const filePath = join(WEB_DIR, reqPath);
   if (existsSync(filePath) && statSync(filePath).isFile()) {
     const data = readFileSync(filePath);

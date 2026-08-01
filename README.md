@@ -98,6 +98,36 @@ Six classes are watched. Patterns are deliberately narrow to keep false positive
 - `financial_movement` — transfers, wires, payments
 - `impersonation` — acting as CEO / admin / founder without consent
 
+## Performance
+
+Measured on a single core of an Apple Silicon laptop, after JIT warm-up, over a
+mixed corpus of dangerous and benign inputs:
+
+| | |
+|---|---|
+| `scanForDanger` throughput | ~1,370,000 calls/sec |
+| p50 / p99 per call | 0.73µs / 0.93µs |
+| network calls on the hot path | 0 |
+
+The scan is pure local computation — no API, no model, no round trip — which is
+what makes it safe to run on every tool call in a heavy agent harness rather
+than sampling. `test/throughput.test.ts` fails the build if throughput drops
+below a floor set well under the figure above, so the number can't quietly rot.
+
+Engaging the brake does real work (killing tracked PIDs, running your stop
+script, posting your webhook) and is bounded by the measured 1000ms SLA
+instead — reported honestly when it is missed.
+
+## Pricing
+
+`brake` and [`redteam`](../redteam) are covered by one Lyceum subscription.
+Team $199/mo (15 connections), Business $799/mo (75), Enterprise by contact.
+
+The core detection is MIT and runs with no license check — `brake scan` and
+`brake engage` work today, free, for anyone who clones this repo. A subscription
+buys tracked fleet-wide install limits, the guided setup, and support; it does
+not buy the danger detection itself.
+
 ## License
 
 MIT. Danger patterns and SLA design derived from [Lyceum](https://github.com/anthropic-experimental/lyceum) (archived).

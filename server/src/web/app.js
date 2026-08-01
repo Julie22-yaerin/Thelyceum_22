@@ -31,26 +31,53 @@ async function api(path, opts = {}) {
 // ── Plans render ───────────────────────────────────────────────────────────
 
 function renderPlans() {
-  const plansEl = $("#plans");
+  const plansEl = $("#plansGrid");
+  if (!plansEl) return; // landing page has no plans grid
   plansEl.innerHTML = "";
+
   for (const plan of window.__plans) {
     const price = plan.pricesCentsPerMonth[state.cycle];
-    const featured = plan.id === "pro" ? "featured" : "";
+    const featured = plan.id === "team" ? "featured" : "";
     const ai = plan.aiConnections;
-    const cycle = state.cycle === "monthly" ? "/mo" : "/mo · annual";
-    const annualNote = state.cycle === "annual" ? `Billed annually as $${(plan.pricesCentsPerMonth.annual * 12 / 100).toLocaleString()}` : "";
+    const cycle = state.cycle === "monthly" ? "/mo" : "/mo";
+    const annualNote = state.cycle === "annual"
+      ? `Billed annually as $${(plan.pricesCentsPerMonth.annual * 12 / 100).toLocaleString()}`
+      : "";
     const el = document.createElement("div");
     el.className = `plan ${featured}`;
     el.innerHTML = `
       <h3>${plan.name}</h3>
-      <div class="name">${ai} AI host${ai > 1 ? "s" : ""}</div>
+      <div class="conn">${ai} AI host connections</div>
       <div class="desc">${plan.description}</div>
-      <div class="price">$${(price / 100).toFixed(0)}<small>${cycle}</small></div>
+      <div class="price">$${(price / 100).toLocaleString()}<small>${cycle}</small></div>
       <div class="annual">${annualNote}</div>
       <ul>${plan.features.map((f) => `<li>${f}</li>`).join("")}</ul>
       <button class="cta" data-plan="${plan.id}">Choose ${plan.name}</button>
     `;
     el.querySelector("button").addEventListener("click", () => choosePlan(plan.id));
+    plansEl.appendChild(el);
+  }
+
+  // Enterprise is a contact card, never a checkout button — a fleet that size
+  // needs a conversation about scale and procurement, and putting a number on
+  // a button for them is either a lowball or a wrong guess. The server never
+  // exposes it as a billable plan; see plans.ts ENTERPRISE_TIER.
+  const ent = window.__enterprise;
+  if (ent) {
+    const el = document.createElement("div");
+    el.className = "plan enterprise";
+    el.innerHTML = `
+      <h3>${ent.name}</h3>
+      <div class="conn">Unlimited connections</div>
+      <div class="desc">${ent.description}</div>
+      <div class="price">Let's talk</div>
+      <div class="annual"></div>
+      <ul>${ent.features.map((f) => `<li>${f}</li>`).join("")}</ul>
+      <button class="cta">Contact us</button>
+    `;
+    el.querySelector("button").addEventListener("click", () => {
+      window.location.href = `mailto:${ent.contactEmail}?subject=${encodeURIComponent("Lyceum Enterprise enquiry")}`;
+    });
     plansEl.appendChild(el);
   }
 }
@@ -153,7 +180,7 @@ function renderDashboard() {
     $("#locked").classList.remove("hidden");
     $("#lockedReason").textContent = "You don't have a subscription yet. Pick a plan above.";
     $("#btnRenew").textContent = "Pick a plan";
-    $("#btnRenew").onclick = () => $("#pricing").scrollIntoView({ behavior: "smooth" });
+    $("#btnRenew").onclick = () => $("#plans").scrollIntoView({ behavior: "smooth" });
     $("#subBox").innerHTML = "<p class='muted'>No subscription yet.</p>";
     return;
   }
@@ -178,7 +205,7 @@ function renderDashboard() {
   if (status === "locked") {
     $("#subWarning").textContent = "Auto-renew is off and the subscription has expired. Click Renew to restart.";
     $("#btnRenew").textContent = "Renew subscription";
-    $("#btnRenew").onclick = () => $("#pricing").scrollIntoView({ behavior: "smooth" });
+    $("#btnRenew").onclick = () => $("#plans").scrollIntoView({ behavior: "smooth" });
   } else if (state.sub.auto_renew === 0) {
     $("#subWarning").textContent = "Auto-renew is off. The subscription will lock when it expires.";
   } else {
@@ -300,7 +327,7 @@ function renderGuide(data) {
     `;
     gate.querySelector("button").addEventListener("click", () => {
       if (reason === "subscription_required") {
-        $("#pricing").scrollIntoView({ behavior: "smooth" });
+        $("#plans").scrollIntoView({ behavior: "smooth" });
       } else {
         state.mode = "signup";
         showAuth();
@@ -328,14 +355,17 @@ $$(".guide-tabs .gt").forEach((b) => {
 
 (async function boot() {
   try {
-    const { plans } = await api("/api/plans");
+    const { plans, enterprise } = await api("/api/plans");
     window.__plans = plans;
+    window.__enterprise = enterprise;
     renderPlans();
   } catch (err) {
-    document.querySelector("#pricing").innerHTML = "<p>Could not load plans. Is the server running?</p>";
+    const grid = document.querySelector("#plansGrid");
+    if (grid) grid.innerHTML = "<p class='muted'>Could not load plans. Is the server running?</p>";
   }
   if (localStorage.getItem(SESSION_KEY)) {
     await loadDashboard();
   }
-  await loadGuide("redteam");
+  // Matches the showroom's default active tab.
+  await loadGuide("brake");
 })();

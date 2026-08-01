@@ -9,6 +9,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
+import type { PlanId } from "./plans.js";
 
 export interface DbHandle {
   raw: DatabaseSync;
@@ -100,7 +101,7 @@ export interface UserRow {
 export interface SubscriptionRow {
   id: string;
   user_id: string;
-  plan: "starter" | "pro";
+  plan: PlanId;
   billing: "monthly" | "annual";
   status: "active" | "locked";
   stripe_customer_id: string | null;
