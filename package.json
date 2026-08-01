@@ -1,0 +1,56 @@
+{
+  "name": "brake",
+  "version": "0.1.0",
+  "description": "The emergency brake, 1000ms SLA. Standalone CLI + MCP server + installable skill for Claude Desktop, Claude Code, and ChatGPT. Pulled by the model itself when danger is detected — no slash required.",
+  "type": "module",
+  "bin": {
+    "brake": "./dist/cli.js"
+  },
+  "main": "./dist/brake.js",
+  "exports": {
+    ".": "./dist/brake.js",
+    "./danger": "./dist/danger.js",
+    "./stop-all": "./dist/stop-all.js",
+    "./audit": "./dist/audit.js",
+    "./config": "./dist/config.js",
+    "./install": "./dist/install.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "mcp:dev": "tsx src/mcp.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "npm run build",
+    "postinstall": "echo \"brake installed. Run 'brake install all' to wire it into your AI host.\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "chatgpt",
+    "ai-safety",
+    "emergency-brake",
+    "agent-control",
+    "red-alert"
+  ],
+  "license": "MIT"
+}
