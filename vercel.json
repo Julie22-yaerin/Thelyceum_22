@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "framework": null,
+  "buildCommand": "mkdir -p public && cp -r packages/server/src/web/. public/",
+  "outputDirectory": "public",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/web/(.*)",
+      "destination": "/$1"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "https://lyceum-academy-production.up.railway.app/api/$1"
+    },
+    {
+      "source": "/download/(.*)",
+      "destination": "https://lyceum-academy-production.up.railway.app/download/$1"
+    }
+  ]
+}
