@@ -1,6 +1,7 @@
 {
   "version": 2,
   "framework": null,
+  "installCommand": "true",
   "buildCommand": "mkdir -p public && cp -r packages/server/src/web/. public/",
   "outputDirectory": "public",
   "cleanUrls": true,
