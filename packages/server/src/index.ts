@@ -20,8 +20,8 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { openDb } from "./db.js";
-import { signup, login, getUserById, verifySession, AuthError } from "./auth.js";
+import { openDb, type DbHandle } from "./db.js";
+import { signup, login, getUserById, getUserByEmail, verifySession, signSession, AuthError } from "./auth.js";
 import { signLicense, verifyLicense } from "./license.js";
 import {
   PLANS,
@@ -54,8 +54,12 @@ import {
 } from "./lemonsqueezy.js";
 import { registerInstall, listInstalls, unregisterInstall, isHostType, DeviceError } from "./devices.js";
 import { guideFor, previewOf } from "./guides.js";
+import { PRODUCTS, OSES } from "./downloads.js";
 import * as waitlist from "./waitlist.js";
-import { authenticateAdmin, adminConfigured, recordAdminAction, recentAdminActions } from "./admin.js";
+import { authenticateAdmin, adminConfigured, recordAdminAction, recentAdminActions, type AdminIdentity } from "./admin.js";
+import { mintTrialToken, activateTrial, TrialError, isLyceumIssuedKey } from "./trial.js";
+import { getTelemetry } from "./telemetry.js";
+import { recordUsage, monthlyUsage, budgetStatus, monthKey } from "./usage.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -89,20 +93,47 @@ if (!adminConfigured()) {
 // checkout: a customer who clicks buy and gets an error is a lost sale we
 // never hear about.
 const missingVariants = assertVariantsConfigured(DEV_MODE);
-if (missingVariants.length > 0) {
+// Skipped when imported by tests (LYCEUM_NO_SERVE=1): createApp is exported,
+// and a non-dev test import must not be able to kill the process.
+if (missingVariants.length > 0 && process.env.LYCEUM_NO_SERVE !== "1") {
   console.error(`[lyceum] Missing Lemon Squeezy variant ids: ${missingVariants.join(", ")}`);
   console.error("[lyceum] Checkout will fail until these are set. Refusing to start.");
   process.exit(1);
 }
 
-const db = openDb(DB_PATH);
-
+/**
+ * Build the whole application against an explicit DB handle.
+ *
+ * Exported so tests (and any embedder) can construct the app with their own
+ * database instead of the module-level one, then drive it through app.fetch().
+ * All routes close over the passed handle; module-level constants like
+ * JWT_SECRET are read from env at import time.
+ *
+ * The route bodies below are mechanically wrapped — they were written against
+ * the module-level `db` and still reference it, which inside this function
+ * means the parameter. Do not "fix" the indentation.
+ */
+export function createApp(db: DbHandle): Hono {
 const app = new Hono();
 
 app.use("*", logger());
 app.use("/api/*", cors({ origin: PUBLIC_URL, credentials: true }));
 
 // ── Public ──────────────────────────────────────────────────────────────────
+
+app.get("/api/telemetry", async (c) => {
+  // Public on purpose: it is the measured proof behind the landing page's
+  // three numbers. No auth, no sensitive data — just benchmark results.
+  const t = await getTelemetry(SERVER_DIR);
+  return c.json(t);
+});
+
+app.get("/api/downloads", (c) => {
+  // Public: these are the MIT install commands, identical to what the open
+  // source READMEs already show. The download page renders from this so the
+  // web never drifts from what actually ships.
+  return c.json({ products: PRODUCTS, oses: OSES });
+});
 
 app.get("/api/plans", (c) => {
   // Enterprise ships alongside the billable plans but is deliberately not one
@@ -117,6 +148,9 @@ app.get("/api/plans", (c) => {
     enterprise: ENTERPRISE_TIER,
     launchMode: LAUNCH_MODE,
     waitlistDepositCents: WAITLIST_DEPOSIT_CENTS,
+    // Taken/max/full only — never the rows. The public site can show
+    // "12/50 spots taken" without being able to enumerate who applied.
+    waitlistAvailability: waitlist.publicAvailability(db),
     addonConnection: {
       centsPerMonth: ADDON_CONNECTION_CENTS_PER_MONTH,
       available: !!ADDON_CONNECTION_VARIANT_ID,
@@ -168,6 +202,8 @@ app.use("/api/*", async (c, next) => {
   // Routes that do NOT use a user session. Each is here for a specific
   // reason, not for convenience:
   //   guides       gates itself (free first step, rest needs a subscription)
+  //   downloads    public on purpose — the same MIT install commands as the
+  //                GitHub README; a subscription gates setup, not commands
   //   waitlist     applicants have no account yet — that is the point
   //   webhook      authenticated by HMAC signature, not by a session
   //   admin        has its own middleware below, keyed on LYCEUM_ADMIN_KEYS
@@ -177,12 +213,19 @@ app.use("/api/*", async (c, next) => {
     "/api/lemonsqueezy/webhook",
     "/api/admin/",
     "/dev/",
+    "/api/telemetry",
   ];
   if (
     c.req.path === "/api/auth/signup" ||
     c.req.path === "/api/auth/login" ||
     c.req.path === "/api/plans" ||
+    // Exact match, deliberately: the downloads data is public, but nothing
+    // else under /api/downloads* should inherit that bypass.
+    c.req.path === "/api/downloads" ||
     c.req.path === "/api/health" ||
+    // The key Lemon Squeezy emailed is the credential — the customer may not
+    // be signed in on this browser yet, so entry must be reachable anonymous.
+    c.req.path === "/api/license/enter" ||
     PUBLIC_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))
   ) {
     return next();
@@ -208,6 +251,7 @@ app.get("/api/me", (c) => {
   const sub = getSubscription(db, userId);
   const installs = listInstalls(db, userId);
   const limit = sub ? connectionLimitFor(sub.plan, sub.addon_connections ?? 0) : 0;
+  const usage = monthlyUsage(db, userId);
   return c.json({
     user: { id: user.id, email: user.email, createdAt: user.created_at },
     subscription: sub,
@@ -215,6 +259,11 @@ app.get("/api/me", (c) => {
     connectionCount: installs.length,
     connectionLimit: limit,
     addonConnections: sub?.addon_connections ?? 0,
+    // Budget dashboard data: what the CLIs reported this month vs the plan's
+    // token budget. Null when there is no plan to budget against.
+    usage: sub
+      ? { ...usage, budget: budgetStatus(sub.plan, usage) }
+      : { ...usage, budget: null },
   });
 });
 
@@ -312,6 +361,26 @@ app.post("/api/license/activate", async (c) => {
   if (claimed && claimed.user_id !== userId) {
     return c.json({ error: "already_claimed", message: "That key is already attached to another account." }, 409);
   }
+  // Already mirrored for THIS user: nothing to confirm with Lemon Squeezy —
+  // the mirror is the source of truth after the first validation.
+  if (claimed) {
+    return c.json({ ok: true, licenseKey: key });
+  }
+
+  // Same guard as /api/license/enter: a Lyceum-minted key (trial/demo) never
+  // exists in Lemon Squeezy, so a failing validation would be a misleading
+  // "invalid key" for a key that is genuinely ours.
+  if (!DEV_MODE && isLyceumIssuedKey(key)) {
+    return c.json(
+      {
+        error: "lyceum_key_not_mirrored",
+        message:
+          "That's a Lyceum-issued key (trial or demo), but it isn't registered on this instance. " +
+          "Trial and demo keys only work where they were issued — use a key from your payment email instead.",
+      },
+      400
+    );
+  }
 
   const check = await validateWithLemonSqueezy(key);
   if (!check.valid) {
@@ -324,6 +393,164 @@ app.post("/api/license/activate", async (c) => {
   }
   attachLicenseKey(db, userId, key);
   return c.json({ ok: true, licenseKey: key });
+});
+
+/**
+ * Enter a license key from the landing page — the front door for a customer
+ * who just paid.
+ *
+ * The key Lemon Squeezy emailed is the credential here, the same model as
+ * the admin console (key-as-bearer). We confirm it once against Lemon
+ * Squeezy if we don't already hold a mirror of it, resolve the account it
+ * belongs to, issue a session, and tell the client whether to drop them in
+ * the setup guide (nothing installed yet) or the account dashboard.
+ *
+ * Deliberately unauthenticated: the customer may not be signed in on this
+ * browser. An optional Bearer session is honoured when present so a
+ * signed-in customer's key attaches to their own account.
+ */
+app.post("/api/license/enter", async (c) => {
+  const body = z
+    .object({ licenseKey: z.string().min(8).max(200) })
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  const key = body.data.licenseKey.trim();
+
+  // Optional session: if present it should own (or come to own) this key.
+  const auth = c.req.header("Authorization") ?? "";
+  const match = auth.match(/^Bearer (.+)$/);
+  let sessionUserId: string | null = null;
+  if (match) {
+    try {
+      sessionUserId = verifySession(JWT_SECRET, match[1]).sub;
+    } catch {
+      // stale token — treat as anonymous
+    }
+  }
+
+  let ownerId: string | null = null;
+  let unattributable = false;
+
+  const claimed = getSubscriptionByLicenseKey(db, key);
+  if (claimed) {
+    ownerId = claimed.user_id;
+  } else {
+    // A key Lyceum itself minted (trial or dev) never exists in Lemon Squeezy
+    // — asking would answer "invalid key" for a key that is genuinely ours,
+    // just not mirrored on this instance. Say what it actually is instead of
+    // making the customer think their key is broken. Only in non-dev mode:
+    // in dev, validateWithLemonSqueezy is a stub that accepts anything.
+    if (!DEV_MODE && isLyceumIssuedKey(key)) {
+      return c.json(
+        {
+          error: "lyceum_key_not_mirrored",
+          message:
+            "That's a Lyceum-issued key (trial or demo), but it isn't registered on this instance. " +
+            "Trial and demo keys only work where they were issued — use a key from your payment email instead.",
+        },
+        400
+      );
+    }
+    const check = await validateWithLemonSqueezy(key);
+    if (!check.valid) {
+      return c.json({ error: "invalid_key", message: `That key isn't valid: ${check.note}` }, 400);
+    }
+    // A signed-in customer with a subscription can take the key now — the
+    // webhook already attributed their payment by user_id.
+    if (sessionUserId) {
+      const theirSub = getSubscription(db, sessionUserId);
+      if (theirSub) {
+        ownerId = sessionUserId;
+        attachLicenseKey(db, sessionUserId, key);
+      }
+    }
+    if (!ownerId && check.email) {
+      const byEmail = getUserByEmail(db, check.email);
+      if (byEmail) {
+        const theirSub = getSubscription(db, byEmail.id);
+        if (theirSub) {
+          ownerId = byEmail.id;
+          attachLicenseKey(db, byEmail.id, key);
+        } else {
+          // Account exists but the payment hasn't landed as a subscription
+          // row yet — fall through to the "try again" branch below.
+          unattributable = true;
+        }
+      }
+    }
+    if (!ownerId) {
+      // Paid, but no account we can match it to. The client holds the key
+      // and asks them to sign in with the email that paid.
+      const email = check.email ?? null;
+      return c.json(
+        {
+          ok: true,
+          needsAccount: true,
+          email,
+          message: unattributable
+            ? "We found your payment, but it hasn't been linked to your account yet. Try again in a minute."
+            : email
+              ? `We found your payment under ${email}. Create or sign into an account with that email to finish setup.`
+              : "We couldn't match this key to an account yet. Try again in a minute.",
+        },
+        200
+      );
+    }
+  }
+
+  // One key, one account.
+  if (sessionUserId && sessionUserId !== ownerId) {
+    return c.json({ error: "already_claimed", message: "That key is already attached to another account." }, 409);
+  }
+
+  const user = getUserById(db, ownerId)!;
+  const sub = getSubscription(db, ownerId);
+  const installs = listInstalls(db, ownerId);
+  const usage = monthlyUsage(db, ownerId);
+  return c.json({
+    ok: true,
+    sessionToken: signSession(JWT_SECRET, user),
+    user: { id: user.id, email: user.email },
+    subscription: sub,
+    connectionLimit: sub ? connectionLimitFor(sub.plan, sub.addon_connections ?? 0) : 0,
+    installs,
+    needsSetup: installs.length === 0,
+    route: installs.length === 0 ? "setup" : "dashboard",
+    usage: sub ? { ...usage, budget: budgetStatus(sub.plan, usage) } : { ...usage, budget: null },
+  });
+});
+
+// ── Usage reporting (from the licensed CLIs) ────────────────────────────────
+// Best-effort, off the hot path: each CLI sends a bounded summary (tokens
+// processed, calls guarded) after a scan / challenge / measure. The endpoint
+// aggregates per user per month; the dashboard renders used vs budget.
+
+const UsageReportBody = z.object({
+  tool: z.enum(["brake", "redteam", "thrift"]),
+  kind: z.string().min(1).max(40),
+  tokens: z.number().int().nonnegative().max(1_000_000_000_000).optional(),
+  calls: z.number().int().nonnegative().max(1_000_000_000).optional(),
+});
+
+app.post("/api/usage/report", async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const body = UsageReportBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input", issues: body.error.issues }, 400);
+
+  recordUsage(db, userId, {
+    tool: body.data.tool,
+    kind: body.data.kind,
+    tokens: body.data.tokens ?? 0,
+    calls: body.data.calls ?? 0,
+  });
+
+  const sub = getSubscription(db, userId);
+  const usage = monthlyUsage(db, userId);
+  return c.json({
+    ok: true,
+    month: monthKey(),
+    usage: sub ? { ...usage, budget: budgetStatus(sub.plan, usage) } : { ...usage, budget: null },
+  });
 });
 
 const RegisterBody = z.object({
@@ -479,11 +706,15 @@ app.post("/api/waitlist", async (c) => {
     }, 201);
   } catch (err) {
     if (err instanceof waitlist.WaitlistError) {
-      const status = err.code === "already_applied" ? 409 : 400;
+      const status = err.code === "already_applied" ? 409 : err.code === "waitlist_full" ? 403 : 400;
       return c.json({ error: err.code, message: err.message }, status);
     }
     throw err;
   }
+});
+
+app.get("/api/waitlist/availability", (c) => {
+  return c.json(waitlist.publicAvailability(db));
 });
 
 app.get("/api/waitlist/status", (c) => {
@@ -537,6 +768,54 @@ app.post("/api/admin/waitlist/:id/status", async (c) => {
 
 app.get("/api/admin/audit", (c) => {
   return c.json({ entries: recentAdminActions(db, Number(c.req.query("limit")) || 50) });
+});
+
+// ── Trial (30-day pre-release cohort, see TRIAL_PLAN.md) ───────────────────
+// Minting is an admin act (paid/approved waitlist only, audit-logged);
+// redemption is a signed-in member of the cohort redeeming their own token.
+
+const TrialMintBody = z.object({
+  email: z.string().email(),
+  plan: z.enum(["solo", "team", "scale"]).optional(),
+});
+
+app.post("/api/admin/trial/tokens", async (c) => {
+  const admin = c.get("admin" as never) as AdminIdentity;
+  const body = TrialMintBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    const minted = mintTrialToken(db, JWT_SECRET, admin, body.data);
+    return c.json({ ok: true, ...minted });
+  } catch (err) {
+    if (err instanceof TrialError) {
+      const status = err.code === "not_in_cohort" ? 403 : 400;
+      return c.json({ error: err.code, message: err.message }, status);
+    }
+    throw err;
+  }
+});
+
+const TrialActivateBody = z.object({ token: z.string().min(1) });
+
+app.post("/api/trial/activate", async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const userEmail = c.get("userEmail" as never) as string;
+  const body = TrialActivateBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    const activated = activateTrial(db, JWT_SECRET, {
+      userId,
+      email: userEmail,
+      token: body.data.token,
+    });
+    return c.json({ ok: true, ...activated });
+  } catch (err) {
+    if (err instanceof TrialError) {
+      const status = err.code === "already_used" || err.code === "has_subscription" ? 409 : 400;
+      return c.json({ error: err.code, message: err.message }, status);
+    }
+    throw err;
+  }
 });
 
 // ── Dev activation (BRAKE_DEV_MODE only) ────────────────────────────────────
@@ -632,13 +911,23 @@ app.get("/web/*", async (c) => {
     const type = filePath.endsWith(".html") ? "text/html; charset=utf-8"
               : filePath.endsWith(".js") ? "application/javascript"
               : filePath.endsWith(".css") ? "text/css; charset=utf-8"
+              : filePath.endsWith(".svg") ? "image/svg+xml"
               : "application/octet-stream";
     return c.body(data, 200, { "Content-Type": type });
   }
   return c.text("not found", 404);
 });
 
-// ── Lifecycle ───────────────────────────────────────────────────────────────
+return app;
+}
+
+// ── Lifecycle — only when run as the server, never when imported by tests ──
+// Tests build their own app via createApp() with a temp DB; the guard below
+// keeps this module side-effect-free when imported. Set LYCEUM_NO_SERVE=1 to
+// import without starting a listener.
+if (process.env.LYCEUM_NO_SERVE !== "1") {
+const db = openDb(DB_PATH);
+const app = createApp(db);
 
 setInterval(() => {
   try {
@@ -661,3 +950,4 @@ serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[lyceum] mode:     ${LAUNCH_MODE === "waitlist" ? "PRE-LAUNCH (waitlist only)" : "open for signups"}`);
   if (DEV_MODE) console.log(`[lyceum] DEV MODE: payment bypassed.`);
 });
+}

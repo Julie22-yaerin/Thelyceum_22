@@ -23,6 +23,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { DbHandle, WaitlistRow, WaitlistStatus } from "./db.js";
+import { WAITLIST_MAX_APPLICATIONS } from "./plans.js";
 
 /**
  * Consumer mail providers. Deliberately short: this is the head of the
@@ -123,6 +124,17 @@ export function apply(db: DbHandle, input: ApplicationInput): WaitlistRow {
     );
   }
 
+  // The cap is checked last, after identity and duplicate checks, so someone
+  // already on the list never gets told the list is full — they get their
+  // real status instead.
+  if (activeCount(db) >= WAITLIST_MAX_APPLICATIONS) {
+    throw new WaitlistError(
+      "waitlist_full",
+      `The waitlist is full at ${WAITLIST_MAX_APPLICATIONS} — that's the batch size we can actually onboard ` +
+        `by hand. Email us directly if you want to be first in line for the next opening.`
+    );
+  }
+
   const id = randomUUID();
   const now = Date.now();
   db.raw
@@ -218,4 +230,18 @@ export function counts(db: DbHandle): Record<WaitlistStatus | "total", number> {
     out.total += Number(r.n);
   }
   return out;
+}
+
+/** Applications that count against the cap — everything except rejected. */
+export function activeCount(db: DbHandle): number {
+  const row = db.raw
+    .prepare("SELECT COUNT(*) as n FROM waitlist WHERE status != 'rejected'")
+    .get() as unknown as { n: number };
+  return Number(row.n);
+}
+
+/** What the public site may show: a count and whether it's full, nothing per-row. */
+export function publicAvailability(db: DbHandle): { taken: number; max: number; full: boolean } {
+  const taken = activeCount(db);
+  return { taken, max: WAITLIST_MAX_APPLICATIONS, full: taken >= WAITLIST_MAX_APPLICATIONS };
 }

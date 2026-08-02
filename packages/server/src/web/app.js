@@ -6,6 +6,9 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
 const SESSION_KEY = "brake_session";
+// A license key entered before the visitor is signed in. Held in
+// sessionStorage (not localStorage) so a closed tab forgets it.
+const PENDING_KEY = "lyceum_pending_key";
 const state = {
   cycle: "monthly",
   user: null,
@@ -114,10 +117,16 @@ async function choosePlan(planId) {
 // ── Auth ───────────────────────────────────────────────────────────────────
 
 function showAuth() {
-  $("#auth").classList.remove("hidden");
-  $("#auth").scrollIntoView({ behavior: "smooth" });
+  const auth = $("#auth");
+  auth.classList.remove("hidden");
+  auth.setAttribute("aria-hidden", "false");
+  auth.scrollIntoView({ behavior: "smooth" });
 }
-function hideAuth() { $("#auth").classList.add("hidden"); }
+function hideAuth() {
+  const auth = $("#auth");
+  auth.classList.add("hidden");
+  auth.setAttribute("aria-hidden", "true");
+}
 
 $("#authSwitch").addEventListener("click", (e) => {
   e.preventDefault();
@@ -138,6 +147,21 @@ $("#authForm").addEventListener("submit", async (e) => {
     const res = await api(path, { method: "POST", body: JSON.stringify(body) });
     localStorage.setItem(SESSION_KEY, res.sessionToken);
     hideAuth();
+    // enterLicense's needsAccount branch checks state.user to decide whether
+    // to show a message or the auth card — so the session must be recorded
+    // before the pending-key re-run below, or a different-account key would
+    // bounce back to the login form the user just left.
+    state.user = res.user;
+    // If they entered a license key before signing in, re-enter it now that
+    // a session exists — the server's session branch attaches it to the
+    // account that actually owns the payment (which may not be the account
+    // they just created). The key is what they came to use.
+    const pending = sessionStorage.getItem(PENDING_KEY);
+    if (pending) {
+      sessionStorage.removeItem(PENDING_KEY);
+      await enterLicense(pending, $("#licenseMsg"));
+      return;
+    }
     await loadDashboard();
   } catch (err) {
     $("#authError").textContent = err.message || "something went wrong";
@@ -165,6 +189,7 @@ async function loadDashboard() {
     state.user = me.user;
     state.sub = me.subscription;
     state.installs = me.installs;
+    state.usage = me.usage;
     renderDashboard();
   } catch (err) {
     if (err.status === 401) {
@@ -184,9 +209,36 @@ function renderDashboard() {
 
   $("#dashEmail").textContent = state.user.email;
 
+  // The trial-redeem box is for accounts with no commercial relationship yet:
+  // the server refuses a trial once ANY subscription row exists (has_subscription
+  // 409 — including a locked/expired trial, so it must not be offered again).
+  const trialBox = $("#trialRedeem");
+  if (trialBox) {
+    trialBox.classList.toggle("hidden", !!state.sub);
+  }
+
+  // The paid-key box is the mirror image: an active subscription whose key
+  // hasn't been attached yet (payment landed, email went out, paste pending).
+  const licenseRedeem = $("#licenseRedeem");
+  if (licenseRedeem) {
+    licenseRedeem.classList.toggle(
+      "hidden",
+      !(state.sub && state.sub.status === "active" && !state.sub.license_key)
+    );
+  }
+
+  // Licensed but nothing installed → the next step is the setup guide, not
+  // the dashboard. Toggled here so it also appears for a plain login on a
+  // fresh account, not only for a just-entered key.
+  const setupBanner = $("#setupBanner");
+  if (setupBanner) {
+    const licensed = !!(state.sub && state.sub.status === "active");
+    setupBanner.classList.toggle("hidden", !(licensed && state.installs.length === 0));
+  }
+
   if (!state.sub) {
     $("#locked").classList.remove("hidden");
-    $("#lockedReason").textContent = "You don't have a subscription yet. Pick a plan above.";
+    $("#lockedReason").textContent = "You don't have a subscription yet. Pick a plan above, or redeem a trial key below.";
     $("#btnRenew").textContent = "Pick a plan";
     $("#btnRenew").onclick = () => $("#plans").scrollIntoView({ behavior: "smooth" });
     $("#subBox").innerHTML = "<p class='muted'>No subscription yet.</p>";
@@ -247,6 +299,10 @@ function renderDashboard() {
     list.innerHTML = "<li class='muted' style='background:transparent;border:1px dashed var(--border);'>No installs yet. Run <code>brake install &lt;host&gt;</code> in your terminal.</li>";
   }
 
+  // Monthly token budget — what the CLIs reported this month vs the plan's
+  // budget. Rendered from /api/me → usage.budget. Null budget = no plan yet.
+  renderBudget();
+
   // Download CLI
   const dlBtn = $("#btnDownload");
   dlBtn.disabled = status !== "active";
@@ -266,6 +322,192 @@ function renderDashboard() {
 $("#btnLogout").addEventListener("click", () => {
   localStorage.removeItem(SESSION_KEY);
   location.reload();
+});
+
+// ── License key entry ──────────────────────────────────────────────────────
+// The front door for a customer who just paid: the key Lemon Squeezy emailed
+// them is the credential. The server answers with where they should go — the
+// setup guide if nothing is installed yet, the dashboard if the CLI is wired
+// up. The client never decides what's unlocked; it just follows the route.
+
+// The license form can be submitted before boot's /api/plans fetch resolves.
+// renderDashboard reads window.__plans, so make sure it exists first.
+async function ensurePlans() {
+  if (window.__plans) return;
+  const { plans, enterprise, launchMode } = await api("/api/plans");
+  window.__plans = plans;
+  window.__enterprise = enterprise;
+  window.__launchMode = launchMode;
+  renderPlans();
+}
+
+function routeAfterEnter(route) {
+  if (route === "setup") {
+    const banner = $("#setupBanner");
+    if (banner) banner.removeAttribute("hidden");
+    document.querySelector("#guides")?.scrollIntoView({ behavior: "smooth" });
+  } else {
+    document.querySelector("#dashboard")?.scrollIntoView({ behavior: "smooth" });
+  }
+}
+
+async function enterLicense(key, msgEl) {
+  if (msgEl) msgEl.textContent = "";
+  if (!key) {
+    if (msgEl) msgEl.textContent = "Paste the license key you received by email.";
+    return;
+  }
+  try {
+    const r = await api("/api/license/enter", { method: "POST", body: JSON.stringify({ licenseKey: key }) });
+    if (r.needsAccount) {
+      // Valid payment, but the server can't attach it to an account on this
+      // browser — the subscription lives on the account that checked out,
+      // which may not be the one signed in here.
+      sessionStorage.setItem(PENDING_KEY, key);
+      if (state.user) {
+        // Already signed in and the key still won't attach to THIS account.
+        if (msgEl) msgEl.textContent = r.message || "We couldn't attach that key to this account.";
+        return;
+      }
+      // Not signed in: prefill the email the payment was made under and ask
+      // them to sign in with the account that paid.
+      const emailField = document.querySelector('#authForm input[name="email"]');
+      if (emailField && r.email) emailField.value = r.email;
+      state.mode = "login";
+      $("#authTitle").textContent = "Sign in to attach your license";
+      $("#authSubmit").textContent = "Sign in";
+      $("#authSwitch").textContent = "Create an account";
+      if (msgEl) msgEl.textContent = r.message || "Sign in with the account that paid to continue.";
+      showAuth();
+      return;
+    }
+    localStorage.setItem(SESSION_KEY, r.sessionToken);
+    state.user = r.user;
+    state.sub = r.subscription;
+    state.installs = r.installs;
+    state.usage = r.usage;
+    const input = $("#licenseKeyInput");
+    if (input) input.value = "";
+    await ensurePlans();
+    renderDashboard();
+    routeAfterEnter(r.route);
+  } catch (err) {
+    if (msgEl) msgEl.textContent = err.message || "Could not validate that key.";
+  }
+}
+
+$("#licenseForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  enterLicense($("#licenseKeyInput").value.trim(), $("#licenseMsg"));
+});
+
+$("#btnLicenseRedeem").addEventListener("click", async () => {
+  const key = $("#licenseRedeemInput").value.trim();
+  const msg = $("#licenseRedeemMsg");
+  msg.textContent = "";
+  if (!key) {
+    msg.textContent = "Paste the license key you received by email.";
+    return;
+  }
+  try {
+    const r = await api("/api/license/activate", { method: "POST", body: JSON.stringify({ licenseKey: key }) });
+    msg.textContent = `License attached — ${r.licenseKey.slice(0, 8)}…`;
+    await loadDashboard();
+  } catch (err) {
+    msg.textContent = err.message || "Could not attach that key.";
+  }
+});
+
+// ── Budget ──────────────────────────────────────────────────────────────────
+// The dashboard's budget box: used tokens vs this month's plan budget, with a
+// warn/over threshold from the server (BUDGET_WARN_PCT). All numbers come
+// from /api/me → usage; the client renders, never decides.
+
+function fmtTokens(n) {
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2).replace(/\.?0+$/, "") + "B";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "k";
+  return String(n);
+}
+
+function renderBudget() {
+  const box = $("#budgetBox");
+  if (!box) return;
+  const usage = state.usage;
+  if (!usage || !usage.budget) {
+    // No plan to budget against — hide the card entirely rather than show
+    // an empty bar that reads as "zero used" when there is no budget.
+    box.classList.add("hidden");
+    return;
+  }
+  box.classList.remove("hidden");
+
+  const b = usage.budget;
+  const pct = Math.min(b.pct * 100, 999);
+  const badge = $("#budgetBadge");
+  badge.textContent = b.status === "over" ? "over budget" : b.status === "warn" ? "approaching limit" : "on track";
+  badge.className = "badge " + b.status;
+
+  const fill = $("#budgetFill");
+  fill.style.width = `${Math.min(pct, 100)}%`;
+  fill.className = "budget-fill " + b.status;
+
+  $("#budgetLine").textContent =
+    `${fmtTokens(b.usedTokens)} of ${fmtTokens(b.budgetTokens)} tokens used this month (${pct.toFixed(1)}%)`;
+
+  const warning = $("#budgetWarning");
+  if (b.status === "over") {
+    warning.hidden = false;
+    warning.textContent = `You've exceeded this month's token budget by ${fmtTokens(b.usedTokens - b.budgetTokens)}. ` +
+      "The tools keep working — this is a flag, not a brake. Check what changed, or move up a tier.";
+  } else if (b.status === "warn") {
+    warning.hidden = false;
+    warning.textContent = `You're at ${pct.toFixed(1)}% of this month's budget with ${fmtTokens(b.remainingTokens)} tokens left. ` +
+      "Past 100% the dashboard flags over budget, so plan ahead if this pace continues.";
+  } else {
+    warning.hidden = true;
+  }
+
+  // Per-tool breakdown — which tool is driving the number.
+  const tools = $("#budgetTools");
+  tools.innerHTML = "";
+  const rows = [
+    ["brake", "danger scans", usage.byTool.brake],
+    ["redteam", "reasoning checks", usage.byTool.redteam],
+    ["thrift", "token compression", usage.byTool.thrift],
+  ];
+  for (const [tool, label, t] of rows) {
+    const el = document.createElement("div");
+    el.className = "budget-tool";
+    el.innerHTML = `
+      <span class="budget-tool-name"><span class="dot ${tool === "thrift" ? "amber" : tool}"></span> ${label}</span>
+      <span class="budget-tool-nums">${fmtTokens(t.tokens)} tokens · ${t.calls.toLocaleString()} calls</span>
+    `;
+    tools.appendChild(el);
+  }
+}
+
+// ── Trial redemption ────────────────────────────────────────────────────────
+
+$("#btnTrialRedeem").addEventListener("click", async () => {
+  const token = $("#trialKeyInput").value.trim();
+  const msg = $("#trialMsg");
+  msg.textContent = "";
+  if (!token) {
+    msg.textContent = "Paste the trial key you received by email.";
+    return;
+  }
+  try {
+    const r = await api("/api/trial/activate", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+    $("#trialKeyInput").value = "";
+    msg.textContent = `Trial active — ${r.plan} plan, ${r.connectionLimit} connections, until ${new Date(r.expiresAt).toLocaleDateString()}.`;
+    await loadDashboard();
+  } catch (err) {
+    msg.textContent = err.message || "Could not activate the trial.";
+  }
 });
 
 // ── Billing toggle ─────────────────────────────────────────────────────────
@@ -378,6 +620,35 @@ $$(".guide-tabs .gt").forEach((b) => {
   if (localStorage.getItem(SESSION_KEY)) {
     await loadDashboard();
   }
+
+  // Deep links:
+  //   ?license=KEY       key pasted on the landing page; enter it here
+  //   ?checkout=success  Lemon Squeezy redirected back after payment
+  const params = new URLSearchParams(location.search);
+  const licenseParam = params.get("license");
+  // The landing page hands the key over in sessionStorage (not the URL — it
+  // is a credential; see the admin console's stance on never writing keys).
+  // ?license= remains for direct deep links, and wins over a stale stored
+  // key when both exist.
+  const storedKey = sessionStorage.getItem("lyceum_entered_key");
+  const handoffKey = licenseParam ?? storedKey;
+  if (handoffKey) {
+    sessionStorage.removeItem("lyceum_entered_key");
+    // Don't leave a credential in the address bar after a deep-link entry.
+    if (licenseParam) history.replaceState({}, "", location.pathname);
+    const input = $("#licenseKeyInput");
+    if (input) input.value = handoffKey;
+    await enterLicense(handoffKey, $("#licenseMsg"));
+  }
+  const checkout = params.get("checkout");
+  if (checkout === "success") {
+    const notice = $("#checkoutNotice");
+    if (notice) {
+      notice.removeAttribute("hidden");
+      notice.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
   // Matches the showroom's default active tab.
   await loadGuide("brake");
 })();

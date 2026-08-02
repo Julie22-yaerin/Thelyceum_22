@@ -67,7 +67,17 @@ export function getUserById(db: DbHandle, id: string): UserRow | null {
   return (db.raw.prepare("SELECT * FROM users WHERE id = ?").get(id) as unknown as UserRow | undefined) ?? null;
 }
 
-function signSession(secret: string, user: UserRow): string {
+/** Look a user up by email. Used by license-key entry to find the account a key belongs to. */
+export function getUserByEmail(db: DbHandle, email: string): UserRow | null {
+  const normalized = email.trim().toLowerCase();
+  return (
+    (db.raw.prepare("SELECT * FROM users WHERE email = ?").get(normalized) as unknown as UserRow | undefined) ?? null
+  );
+}
+
+/** Issue a session token for a user. Exported so license-key entry (which is
+ * the credential itself, like the admin console) can sign someone in. */
+export function signSession(secret: string, user: UserRow): string {
   return jwt.sign({ sub: user.id, email: user.email }, secret, { expiresIn: SESSION_TTL_SECONDS });
 }
 

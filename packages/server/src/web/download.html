@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download the CLI — The Lyceum</title>
+  <meta name="description" content="Install brake, redteam and thrift on macOS, Windows or Linux — npm, npx, Docker, Claude Desktop, Claude Code, ChatGPT or CI. Copy-paste exact commands for every environment." />
+  <link rel="stylesheet" href="/web/styles.css" />
+</head>
+<body>
+  <div class="launch-banner" id="launchBanner" hidden>
+    <strong>We launch soon.</strong> The CLIs are installable now — the subscription that
+    unlocks guided setup opens with the waitlist. <a href="/web/#waitlist">apply for the waitlist</a>.
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <a href="/web/" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;">
+        <span class="logo">●</span>
+        <span class="name">The Lyceum</span>
+      </a>
+      <span class="tag">download</span>
+    </div>
+    <nav class="nav">
+      <a href="/web/">Performance</a>
+      <a href="/web/showroom#plans">Plans</a>
+      <a href="/web/showroom#guides">Setup</a>
+      <a href="/web/download" class="active">Download</a>
+      <a href="/web/#waitlist">Waitlist</a>
+      <a href="/web/showroom#login">Sign in</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Install the Lyceum CLI</p>
+      <h1>One command per machine.<br />Every host you run agents on.</h1>
+      <p class="lede">
+        Three tools, one npm account, every OS. Pick your OS — we've already
+        guessed it — then your product, then the environment you actually run.
+        Every command is copy-paste exact and matches what the tools ship.
+      </p>
+    </section>
+
+    <section id="download" class="download-section">
+      <!-- OS tabs -->
+      <div class="os-tabs" id="osTabs" role="tablist" aria-label="Operating system">
+        <!-- populated by download.js -->
+      </div>
+      <p class="detect-note" id="detectNote"></p>
+
+      <!-- Product tabs -->
+      <div class="guide-tabs product-tabs" id="productTabs" role="tablist" aria-label="Product">
+        <!-- populated by download.js -->
+      </div>
+
+      <!-- PATH note -->
+      <div class="path-note" id="pathNote" hidden></div>
+
+      <!-- Environment cards -->
+      <div class="env-grid" id="envGrid">
+        <!-- populated by download.js -->
+      </div>
+
+      <div class="sub-note">
+        <strong>Already have a plan?</strong> The full tarball — CLI, skills,
+        README and license — downloads from your
+        <a href="/web/showroom#login">account dashboard</a> once your
+        subscription is active. This page installs the same tools from npm
+        without one; the subscription buys guided setup and the license, not
+        the binaries.
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>brake stops the action, redteam attacks the argument, thrift stops the bill. Core detection in each tool is MIT and runs without a license — see the showroom for what a subscription actually unlocks.</p>
+  </footer>
+
+  <script src="/web/download.js" type="module"></script>
+</body>
+</html>

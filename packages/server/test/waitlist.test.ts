@@ -108,27 +108,114 @@ describe("applying", () => {
   });
 });
 
+describe("the 50-application cap", () => {
+  // Import here rather than at module scope so it's obvious in the test
+  // itself which constant governs the cap, without hunting through plans.ts.
+  const MAX = 50 as const;
+
+  it("accepts applications up to the cap", () => {
+    for (let i = 0; i < MAX; i++) {
+      waitlist.apply(db, { ...VALID, workEmail: `person${i}@fleetcorp.io` });
+    }
+    expect(waitlist.activeCount(db)).toBe(MAX);
+  });
+
+  it("refuses the application that would exceed the cap", () => {
+    for (let i = 0; i < MAX; i++) {
+      waitlist.apply(db, { ...VALID, workEmail: `person${i}@fleetcorp.io` });
+    }
+    try {
+      waitlist.apply(db, { ...VALID, workEmail: "one-too-many@fleetcorp.io" });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect((err as waitlist.WaitlistError).code).toBe("waitlist_full");
+      expect((err as Error).message).toMatch(/full/i);
+    }
+    // And nothing was written for the refused attempt.
+    expect(waitlist.activeCount(db)).toBe(MAX);
+    expect(waitlist.getByEmail(db, "one-too-many@fleetcorp.io")).toBeNull();
+  });
+
+  it("checks identity and duplicates BEFORE the cap — someone already on a full list gets their real status, not 'full'", () => {
+    for (let i = 0; i < MAX; i++) {
+      waitlist.apply(db, { ...VALID, workEmail: `person${i}@fleetcorp.io` });
+    }
+    try {
+      // person0 is already on the (now full) list — re-applying must surface
+      // "already applied", never "waitlist full", or an existing applicant
+      // checking their own status gets a confusing, wrong answer.
+      waitlist.apply(db, { ...VALID, workEmail: "person0@fleetcorp.io" });
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect((err as waitlist.WaitlistError).code).toBe("already_applied");
+    }
+  });
+
+  it("a rejected application frees its slot", () => {
+    for (let i = 0; i < MAX; i++) {
+      waitlist.apply(db, { ...VALID, workEmail: `person${i}@fleetcorp.io` });
+    }
+    const row = waitlist.getByEmail(db, "person0@fleetcorp.io")!;
+    waitlist.setStatus(db, row.id, "rejected", "admin_fp");
+    expect(waitlist.activeCount(db)).toBe(MAX - 1);
+
+    // The freed slot is real: one more application now succeeds.
+    expect(() =>
+      waitlist.apply(db, { ...VALID, workEmail: "newcomer@fleetcorp.io" })
+    ).not.toThrow();
+    expect(waitlist.activeCount(db)).toBe(MAX);
+  });
+
+  it("approving or leaving pending does NOT free a slot — only rejection does", () => {
+    for (let i = 0; i < MAX; i++) {
+      waitlist.apply(db, { ...VALID, workEmail: `person${i}@fleetcorp.io` });
+    }
+    const row = waitlist.getByEmail(db, "person0@fleetcorp.io")!;
+    waitlist.setStatus(db, row.id, "approved", "admin_fp");
+    expect(waitlist.activeCount(db)).toBe(MAX); // still full — approved still counts
+    expect(() => waitlist.apply(db, { ...VALID, workEmail: "newcomer@fleetcorp.io" })).toThrow(
+      waitlist.WaitlistError
+    );
+  });
+
+  it("publicAvailability reports taken/max/full without leaking any row", () => {
+    for (let i = 0; i < 3; i++) {
+      waitlist.apply(db, { ...VALID, workEmail: `person${i}@fleetcorp.io` });
+    }
+    const avail = waitlist.publicAvailability(db);
+    expect(avail).toEqual({ taken: 3, max: MAX, full: false });
+    expect(Object.keys(avail).sort()).toEqual(["full", "max", "taken"]);
+  });
+
+  it("publicAvailability.full flips true exactly at the cap", () => {
+    for (let i = 0; i < MAX; i++) {
+      waitlist.apply(db, { ...VALID, workEmail: `person${i}@fleetcorp.io` });
+    }
+    expect(waitlist.publicAvailability(db).full).toBe(true);
+  });
+});
+
 describe("deposit", () => {
   it("moves a pending application to paid", () => {
     const row = waitlist.apply(db, VALID);
-    const updated = waitlist.markDepositPaid(db, row.work_email, 1000, "order_1");
+    const updated = waitlist.markDepositPaid(db, row.work_email, 5000, "order_1");
     expect(updated?.status).toBe("paid");
-    expect(updated?.deposit_cents).toBe(1000);
+    expect(updated?.deposit_cents).toBe(5000);
   });
 
   it("does not rewind an approval when the webhook is redelivered", () => {
     // Lemon Squeezy retries on any non-2xx, so the same order_created can
     // arrive after an admin has already approved. That must not undo it.
     const row = waitlist.apply(db, VALID);
-    waitlist.markDepositPaid(db, row.work_email, 1000, "order_1");
+    waitlist.markDepositPaid(db, row.work_email, 5000, "order_1");
     waitlist.setStatus(db, row.id, "approved", "admin_fp");
 
-    const after = waitlist.markDepositPaid(db, row.work_email, 1000, "order_1");
+    const after = waitlist.markDepositPaid(db, row.work_email, 5000, "order_1");
     expect(after?.status).toBe("approved");
   });
 
   it("ignores a deposit for an email that never applied", () => {
-    expect(waitlist.markDepositPaid(db, "nobody@example.com", 1000, "order_x")).toBeNull();
+    expect(waitlist.markDepositPaid(db, "nobody@example.com", 5000, "order_x")).toBeNull();
   });
 });
 

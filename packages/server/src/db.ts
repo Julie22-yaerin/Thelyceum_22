@@ -117,6 +117,30 @@ function migrate(db: DatabaseSync): void {
       created_at  INTEGER NOT NULL
     );
 
+    -- ── Usage ────────────────────────────────────────────────────────────
+    -- One row per usage report sent by a licensed CLI. Aggregate rows, not
+    -- per-call: the CLIs send a bounded summary (tokens processed, calls
+    -- guarded) after a scan / challenge / measure, never the hot path. The
+    -- month column (YYYY-MM, UTC) makes "what did we use this month" a
+    -- single indexed range scan, and makes the monthly budget roll over
+    -- without any cleanup job.
+    CREATE TABLE IF NOT EXISTS usage (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      tool        TEXT NOT NULL,
+      kind        TEXT NOT NULL,
+      tokens      INTEGER NOT NULL DEFAULT 0,
+      calls       INTEGER NOT NULL DEFAULT 0,
+      month       TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_usage_user_month ON usage(user_id, month);
+    -- The accumulate key: one row per (user, month, tool, kind). Unique so a
+    -- concurrent report can never create a second row — recordUsage upserts
+    -- on this, atomically.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_accumulate ON usage(user_id, month, tool, kind);
     CREATE INDEX IF NOT EXISTS idx_installs_user ON installs(user_id);
     CREATE INDEX IF NOT EXISTS idx_audit_user_created ON audit_events(user_id, created_at DESC);
   `);
@@ -172,4 +196,15 @@ export interface InstallRow {
   host_meta: string | null;
   installed_at: number;
   last_seen_at: number;
+}
+
+export interface UsageRow {
+  id: string;
+  user_id: string;
+  tool: "brake" | "redteam" | "thrift";
+  kind: string;
+  tokens: number;
+  calls: number;
+  month: string;
+  created_at: number;
 }

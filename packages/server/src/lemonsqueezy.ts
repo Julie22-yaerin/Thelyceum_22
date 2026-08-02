@@ -285,10 +285,20 @@ export interface ActivateInput {
   lemonSqueezySubscriptionId?: string | null;
   /** The key Lemon Squeezy issued, mirrored locally. */
   licenseKey?: string | null;
+  /**
+   * 1 = renewing (paid plans, Lemon Squeezy webhooks). 0 = fixed-duration
+   * (trials): the row then qualifies for lockIfExpired, so an expired trial
+   * is locked by the same 60s timer as a lapsed paid subscription. Defaults
+   * to 1 because every existing caller is a paid path.
+   */
+  autoRenew?: number;
 }
 
 export function activateSubscription(db: DbHandle, input: ActivateInput): SubscriptionRow {
   const now = Date.now();
+  // Trials must be autoRenew = 0 or lockIfExpired (which only touches
+  // auto_renew = 0 rows) will never lock them and they'd live forever.
+  const autoRenew = input.autoRenew ?? 1;
   const existing = db.raw
     .prepare("SELECT * FROM subscriptions WHERE user_id = ?")
     .get(input.userId) as unknown as SubscriptionRow | undefined;
@@ -300,7 +310,7 @@ export function activateSubscription(db: DbHandle, input: ActivateInput): Subscr
          SET plan = ?, billing = ?, status = 'active',
              ls_subscription_id = ?,
              license_key = COALESCE(?, license_key),
-             started_at = ?, expires_at = ?, auto_renew = 1, locked_at = NULL
+             started_at = ?, expires_at = ?, auto_renew = ?, locked_at = NULL
          WHERE id = ?`
       )
       .run(
@@ -310,6 +320,7 @@ export function activateSubscription(db: DbHandle, input: ActivateInput): Subscr
         input.licenseKey ?? null,
         existing.started_at || now,
         input.expiresAt,
+        autoRenew,
         existing.id
       );
     return db.raw
@@ -323,7 +334,7 @@ export function activateSubscription(db: DbHandle, input: ActivateInput): Subscr
       `INSERT INTO subscriptions
          (id, user_id, plan, billing, status, ls_subscription_id, license_key,
           started_at, expires_at, auto_renew, locked_at, created_at)
-       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, 1, NULL, ?)`
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, NULL, ?)`
     )
     .run(
       subId,
@@ -334,6 +345,7 @@ export function activateSubscription(db: DbHandle, input: ActivateInput): Subscr
       input.licenseKey ?? null,
       now,
       input.expiresAt,
+      autoRenew,
       now
     );
   return db.raw

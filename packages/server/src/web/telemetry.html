@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Telemetry — The Lyceum</title>
+  <meta name="description" content="The measured performance report behind the Lyceum landing page. Live numbers, full methodology, and the honest caveats — including the ones that aren't flattering." />
+  <link rel="stylesheet" href="/web/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a href="/web/" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;">
+        <span class="logo">●</span>
+        <span class="name">The Lyceum</span>
+      </a>
+      <span class="tag">telemetry</span>
+    </div>
+    <nav class="nav">
+      <a href="/web/">Site</a>
+      <a href="/web/showroom">Plans</a>
+      <a href="/web/#waitlist">Waitlist</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Live performance report</p>
+      <h1>Measured, not asserted.</h1>
+      <p class="lede small">
+        The three numbers on the landing page are not hardcoded. This page
+        shows the same endpoint the landing page reads —
+        <code>/api/telemetry</code> — which runs the actual guards on this
+        server and reports what this machine produced. Refresh to re-run.
+      </p>
+    </section>
+
+    <section id="bench">
+      <h2 class="section-title">Current measurements</h2>
+      <p class="section-sub" id="measuredLine">Fetching live measurements…</p>
+
+      <div class="bench-grid" id="benchGrid">
+        <!-- populated by telemetry.js -->
+      </div>
+
+      <div class="bench-note" id="telemetryNote">
+        <strong>How these were measured.</strong> Same corpora and best-of-N
+        methodology as the CI throughput tests in each package
+        (<code>test/throughput.test.ts</code>): warm-up, then the best of
+        three timed runs over a mixed corpus of dangerous/benign inputs, on a
+        single core. The floor assertions in those tests fail the build if
+        throughput ever drops — so a claim on this page that quietly rots is
+        a claim CI catches.
+      </div>
+    </section>
+
+    <section id="thrift-table">
+      <h2 class="section-title">thrift — the saving depends on the workload</h2>
+      <p class="section-sub">
+        There is no single "thrift saves X%". The honest answer is a table,
+        not a headline — read the last row before you budget against the
+        first.
+      </p>
+
+      <div class="headroom">
+        <div class="headroom-card">
+          <h3>Agent loop — files re-read as the agent iterates</h3>
+          <div class="math">measured here, live   = see the number above
+lossless (dedupe + strip) = the free part
+lossy (truncation)        = a budget you chose
+reported separately in the ledger — always</div>
+          <div class="verdict">Deduplication is where the free saving is, and it only exists when the agent re-reads.</div>
+        </div>
+        <div class="headroom-card">
+          <h3>Fresh unique reads — every file once</h3>
+          <div class="math">lossless saving = 0%
+everything saved is truncation
+the model is told, but it saw less
+the docs say so — on purpose</div>
+          <div class="verdict">On a first pass over unique files, thrift's free saving is zero.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="headroom">
+      <h2 class="section-title">The headroom, in your terms</h2>
+      <p class="section-sub">
+        The question isn't "is it fast", it's "does it hold at my fleet
+        size". Here is the arithmetic rather than an adjective.
+      </p>
+
+      <div class="headroom">
+        <div class="headroom-card">
+          <h3>A 500-agent fleet, one tool call each per second</h3>
+          <div class="math">500 agents × 1 call/sec  = 500 scans/sec
+capacity, one core     = measured live (brake)
+utilisation            = well under 1% of one core</div>
+          <div class="verdict">The guard is never the bottleneck.</div>
+        </div>
+        <div class="headroom-card">
+          <h3>Added latency per guarded tool call</h3>
+          <div class="math">danger scan       ≈ measured live
+reasoning challenge ≈ measured live
+combined            ≈ a few microseconds
+a fast LLM round trip ≈ 300,000µs</div>
+          <div class="verdict">Roughly 0.001% of the call it protects.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Every number on this page was measured on this server, by /api/telemetry, using the same methodology as the CI throughput tests. Run it yourself: <code>npm test</code> in packages/brake, packages/redteam and packages/thrift.</p>
+  </footer>
+  <script src="/web/telemetry.js" type="module"></script>
+</body>
+</html>

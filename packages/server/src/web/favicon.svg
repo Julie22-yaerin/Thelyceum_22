@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Matches --accent (#e0342c) in styles.css — the same red as the ● in
+       the wordmark and the brake product's stop colour. -->
+  <circle cx="16" cy="16" r="14" fill="#e0342c"/>
+</svg>

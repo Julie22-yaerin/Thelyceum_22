@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>The Lyceum — circuit breakers for AI</title>
-  <meta name="description" content="brake stops a dangerous action in under a second. redteam attacks a one-sided conclusion. thrift cuts the tokens an agent burns re-reading its own context. All three run in microseconds, on the hot path of a heavy agent harness." />
+  <title>The Lyceum — before it costs you</title>
+  <meta name="description" content="A runaway agent burns your cloud budget in an hour. A confident mistake ships at 2am. A credential leaks to a log you don't control. The Lyceum stops all three before they hit the bill, the system, or your name. Apply for the waitlist." />
+  <link rel="icon" type="image/svg+xml" href="/web/favicon.svg" />
   <link rel="stylesheet" href="/web/styles.css" />
 </head>
 <body>
@@ -18,161 +19,69 @@
     <div class="brand">
       <span class="logo">●</span>
       <span class="name">The Lyceum</span>
-      <span class="tag">circuit breakers for AI</span>
     </div>
     <nav class="nav">
-      <a href="#performance">Performance</a>
-      <a href="#products">Products</a>
       <a href="/web/showroom">Plans</a>
       <a href="#waitlist" class="nav-cta" id="navCta">Join the waitlist</a>
     </nav>
   </header>
 
   <main>
-    <!-- ── Identity ─────────────────────────────────────────────────── -->
+    <!-- ── The fear, stated plainly. This page's only two jobs: say who we
+         are, and get an application. Everything else — pricing, live
+         benchmarks, setup guides — lives on its own page. ────────────── -->
     <section class="hero">
-      <p class="eyebrow">The circuit breaker company</p>
-      <h1>We stop AI before it costs you.</h1>
+      <p class="eyebrow">Infrastructure insurance for AI</p>
+      <h1>Your agent will fail.<br />The question is what it costs you.</h1>
       <p class="lede">
-        Three tools, done narrowly and well. <strong>brake</strong> stops a
-        dangerous <em>action</em>. <strong>redteam</strong> stops a one-sided
-        <em>conclusion</em>. <strong>thrift</strong> stops you paying for the same
-        file twice. All three are always-on — the model calls them itself, with no
-        slash command and no asking.
+        A runaway retry loop burns your cloud credit in an hour. A one-sided
+        conclusion ships to production at 2 a.m. A credential ends up in a
+        log you never approved. Companies don't lose money because AI is
+        bad — they lose it because <strong>nothing stopped the failure
+        before it hit the bill, the system, or the name on the door</strong>.
       </p>
       <p class="lede-sub">
-        Built to sit on the hot path of a heavy agent harness, where the check runs on
-        every single tool call and a slow guard is worse than no guard.
+        The Lyceum sits between your agents and those three outcomes. Three
+        tools, one policy — every single tool call, on the hot path.
       </p>
     </section>
 
-    <!-- ── Performance ──────────────────────────────────────────────── -->
-    <section id="performance">
-      <h2 class="section-title">Fast enough to never be the bottleneck</h2>
-      <p class="section-sub">
-        If a safety check costs more than the work it guards, it gets switched off. So
-        these are measured, not estimated — and the numbers below are asserted by the
-        test suite, so they can't quietly rot.
-      </p>
-
-      <div class="bench-grid">
-        <div class="bench">
-          <div class="figure brake">1.37M</div>
-          <div class="unit">danger scans / sec</div>
-          <div class="caption">Single process, single core. p50 0.73µs, p99 0.93µs per call.</div>
+    <section id="stakes">
+      <div class="stakes-grid">
+        <div class="stake-card money">
+          <span class="stake-tag">Financial loss</span>
+          <h3>The bill nobody saw coming</h3>
+          <div class="stake-line">"We were burning $4,000/hour and the agent was stuck on a 500."</div>
         </div>
-        <div class="bench">
-          <div class="figure redteam">494k</div>
-          <div class="unit">reasoning challenges / sec</div>
-          <div class="caption">Single process, single core. p50 1.96µs, p99 18.4µs per call.</div>
+        <div class="stake-card ops">
+          <span class="stake-tag">Operational collapse</span>
+          <h3>The confident crash</h3>
+          <div class="stake-line">"It said it was sure. The on-call page said otherwise."</div>
         </div>
-        <div class="bench">
-          <div class="figure neutral">0</div>
-          <div class="unit">network calls on the hot path</div>
-          <div class="caption">Both scans are pure local computation. No API, no model, no round trip.</div>
-        </div>
-      </div>
-
-      <div class="bench-note">
-        <strong>How these were measured.</strong> One million <code>scanForDanger</code>
-        calls and 500,000 <code>challenge</code> calls over a mixed corpus of dangerous
-        and benign inputs, after JIT warm-up, on a single core of an Apple Silicon
-        laptop. Your hardware will differ — what matters is the order of magnitude, and
-        that the regression tests in <code>test/throughput.test.ts</code> fail the build
-        if either drops below a floor well under these figures.
-        <br /><br />
-        <strong>What we are not claiming.</strong> These are the guard functions, which
-        is where the cost would be if there were one. Actually engaging the brake does
-        real work — killing tracked processes, running your stop script, posting your
-        webhook — and is bounded by a measured 1000ms SLA instead, reported honestly
-        when it is missed.
-      </div>
-
-      <h2 class="section-title">The headroom, in your terms</h2>
-      <p class="section-sub">
-        The question isn't "is it fast", it's "does it hold at my fleet size". Here is
-        the arithmetic rather than an adjective.
-      </p>
-
-      <div class="headroom">
-        <div class="headroom-card">
-          <h3>A 500-agent fleet, one tool call each per second</h3>
-          <div class="math">500 agents × 1 call/sec  = 500 scans/sec
-capacity, one core     = 1,370,000 scans/sec
-utilisation            = 0.04%</div>
-          <div class="verdict">Uses well under 1% of a single core.</div>
-        </div>
-        <div class="headroom-card">
-          <h3>Added latency per guarded tool call</h3>
-          <div class="math">danger scan       ≈ 0.73µs
-reasoning challenge ≈ 1.96µs
-combined            ≈ 2.7µs
-
-a fast LLM round trip ≈ 300,000µs</div>
-          <div class="verdict">Roughly 0.001% of the call it protects.</div>
+        <div class="stake-card trust">
+          <span class="stake-tag">Reputational damage</span>
+          <h3>The leak you find out about last</h3>
+          <div class="stake-line">"We didn't know it had been copied until the audit."</div>
         </div>
       </div>
     </section>
 
-    <!-- ── Products ─────────────────────────────────────────────────── -->
     <section id="products">
-      <h2 class="section-title">Three tools, one plan</h2>
-      <p class="section-sub">
-        They fail differently, so they are separate tools. One subscription covers all three.
-      </p>
-
-      <div class="products">
-        <div class="product-card brake">
-          <div class="product-head">
-            <span class="dot red"></span>
-            <h2>brake</h2>
-          </div>
-          <p class="product-role">Stops the action.</p>
-          <p class="product-desc">
-            Cuts the model off before it exfiltrates data, attacks infrastructure, reads
-            a credential, destroys something irreversible, or moves money —
-            <strong>1000ms SLA, measured and reported</strong>. A brake that quietly took
-            3 seconds while the UI said 1000ms would be worse than no brake, so a miss is
-            shown, never hidden.
-          </p>
-          <pre class="cmd-block"><code>npm install -g brake
-brake install all</code></pre>
-          <a href="/web/showroom#guides" class="product-cta">Setup guide →</a>
+      <div class="products products--compact">
+        <div class="product-mini">
+          <span class="dot red"></span>
+          <span class="product-mini-name">brake</span>
+          <span class="product-mini-role">stops the action</span>
         </div>
-
-        <div class="product-card redteam">
-          <div class="product-head">
-            <span class="dot violet"></span>
-            <h2>redteam</h2>
-          </div>
-          <p class="product-role">Stops the argument.</p>
-          <p class="product-desc">
-            Scans a claim or plan for overconfidence, unsupported claims, confirmation
-            bias, false dichotomies and missing trade-offs — then steelmans the other
-            side, so the conclusion gets tested instead of asserted. Nine flaw classes;
-            two of them block by default.
-          </p>
-          <pre class="cmd-block"><code>npm install -g redteam
-redteam install all</code></pre>
-          <a href="/web/showroom#guides" class="product-cta">Setup guide →</a>
+        <div class="product-mini">
+          <span class="dot violet"></span>
+          <span class="product-mini-name">redteam</span>
+          <span class="product-mini-role">stops the argument</span>
         </div>
-
-        <div class="product-card thrift">
-          <div class="product-head">
-            <span class="dot amber"></span>
-            <h2>thrift</h2>
-          </div>
-          <p class="product-role">Stops the bill.</p>
-          <p class="product-desc">
-            Cuts the tokens an agent burns on its own tool output. The second read of
-            an unchanged file returns a pointer, not the file — which is where the
-            saving actually is. <strong>78.5% measured on an agent loop, 97.6% of it
-            lossless.</strong> On a first pass over unique files it saves almost
-            nothing, and the docs say so rather than quoting the flattering number.
-          </p>
-          <pre class="cmd-block"><code>npm install -g thrift
-thrift measure . --passes 5</code></pre>
-          <a href="/web/showroom#guides" class="product-cta">Setup guide →</a>
+        <div class="product-mini">
+          <span class="dot amber"></span>
+          <span class="product-mini-name">thrift</span>
+          <span class="product-mini-role">stops the bill</span>
         </div>
       </div>
     </section>
@@ -181,15 +90,16 @@ thrift measure . --passes 5</code></pre>
     <section id="waitlist" class="waitlist-section">
       <h2 class="section-title">Apply for the waitlist</h2>
       <p class="section-sub">
-        We're bringing teams on in batches so setup gets a person, not a docs link.
-        Applications are reviewed by hand — tell us who you are and what you run.
+        We bring teams on in small batches so setup gets a person, not a docs
+        link. Applications are reviewed by hand.
       </p>
 
       <div class="waitlist-card" id="waitlistCard">
         <h2>Request access</h2>
         <p class="sub">
-          Every field matters — we read these. If your organisation isn't running
-          agents in production yet, say so in the notes; early is fine, vague isn't.
+          Every field matters — we read these. If your organisation isn't
+          running agents in production yet, say so in the notes; early is
+          fine, vague isn't.
         </p>
 
         <form class="waitlist-form" id="waitlistForm" novalidate>
@@ -223,11 +133,11 @@ thrift measure . --passes 5</code></pre>
           </label>
 
           <div class="deposit-note" id="depositNote">
-            <strong>There's a refundable $10 deposit.</strong> It credits in full against
-            your first invoice, and it's refunded on request if you decide not to go
-            ahead — or if we don't have a place for you. It exists so the list reflects
-            people who actually intend to use this, which is what lets us onboard in
-            small batches instead of a queue nobody moves through.
+            <strong>There's a non-refundable $50 fee to apply.</strong> It
+            credits in full against your first invoice if you're approved. It
+            exists so the list reflects people who actually intend to use
+            this — which is what lets us onboard in small batches instead of
+            a queue nobody moves through.
           </div>
 
           <button type="submit" id="waitlistSubmit">Apply</button>
@@ -238,8 +148,9 @@ thrift measure . --passes 5</code></pre>
   </main>
 
   <footer>
-    <p>brake stops the action, redteam attacks the argument, thrift stops the bill. Every number on this page is measured, not asserted — including the ones that are less flattering than they could be.</p>
+    <p>brake stops the action, redteam attacks the argument, thrift stops the bill.</p>
   </footer>
   <script src="/web/waitlist.js" type="module"></script>
+  <script src="https://assets.lemonsqueezy.com/lemon.js" defer></script>
 </body>
 </html>

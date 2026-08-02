@@ -36,8 +36,19 @@ export interface Plan {
   pricesCentsPerMonth: Record<BillingCycle, number>;
   /** Lemon Squeezy variant ids, from env so staging and prod can differ. */
   lemonSqueezyVariantIds: Record<BillingCycle, string | undefined>;
+  /**
+   * Monthly usage budget in tokens, tracked per user from the CLIs' usage
+   * reports (thrift reports real tokens processed; brake/redteam report
+   * estimated tokens of the text they scanned). The dashboard shows used vs
+   * this, and warns past BUDGET_WARN_PCT. Overridable per plan via
+   * LYCEUM_BUDGET_TOKENS_<PLAN> so staging and prod can differ.
+   */
+  monthlyTokenBudget: number;
   features: string[];
 }
+
+/** Warn past this fraction of the monthly token budget. */
+export const BUDGET_WARN_PCT = 0.8;
 
 export const PLANS: Plan[] = [
   {
@@ -45,6 +56,7 @@ export const PLANS: Plan[] = [
     name: "Solo",
     description: "One operator, a laptop and a server. Enough to cover everywhere you actually run agents.",
     aiConnections: 5,
+    monthlyTokenBudget: budgetTokensEnv("SOLO", 50_000_000),
     pricesCentsPerMonth: {
       monthly: 9900,  // $99
       annual: 8300,   // $83/mo, billed annually as $996
@@ -65,6 +77,7 @@ export const PLANS: Plan[] = [
     name: "Team",
     description: "A team running agents in production across a few machines and a CI runner.",
     aiConnections: 10,
+    monthlyTokenBudget: budgetTokensEnv("TEAM", 250_000_000),
     pricesCentsPerMonth: {
       monthly: 29900, // $299
       annual: 24900,  // $249/mo, billed annually as $2,988
@@ -85,6 +98,7 @@ export const PLANS: Plan[] = [
     name: "Scale",
     description: "Several teams or environments, where one runaway agent costs more than a year of this.",
     aiConnections: 15,
+    monthlyTokenBudget: budgetTokensEnv("SCALE", 1_000_000_000),
     pricesCentsPerMonth: {
       monthly: 79900, // $799
       annual: 66600,  // $666/mo, billed annually as $7,992
@@ -101,6 +115,21 @@ export const PLANS: Plan[] = [
     ],
   },
 ];
+
+/**
+ * Monthly token budget for a plan, from env or a default.
+ *
+ * The defaults are deliberately generous — the budget is a runaway-loop
+ * tripwire, not a metering cap. Its job is to make a fleet that is burning
+ * 10× what it planned visible on the dashboard, not to throttle a healthy
+ * team. Env override: LYCEUM_BUDGET_TOKENS_SOLO / _TEAM / _SCALE.
+ */
+function budgetTokensEnv(plan: "SOLO" | "TEAM" | "SCALE", fallback: number): number {
+  const raw = process.env[`LYCEUM_BUDGET_TOKENS_${plan}`];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 export const ENTERPRISE_TIER = {
   name: "Enterprise",
@@ -215,13 +244,26 @@ export function connectionLimitFor(plan: PlanId, addonConnections: number): numb
 // ── Waitlist ────────────────────────────────────────────────────────────────
 
 /**
- * The deposit to join the waitlist.
+ * The fee to join the waitlist.
  *
- * It is refundable and it credits against the first invoice — it exists to
- * make the list mean something, not to make money. A free waitlist fills with
- * people who will never buy and tells you nothing about demand; $10 of
- * friction filters to people who actually intend to.
+ * Non-refundable, and said plainly as such everywhere it's shown. It exists
+ * to make the list mean something, not to make money — a free waitlist fills
+ * with people who will never buy and tells you nothing about demand. Making
+ * it non-refundable rather than "refundable but we'll ask why" is the
+ * honest version of the same filter: the friction has to be real to do its
+ * job, and a friction that evaporates on request isn't friction.
  */
-export const WAITLIST_DEPOSIT_CENTS = 1000;
+export const WAITLIST_DEPOSIT_CENTS = 5000;
 
 export const WAITLIST_VARIANT_ID = process.env.LS_VARIANT_WAITLIST_DEPOSIT;
+
+/**
+ * Hard cap on the waitlist.
+ *
+ * The pitch is "we bring teams on in batches so setup gets a person" — that
+ * promise is false past some size, and 50 is where the plan actually holds.
+ * Counts every application that isn't rejected, so a rejection genuinely
+ * frees the slot rather than the cap silently meaning "50 non-rejected plus
+ * however many were rejected", which nobody could reason about from outside.
+ */
+export const WAITLIST_MAX_APPLICATIONS = 50;

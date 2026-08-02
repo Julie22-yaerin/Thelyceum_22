@@ -10,3 +10,9 @@ coverage/
 .vitest/
 .freebuff/
 graphify-out/
+# machine-specific benchmark output — never commit someone's laptop numbers
+benchmark-results.json
+benchmark-summary.md
+benchmark-compare.md
+.vercel
+.env*

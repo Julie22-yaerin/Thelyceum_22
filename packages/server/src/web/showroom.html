@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Plans — The Lyceum</title>
   <meta name="description" content="One subscription, both circuit breakers. Team, Business, and Enterprise plans for AI operations running agents in production." />
+  <link rel="icon" type="image/svg+xml" href="/web/favicon.svg" />
   <link rel="stylesheet" href="/web/styles.css" />
 </head>
 <body>
@@ -25,12 +26,23 @@
       <a href="/web/">Performance</a>
       <a href="#plans">Plans</a>
       <a href="#guides">Setup</a>
+      <a href="#license" id="navLicense">License key</a>
+      <a href="/web/download">Download</a>
       <a href="/web/#waitlist" id="navWaitlist">Waitlist</a>
       <a href="#login" id="navLogin">Sign in</a>
     </nav>
   </header>
 
   <main>
+    <!-- ── Payment confirmation ──────────────────────────────────────── -->
+    <!-- Shown when Lemon Squeezy redirects back with ?checkout=success —
+         the customer has paid but still needs to paste the key we emailed
+         them to finish setup. This closes the loop: pay → email → paste. -->
+    <div class="checkout-notice" id="checkoutNotice" hidden>
+      <strong>Payment confirmed.</strong> We've emailed your license key —
+      paste it below to finish setup.
+    </div>
+
     <!-- ── Plans ──────────────────────────────────────────────────────── -->
     <section id="plans" class="hero">
       <p class="eyebrow">One subscription, both breakers</p>
@@ -56,6 +68,31 @@
         connection; re-installing the same host on the same device is idempotent and
         does not consume a second slot.
       </p>
+    </section>
+
+    <!-- ── License key entry ──────────────────────────────────────────── -->
+    <!-- The front door for a customer who just paid: the key Lemon Squeezy
+         emailed them is the credential. Entering it takes them to the setup
+         guide (nothing installed yet) or straight to their dashboard. -->
+    <section id="license" class="license-section">
+      <h2 class="section-title">Have a license key?</h2>
+      <p class="section-sub">
+        Paid already? Paste the key from your email and we'll take you to the
+        setup guide — or straight to your dashboard if your CLI is wired up.
+      </p>
+      <div class="license-card">
+        <form class="license-form" id="licenseForm">
+          <input
+            type="text"
+            id="licenseKeyInput"
+            placeholder="License key from your email"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <button type="submit" id="licenseSubmit">Continue</button>
+        </form>
+        <p class="error" id="licenseMsg"></p>
+      </div>
     </section>
 
     <!-- ── Guides ─────────────────────────────────────────────────────── -->
@@ -100,6 +137,18 @@
       <h2>Account</h2>
       <p class="muted" id="dashEmail"></p>
 
+      <!-- Shown when the license is active but nothing is installed yet:
+           the CLI hasn't been set up on any host, so the next step is the
+           setup guide, not the dashboard. -->
+      <div class="setup-banner" id="setupBanner" hidden>
+        <strong>You're licensed — now wire up the CLI.</strong>
+        <p>
+          Nothing is installed on any host yet. Follow the
+          <a href="#guides">setup guide below</a>: install a host, then run
+          <code>brake login</code> on that machine to register it.
+        </p>
+      </div>
+
       <div class="row">
         <div class="col">
           <h3>Subscription</h3>
@@ -131,6 +180,19 @@
         </div>
       </div>
 
+      <!-- Monthly budget: what the CLIs reported this month vs the plan's
+           token budget. Rendered by app.js from /api/me → usage.budget. -->
+      <div class="budget" id="budgetBox">
+        <div class="budget-head">
+          <h3>Monthly token budget</h3>
+          <span class="badge" id="budgetBadge">—</span>
+        </div>
+        <div class="budget-bar"><div class="budget-fill" id="budgetFill"></div></div>
+        <p class="budget-line" id="budgetLine"></p>
+        <p class="budget-warning" id="budgetWarning" hidden></p>
+        <div class="budget-tools" id="budgetTools"></div>
+      </div>
+
       <div class="download">
         <h3>Download CLI</h3>
         <p class="muted">
@@ -138,6 +200,29 @@
         </p>
         <button id="btnDownload">Download brake CLI</button>
         <pre id="installCmd" class="cmd"></pre>
+      </div>
+
+      <div class="download license-redeem" id="licenseRedeem">
+        <h3>Attach your license key</h3>
+        <p class="muted">
+          Your subscription is active but the key we emailed you isn't attached
+          to this account yet. Paste it here to link them.
+        </p>
+        <input type="text" id="licenseRedeemInput" placeholder="License key from your email" spellcheck="false" autocomplete="off" />
+        <button id="btnLicenseRedeem">Attach license</button>
+        <p class="error" id="licenseRedeemMsg"></p>
+      </div>
+
+      <div class="download trial-redeem" id="trialRedeem">
+        <h3>Start your 30-day trial</h3>
+        <p class="muted">
+          Cohort members get a trial key by email. Paste it here to activate —
+          it's the full product for 30 days, then it locks exactly like a
+          lapsed subscription.
+        </p>
+        <input type="text" id="trialKeyInput" placeholder="LYCEUM-TRIAL-…" spellcheck="false" autocomplete="off" />
+        <button id="btnTrialRedeem">Activate trial</button>
+        <p class="error" id="trialMsg"></p>
       </div>
 
       <div class="actions bottom">
