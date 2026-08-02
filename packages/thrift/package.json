@@ -1,0 +1,35 @@
+{
+  "name": "thrift",
+  "version": "0.1.0",
+  "description": "Cuts the tokens an AI agent burns on its own tool output. Deduplicates repeated reads, caps runaway results, and strips machine noise — measured per call, never estimated. CLI + MCP server + installable skill.",
+  "type": "module",
+  "bin": { "thrift": "./dist/cli.js" },
+  "main": "./dist/compress.js",
+  "exports": {
+    ".": "./dist/compress.js",
+    "./compress": "./dist/compress.js",
+    "./ledger": "./dist/ledger.js",
+    "./tokens": "./dist/tokens.js"
+  },
+  "files": ["dist", "skills", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "mcp:dev": "tsx src/mcp.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7"
+  },
+  "engines": { "node": ">=22.5.0" },
+  "keywords": ["mcp", "claude", "chatgpt", "tokens", "cost", "context", "agent"],
+  "license": "MIT"
+}

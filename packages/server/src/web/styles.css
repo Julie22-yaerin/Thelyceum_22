@@ -50,6 +50,11 @@ code, pre { font-family: var(--mono); font-size: 13px; }
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
+  /* A minimum gap as well as space-between: once the viewport is narrow
+     enough that there is no free space left to distribute, space-between
+     contributes nothing and the wordmark ends up touching the first nav
+     link. The gap holds them apart at every width. */
+  gap: 24px; flex-wrap: wrap;
   padding: 16px 32px; border-bottom: 1px solid var(--border);
   position: sticky; top: 0; background: rgba(251, 251, 253, 0.88);
   backdrop-filter: blur(12px); z-index: 100;
@@ -66,7 +71,7 @@ code, pre { font-family: var(--mono); font-size: 13px; }
   white-space: nowrap;
 }
 .brand .name { white-space: nowrap; }
-.nav { display: flex; gap: 22px; align-items: center; }
+.nav { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
 .nav a { color: var(--text); font-size: 14px; font-weight: 500; }
 .nav a:hover { color: var(--accent); text-decoration: none; }
 .nav a.nav-cta {
@@ -490,3 +495,5 @@ button.mini:disabled { opacity: 0.5; cursor: not-allowed; }
   .admin-table { display: block; overflow-x: auto; }
   .launch-banner { padding: 10px 16px; font-size: 12.5px; }
 }
+
+.dot.amber { background: var(--amber); }

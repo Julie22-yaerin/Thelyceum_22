@@ -12,12 +12,12 @@
  * source sitting right there in the open — same reason a paid cookbook sells
  * next to free recipes on the internet.
  *
- * Both products are gated behind the same Lyceum subscription — one plan, two
- * circuit breakers. Each guide's first step is free and fully working, not a
- * teaser: an unlicensed visitor can prove the danger scan and the reasoning
- * challenge both actually work on their machine before paying for anything.
- * The remaining steps require an active subscription, checked the same way
- * for both products.
+ * Every product is gated behind the same Lyceum subscription — one plan,
+ * three tools. Each guide's first step is free and fully working, not a
+ * teaser: an unlicensed visitor can prove the danger scan, the reasoning
+ * challenge and the token measurement all actually work on their machine
+ * before paying for anything. The remaining steps require an active
+ * subscription, checked the same way for each.
  */
 
 export interface GuideStep {
@@ -30,7 +30,7 @@ export interface GuideStep {
 }
 
 export interface Guide {
-  product: "brake" | "redteam";
+  product: "brake" | "redteam" | "thrift";
   gated: boolean;
   title: string;
   intro: string;
@@ -145,9 +145,56 @@ export const REDTEAM_GUIDE: Guide = {
   ],
 };
 
+export const THRIFT_GUIDE: Guide = {
+  product: "thrift",
+  gated: true,
+  title: "Setting up thrift, step by step",
+  intro:
+    "Ten minutes. Step 2 is the one that matters — measure on your own files before you decide what this is worth to you.",
+  steps: [
+    {
+      title: "1. Install the CLI",
+      command: "npm install -g thrift",
+      expect: "thrift with no arguments prints the command list.",
+      detail:
+        "From source: `npm install && npm run build && npm link` in packages/thrift. If `thrift` is not found, your global npm bin is not on PATH — `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
+    },
+    {
+      title: "2. Measure on YOUR files before trusting any number",
+      command: "thrift measure . --passes 5",
+      expect:
+        "A before/after token count, split into lossless (dedupe + noise removal) and lossy (truncation).",
+      detail:
+        "Run it with `--passes 1` too. One pass is a first read, where deduplication cannot help — that gap between the two numbers is the honest picture of what thrift does for your workload. If most of your saving shows as lossy, raise `--budget`; you are truncating, not compressing.",
+    },
+    {
+      title: "3. Wire it into your AI host",
+      command: "thrift install all",
+      expect: "One line per host. A host that isn't installed is skipped, not an error.",
+      detail:
+        "Adds an MCP server entry to Claude Desktop and Claude Code, and the skill file for ChatGPT. Unlike brake, thrift installs no PreToolUse hook — it is an alternative to the host's read tool, not a gate in front of it.",
+    },
+    {
+      title: "4. Restart the host and confirm the tools loaded",
+      expect:
+        'Ask "what tools do you have?" — read_lean, run_lean, compress_text and thrift_report should be listed.',
+      detail:
+        "MCP tool lists load at session start, so a running Claude Desktop or Claude Code needs a restart. This is the step people skip before reporting that nothing happened.",
+    },
+    {
+      title: "5. Check it is actually being used",
+      command: "thrift report",
+      expect: "Calls, tokens before and after, and the lossless/lossy split.",
+      detail:
+        "If this stays at zero after a working session, the model is still using the host's own read tool. The skill description is what makes it prefer read_lean — confirm the skill installed, and that you restarted.",
+    },
+  ],
+};
+
 export function guideFor(product: string): Guide | null {
   if (product === "brake") return BRAKE_GUIDE;
   if (product === "redteam") return REDTEAM_GUIDE;
+  if (product === "thrift") return THRIFT_GUIDE;
   return null;
 }
 

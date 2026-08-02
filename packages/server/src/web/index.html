@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>The Lyceum — circuit breakers for AI</title>
-  <meta name="description" content="brake stops a dangerous action in under a second. redteam attacks a one-sided conclusion. Both run in microseconds — fast enough to sit on the hot path of a heavy agent harness." />
+  <meta name="description" content="brake stops a dangerous action in under a second. redteam attacks a one-sided conclusion. thrift cuts the tokens an agent burns re-reading its own context. All three run in microseconds, on the hot path of a heavy agent harness." />
   <link rel="stylesheet" href="/web/styles.css" />
 </head>
 <body>
@@ -34,9 +34,10 @@
       <p class="eyebrow">The circuit breaker company</p>
       <h1>We stop AI before it costs you.</h1>
       <p class="lede">
-        Two circuit breakers, done narrowly and well. <strong>brake</strong> stops a
+        Three tools, done narrowly and well. <strong>brake</strong> stops a
         dangerous <em>action</em>. <strong>redteam</strong> stops a one-sided
-        <em>conclusion</em>. Both are always-on — the model calls them itself, with no
+        <em>conclusion</em>. <strong>thrift</strong> stops you paying for the same
+        file twice. All three are always-on — the model calls them itself, with no
         slash command and no asking.
       </p>
       <p class="lede-sub">
@@ -115,9 +116,9 @@ a fast LLM round trip ≈ 300,000µs</div>
 
     <!-- ── Products ─────────────────────────────────────────────────── -->
     <section id="products">
-      <h2 class="section-title">Two breakers, one plan</h2>
+      <h2 class="section-title">Three tools, one plan</h2>
       <p class="section-sub">
-        They fail differently, so they are separate tools. One subscription covers both.
+        They fail differently, so they are separate tools. One subscription covers all three.
       </p>
 
       <div class="products">
@@ -153,6 +154,24 @@ brake install all</code></pre>
           </p>
           <pre class="cmd-block"><code>npm install -g redteam
 redteam install all</code></pre>
+          <a href="/web/showroom#guides" class="product-cta">Setup guide →</a>
+        </div>
+
+        <div class="product-card thrift">
+          <div class="product-head">
+            <span class="dot amber"></span>
+            <h2>thrift</h2>
+          </div>
+          <p class="product-role">Stops the bill.</p>
+          <p class="product-desc">
+            Cuts the tokens an agent burns on its own tool output. The second read of
+            an unchanged file returns a pointer, not the file — which is where the
+            saving actually is. <strong>78.5% measured on an agent loop, 97.6% of it
+            lossless.</strong> On a first pass over unique files it saves almost
+            nothing, and the docs say so rather than quoting the flattering number.
+          </p>
+          <pre class="cmd-block"><code>npm install -g thrift
+thrift measure . --passes 5</code></pre>
           <a href="/web/showroom#guides" class="product-cta">Setup guide →</a>
         </div>
       </div>
@@ -219,7 +238,7 @@ redteam install all</code></pre>
   </main>
 
   <footer>
-    <p>brake stops the action, redteam attacks the argument. Both actually do the thing — the SLA is measured, not asserted.</p>
+    <p>brake stops the action, redteam attacks the argument, thrift stops the bill. Every number on this page is measured, not asserted — including the ones that are less flattering than they could be.</p>
   </footer>
   <script src="/web/waitlist.js" type="module"></script>
 </body>

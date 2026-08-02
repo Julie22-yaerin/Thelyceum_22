@@ -33,12 +33,24 @@ describe("scanForDanger throughput", () => {
     // Warm up so JIT compilation doesn't get counted as part of the measurement.
     for (let i = 0; i < 20_000; i++) scanForDanger(CORPUS[i % CORPUS.length]);
 
+    // Best of five, not a single sample.
+    //
+    // A lone wall-clock reading measures the scheduler as much as the code:
+    // with every package in the workspace testing at once, one run dipped
+    // below the floor while the same call was comfortably above it in
+    // isolation. A flaky throughput test gets muted, and a muted test
+    // protects nothing — so this takes the best run, which is the closest
+    // available measurement of what the algorithm actually costs, and still
+    // fails outright if the code genuinely gets slower.
     const N = 200_000;
-    const start = process.hrtime.bigint();
-    for (let i = 0; i < N; i++) scanForDanger(CORPUS[i % CORPUS.length]);
-    const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
-
-    const callsPerSec = N / (elapsedMs / 1000);
+    let bestCallsPerSec = 0;
+    for (let run = 0; run < 5; run++) {
+      const start = process.hrtime.bigint();
+      for (let i = 0; i < N; i++) scanForDanger(CORPUS[i % CORPUS.length]);
+      const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+      bestCallsPerSec = Math.max(bestCallsPerSec, N / (elapsedMs / 1000));
+    }
+    const callsPerSec = bestCallsPerSec;
     // A real agent harness making one tool call every ~100ms across a fleet
     // of a few hundred concurrent agents needs low thousands of scans/sec.
     // 200k/sec leaves three orders of magnitude of headroom on a single core.

@@ -54,7 +54,7 @@ export const PLANS: Plan[] = [
       annual: process.env.LS_VARIANT_SOLO_ANNUAL,
     },
     features: [
-      "Both circuit breakers — brake and redteam",
+      "All three tools — brake, redteam and thrift",
       "5 AI host connections",
       "Guided, step-by-step setup for both tools",
       "Standard email support",
@@ -186,6 +186,30 @@ export function subscriptionDurationMs(cycle: BillingCycle): number {
 
 export function formatUsd(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// ── Add-on connections ──────────────────────────────────────────────────────
+
+/**
+ * One extra connection, bought on its own.
+ *
+ * $100/month buys one more machine on top of the plan's allowance. Priced
+ * against the tiers rather than under them on purpose: Solo is $99 for five
+ * connections, so a single add-on is deliberately poor value compared with
+ * moving up a tier. That is the intent — add-ons are for the team that is on
+ * Scale and needs a sixteenth machine, not a cheaper route to Team.
+ *
+ * Add-ons are stored separately from the plan (see `addon_connections` in
+ * db.ts) so changing plan never silently discards connections already paid
+ * for.
+ */
+export const ADDON_CONNECTION_CENTS_PER_MONTH = 10000;
+
+export const ADDON_CONNECTION_VARIANT_ID = process.env.LS_VARIANT_ADDON_CONNECTION;
+
+/** Total connections available: the plan's allowance plus anything bought on top. */
+export function connectionLimitFor(plan: PlanId, addonConnections: number): number {
+  return getPlan(plan).aiConnections + Math.max(0, addonConnections);
 }
 
 // ── Waitlist ────────────────────────────────────────────────────────────────

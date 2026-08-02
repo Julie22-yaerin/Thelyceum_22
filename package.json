@@ -2,11 +2,12 @@
   "name": "the-lyceum",
   "version": "0.1.0",
   "private": true,
-  "description": "The Lyceum — circuit breakers for AI. brake stops a dangerous action; redteam stops a one-sided conclusion.",
+  "description": "The Lyceum \u2014 circuit breakers for AI. brake stops a dangerous action; redteam stops a one-sided conclusion.",
   "type": "module",
   "workspaces": [
     "packages/brake",
     "packages/redteam",
+    "packages/thrift",
     "packages/server"
   ],
   "scripts": {

@@ -385,3 +385,46 @@ export function lockIfExpired(db: DbHandle): number {
     .run(now, now);
   return Number(result.changes);
 }
+
+/**
+ * Grant extra connections bought on their own.
+ *
+ * Additive rather than absolute: buying a second add-on must give a sixth and
+ * seventh connection, not reset the count to one. `quantity` comes from the
+ * Lemon Squeezy order, so buying three at once in a single checkout works
+ * without three separate webhooks.
+ */
+export function addAddonConnections(db: DbHandle, userId: string, quantity: number): number {
+  const n = Math.max(0, Math.floor(quantity));
+  if (n === 0) return 0;
+  db.raw
+    .prepare("UPDATE subscriptions SET addon_connections = addon_connections + ? WHERE user_id = ?")
+    .run(n, userId);
+  const row = db.raw
+    .prepare("SELECT addon_connections FROM subscriptions WHERE user_id = ?")
+    .get(userId) as unknown as { addon_connections: number } | undefined;
+  return row?.addon_connections ?? 0;
+}
+
+/**
+ * Remove add-on connections when one is cancelled.
+ *
+ * Floors at zero. Existing installs over the new limit are deliberately NOT
+ * force-removed here: silently killing a machine's access because a
+ * subscription changed is the kind of surprise that costs trust. The limit
+ * simply stops new registrations until they are back under it, and the
+ * dashboard shows them which to remove.
+ */
+export function removeAddonConnections(db: DbHandle, userId: string, quantity: number): number {
+  const n = Math.max(0, Math.floor(quantity));
+  if (n === 0) return 0;
+  db.raw
+    .prepare(
+      "UPDATE subscriptions SET addon_connections = MAX(0, addon_connections - ?) WHERE user_id = ?"
+    )
+    .run(n, userId);
+  const row = db.raw
+    .prepare("SELECT addon_connections FROM subscriptions WHERE user_id = ?")
+    .get(userId) as unknown as { addon_connections: number } | undefined;
+  return row?.addon_connections ?? 0;
+}

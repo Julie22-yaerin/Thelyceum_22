@@ -32,6 +32,9 @@ import {
   subscriptionDurationMs,
   WAITLIST_DEPOSIT_CENTS,
   WAITLIST_VARIANT_ID,
+  ADDON_CONNECTION_CENTS_PER_MONTH,
+  ADDON_CONNECTION_VARIANT_ID,
+  connectionLimitFor,
   type PlanId,
   type BillingCycle,
 } from "./plans.js";
@@ -46,6 +49,8 @@ import {
   validateWithLemonSqueezy,
   setAutoRenew,
   lockIfExpired,
+  addAddonConnections,
+  removeAddonConnections,
 } from "./lemonsqueezy.js";
 import { registerInstall, listInstalls, unregisterInstall, isHostType, DeviceError } from "./devices.js";
 import { guideFor, previewOf } from "./guides.js";
@@ -112,6 +117,10 @@ app.get("/api/plans", (c) => {
     enterprise: ENTERPRISE_TIER,
     launchMode: LAUNCH_MODE,
     waitlistDepositCents: WAITLIST_DEPOSIT_CENTS,
+    addonConnection: {
+      centsPerMonth: ADDON_CONNECTION_CENTS_PER_MONTH,
+      available: !!ADDON_CONNECTION_VARIANT_ID,
+    },
   });
 });
 
@@ -198,13 +207,14 @@ app.get("/api/me", (c) => {
   const user = getUserById(db, userId)!;
   const sub = getSubscription(db, userId);
   const installs = listInstalls(db, userId);
-  const limit = sub ? getPlan(sub.plan).aiConnections : 0;
+  const limit = sub ? connectionLimitFor(sub.plan, sub.addon_connections ?? 0) : 0;
   return c.json({
     user: { id: user.id, email: user.email, createdAt: user.created_at },
     subscription: sub,
     installs,
     connectionCount: installs.length,
     connectionLimit: limit,
+    addonConnections: sub?.addon_connections ?? 0,
   });
 });
 
@@ -400,6 +410,25 @@ app.post("/api/lemonsqueezy/webhook", async (c) => {
       const cents = Number(attrs.total ?? WAITLIST_DEPOSIT_CENTS);
       const row = waitlist.markDepositPaid(db, email, cents, payload.data?.id ?? null);
       return c.json({ ok: true, waitlist: row ? row.status : "no matching application" });
+    }
+
+    // Add-on connections are their own variant. Handled before the plan path
+    // so an add-on order is never mistaken for a plan change.
+    if (ADDON_CONNECTION_VARIANT_ID && variantId === ADDON_CONNECTION_VARIANT_ID) {
+      const userId = payload.meta?.custom_data?.user_id as string | undefined;
+      if (!userId) {
+        return c.json({ ok: true, note: "add-on order with no user_id; cannot attribute" });
+      }
+      const qty = Number((attrs.first_order_item as { quantity?: unknown } | undefined)?.quantity ?? 1);
+      if (eventName === "order_created" || eventName === "subscription_created") {
+        const total = addAddonConnections(db, userId, qty);
+        return c.json({ ok: true, addonConnections: total });
+      }
+      if (eventName === "subscription_cancelled" || eventName === "subscription_expired") {
+        const total = removeAddonConnections(db, userId, qty);
+        return c.json({ ok: true, addonConnections: total });
+      }
+      return c.json({ ok: true, note: `add-on event ${eventName} ignored` });
     }
 
     const outcome = await handleWebhook(db, raw);

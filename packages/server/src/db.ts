@@ -59,6 +59,10 @@ function migrate(db: DatabaseSync): void {
       -- validation is a local lookup: an outage on their side must not stop a
       -- paying customer's agents from running.
       license_key             TEXT UNIQUE,
+      -- Extra connections bought individually on top of the plan's allowance.
+      -- Kept separate from the plan column so a plan change never silently
+      -- discards add-ons the customer paid for.
+      addon_connections       INTEGER NOT NULL DEFAULT 0,
       started_at              INTEGER NOT NULL,
       expires_at              INTEGER NOT NULL,
       auto_renew              INTEGER NOT NULL DEFAULT 1,
@@ -133,6 +137,7 @@ export interface SubscriptionRow {
   status: "active" | "locked";
   ls_subscription_id: string | null;
   license_key: string | null;
+  addon_connections: number;
   started_at: number;
   expires_at: number;
   auto_renew: number;

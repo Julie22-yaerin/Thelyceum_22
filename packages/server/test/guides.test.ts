@@ -10,12 +10,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { BRAKE_GUIDE, REDTEAM_GUIDE, guideFor, previewOf } from "../src/guides.js";
+import { BRAKE_GUIDE, REDTEAM_GUIDE, THRIFT_GUIDE, guideFor, previewOf } from "../src/guides.js";
 
 describe("guideFor", () => {
   it("resolves known products", () => {
     expect(guideFor("brake")?.product).toBe("brake");
     expect(guideFor("redteam")?.product).toBe("redteam");
+    expect(guideFor("thrift")?.product).toBe("thrift");
   });
 
   it("returns null for anything else", () => {
@@ -24,14 +25,15 @@ describe("guideFor", () => {
 });
 
 describe("gating flags", () => {
-  it("both products are gated behind the same Lyceum subscription", () => {
-    expect(REDTEAM_GUIDE.gated).toBe(true);
-    expect(BRAKE_GUIDE.gated).toBe(true);
+  it("every product is gated behind the same Lyceum subscription", () => {
+    for (const g of [BRAKE_GUIDE, REDTEAM_GUIDE, THRIFT_GUIDE]) {
+      expect(g.gated, g.product).toBe(true);
+    }
   });
 });
 
 describe("previewOf", () => {
-  for (const guide of [BRAKE_GUIDE, REDTEAM_GUIDE]) {
+  for (const guide of [BRAKE_GUIDE, REDTEAM_GUIDE, THRIFT_GUIDE]) {
     describe(guide.product, () => {
       it("returns exactly the first step, not a summary of it", () => {
         const preview = previewOf(guide);
@@ -59,7 +61,7 @@ describe("previewOf", () => {
 
 describe("guide content integrity", () => {
   it("every step has a title and a detail", () => {
-    for (const guide of [BRAKE_GUIDE, REDTEAM_GUIDE]) {
+    for (const guide of [BRAKE_GUIDE, REDTEAM_GUIDE, THRIFT_GUIDE]) {
       for (const step of guide.steps) {
         expect(step.title.length).toBeGreaterThan(0);
         expect(step.detail.length).toBeGreaterThan(0);
@@ -70,7 +72,7 @@ describe("guide content integrity", () => {
   it("a step with a command also states what to expect", () => {
     // A command with no stated output leaves the operator unable to tell
     // whether it worked — exactly the gap a guided setup exists to close.
-    for (const guide of [BRAKE_GUIDE, REDTEAM_GUIDE]) {
+    for (const guide of [BRAKE_GUIDE, REDTEAM_GUIDE, THRIFT_GUIDE]) {
       for (const step of guide.steps) {
         if (step.command) expect(step.expect).toBeTruthy();
       }

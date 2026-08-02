@@ -9,7 +9,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { DbHandle, InstallRow } from "./db.js";
-import { getPlan } from "./plans.js";
+import { getPlan, connectionLimitFor } from "./plans.js";
 import type { SubscriptionRow } from "./db.js";
 
 export type HostType = "claude-desktop" | "claude-code" | "chatgpt";
@@ -55,6 +55,8 @@ export function registerInstall(db: DbHandle, input: RegisterInput): RegisterRes
   }
 
   const plan = getPlan(sub.plan);
+  // Plan allowance plus any individually-purchased connections.
+  const limit = connectionLimitFor(sub.plan, sub.addon_connections ?? 0);
   const existing = db.raw
     .prepare("SELECT * FROM installs WHERE user_id = ? AND host_type = ? AND device_id = ?")
     .get(input.userId, input.hostType, input.deviceId) as InstallRow | undefined;
@@ -67,7 +69,7 @@ export function registerInstall(db: DbHandle, input: RegisterInput): RegisterRes
     return {
       install: { ...existing, last_seen_at: now, host_meta: JSON.stringify(input.hostMeta ?? {}) },
       total,
-      limit: plan.aiConnections,
+      limit,
     };
   }
 
@@ -75,10 +77,13 @@ export function registerInstall(db: DbHandle, input: RegisterInput): RegisterRes
     .prepare("SELECT COUNT(*) as c FROM installs WHERE user_id = ?")
     .get(input.userId) as { c: number }).c;
 
-  if (count >= plan.aiConnections) {
+  if (count >= limit) {
+    const addons = sub.addon_connections ?? 0;
     throw new DeviceError(
       "limit_reached",
-      `connection limit reached (${count}/${plan.aiConnections}). Your ${plan.name} plan supports ${plan.aiConnections} AI connections. Upgrade to Pro for 5.`
+      `Connection limit reached (${count}/${limit}). Your ${plan.name} plan includes ${plan.aiConnections}` +
+        (addons > 0 ? `, plus ${addons} add-on connection${addons === 1 ? "" : "s"}` : "") +
+        `. Move up a tier, or buy another connection for $100/month.`
     );
   }
 
@@ -111,7 +116,7 @@ export function registerInstall(db: DbHandle, input: RegisterInput): RegisterRes
       last_seen_at: now,
     },
     total: count + 1,
-    limit: plan.aiConnections,
+    limit,
   };
 }
 
