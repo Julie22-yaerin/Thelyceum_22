@@ -244,7 +244,7 @@ export function connectionLimitFor(plan: PlanId, addonConnections: number): numb
 // ── Waitlist ────────────────────────────────────────────────────────────────
 
 /**
- * The fee to join the waitlist.
+ * The pre-order price for the CLI suite, paid to join the waitlist.
  *
  * Non-refundable, and said plainly as such everywhere it's shown. It exists
  * to make the list mean something, not to make money — a free waitlist fills
@@ -252,8 +252,22 @@ export function connectionLimitFor(plan: PlanId, addonConnections: number): numb
  * it non-refundable rather than "refundable but we'll ask why" is the
  * honest version of the same filter: the friction has to be real to do its
  * job, and a friction that evaporates on request isn't friction.
+ *
+ * This is a number our own code shows in copy and falls back to in the
+ * webhook (see index.ts) if Lemon Squeezy's payload omits a total — it is
+ * NOT what sets the actual charge. The amount a customer is charged is
+ * whatever price is configured on the Lemon Squeezy product page for
+ * LEMONSQUEEZY_CHECKOUT_URL (see waitlist.js); the two must be kept in sync
+ * by hand on a price change, there is no code path that enforces it.
  */
-export const WAITLIST_DEPOSIT_CENTS = 5000;
+export const WAITLIST_DEPOSIT_CENTS = 5200;
+
+/**
+ * Official launch date for the CLI suite — when pre-order applicants get
+ * their setup email. Separate from WAITLIST_DEADLINE_ISO on purpose: the
+ * window to pre-order closes first, launch follows a couple of days later.
+ */
+export const LAUNCH_DATE_ISO = "2026-08-22T00:00:00Z";
 
 export const WAITLIST_VARIANT_ID = process.env.LS_VARIANT_WAITLIST_DEPOSIT;
 

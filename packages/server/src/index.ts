@@ -32,6 +32,7 @@ import {
   subscriptionDurationMs,
   WAITLIST_DEPOSIT_CENTS,
   WAITLIST_VARIANT_ID,
+  LAUNCH_DATE_ISO,
   ADDON_CONNECTION_CENTS_PER_MONTH,
   ADDON_CONNECTION_VARIANT_ID,
   connectionLimitFor,
@@ -163,6 +164,7 @@ app.get("/api/plans", (c) => {
     enterprise: ENTERPRISE_TIER,
     launchMode: LAUNCH_MODE,
     waitlistDepositCents: WAITLIST_DEPOSIT_CENTS,
+    launchDate: LAUNCH_DATE_ISO,
     // Taken/max/full only — never the rows. The public site can show
     // "12/50 spots taken" without being able to enumerate who applied.
     waitlistAvailability: waitlist.publicAvailability(db),

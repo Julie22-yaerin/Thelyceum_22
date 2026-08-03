@@ -51,9 +51,12 @@ function renderApplied() {
     <div class="waitlist-done">
       <h3>Application received</h3>
       <p>
-        One step left. The <strong>non-refundable $50 fee</strong> confirms your
-        place in the batch — it credits in full against your first invoice.
-        Until it clears, your application sits as <em>awaiting payment</em>.
+        One step left. The <strong>non-refundable $52 pre-order</strong> confirms
+        your place in the batch and credits in full against your first
+        invoice — it also includes <strong>one month free</strong> of
+        <strong>Red Team Core V1</strong> and <strong>Savier Core V1</strong>
+        when the suite ships August 22. Until it clears, your application
+        sits as <em>awaiting payment</em>.
       </p>
       <a href="${checkoutUrlWithRedirect()}" class="lemonsqueezy-button deposit-cta">Buy Pre-order for early access</a>
     </div>`;
