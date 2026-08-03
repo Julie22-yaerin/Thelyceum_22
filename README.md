@@ -94,6 +94,7 @@ Never set it in production — the server says so loudly at boot.
 |---|---|
 | `LYCEUM_LAUNCH_MODE` | `waitlist` (default) or `open`. Pre-launch, checkout is refused server-side and the site shows the waitlist. |
 | `LYCEUM_ADMIN_KEYS` | Comma-separated admin license keys. **Never read from the database** — see [LICENSING.md](LICENSING.md). |
+| `LYCEUM_DEV_TOKEN` | Gates `POST /api/news`, the waiting-room feed (`/web/news-out`). A separate credential from the admin keys — narrow enough to hand to a CI job. See `scripts/post-news.mjs`. |
 | `LYCEUM_JWT_SECRET` | Signs sessions and license tokens. |
 | `LYCEUM_DB_PATH` | SQLite file. Defaults to `packages/server/data/lyceum.db`. |
 | `LYCEUM_PUBLIC_URL` | Public origin, used for checkout redirects and CORS. |

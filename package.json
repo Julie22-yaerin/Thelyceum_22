@@ -8,14 +8,17 @@
     "packages/brake",
     "packages/redteam",
     "packages/thrift",
-    "packages/server"
+    "packages/server",
+    "packages/site"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "server": "npm run dev --workspace @lyceum/server",
+    "site": "npm run dev --workspace @lyceum/site",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "benchmark": "node scripts/benchmark.mjs"
+    "benchmark": "node scripts/benchmark.mjs",
+    "post-news": "node scripts/post-news.mjs"
   },
   "engines": {
     "node": ">=22.5.0"

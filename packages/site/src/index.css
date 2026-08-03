@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  TT Norms Pro is a licensed commercial face — the woff2 files are not part
+  of this repo. Drop them in public/fonts/ with these exact names and the
+  @font-face below picks them up; until then the system-font fallback in the
+  stack renders instead, so the page never blocks on a missing asset.
+*/
+@font-face {
+  font-family: "TT Norms Pro";
+  src: url("/fonts/tt-norms-pro-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TT Norms Pro";
+  src: url("/fonts/tt-norms-pro-semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+html,
+body {
+  font-family:
+    "TT Norms Pro",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+
+* {
+  font-family: inherit;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 22s linear infinite;
+}
+
+@keyframes backers-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.backers-track {
+  display: flex;
+  width: max-content;
+  animation: backers-marquee 30s linear infinite;
+}
+
+@keyframes term-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.term-cursor {
+  animation: term-blink 1.1s steps(1) infinite;
+}
+
+@keyframes term-scroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+.term-scroll-track {
+  animation: term-scroll 14s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track,
+  .backers-track,
+  .term-cursor,
+  .term-scroll-track {
+    animation: none;
+  }
+}

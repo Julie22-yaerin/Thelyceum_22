@@ -22,6 +22,7 @@
     </div>
     <nav class="nav">
       <a href="/web/showroom">Plans</a>
+      <a href="/web/news-out">Waiting room</a>
       <a href="#waitlist" class="nav-cta" id="navCta">Join the waitlist</a>
     </nav>
   </header>
@@ -30,20 +31,61 @@
     <!-- ── The fear, stated plainly. This page's only two jobs: say who we
          are, and get an application. Everything else — pricing, live
          benchmarks, setup guides — lives on its own page. ────────────── -->
-    <section class="hero">
-      <p class="eyebrow">Infrastructure insurance for AI</p>
-      <h1>Your agent will fail.<br />The question is what it costs you.</h1>
-      <p class="lede">
-        A runaway retry loop burns your cloud credit in an hour. A one-sided
-        conclusion ships to production at 2 a.m. A credential ends up in a
-        log you never approved. Companies don't lose money because AI is
-        bad — they lose it because <strong>nothing stopped the failure
-        before it hit the bill, the system, or the name on the door</strong>.
+    <section class="hero hero-visual">
+      <video class="hero-video" autoplay muted loop playsinline>
+        <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260423_161253_c72b1869-400f-45ed-ac0c-52f68c2ed5bd.mp4" type="video/mp4" />
+      </video>
+      <div class="hero-scrim"></div>
+      <div class="hero-inner">
+        <p class="eyebrow">Infrastructure insurance for AI</p>
+        <h1>Your agent will fail.<br />The question is what it costs you.</h1>
+        <p class="lede">
+          A runaway retry loop burns your cloud credit in an hour. A one-sided
+          conclusion ships to production at 2 a.m. A credential ends up in a
+          log you never approved. Companies don't lose money because AI is
+          bad — they lose it because <strong>nothing stopped the failure
+          before it hit the bill, the system, or the name on the door</strong>.
+        </p>
+        <p class="lede-sub">
+          The Lyceum sits between your agents and those three outcomes. Three
+          tools, one policy — every single tool call, on the hot path.
+        </p>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <h2 class="section-title">The receipts</h2>
+      <p class="section-sub">
+        Not a claim — a run. Every number below came out of a real session
+        against these files, not a synthetic benchmark.
       </p>
-      <p class="lede-sub">
-        The Lyceum sits between your agents and those three outcomes. Three
-        tools, one policy — every single tool call, on the hot path.
-      </p>
+      <div class="evidence-grid">
+        <div class="terminal">
+          <div class="terminal-head">
+            <span class="t-dot red"></span><span class="t-dot amber"></span><span class="t-dot green"></span>
+            <span class="t-title">thrift measure .</span>
+          </div>
+          <div class="terminal-body"><pre>before      175,565 tokens
+after        79,501 tokens
+saved        96,064  (54.7%)
+
+lossless     68,128 tok — dedupe, free
+lossy        27,936 tok — truncation</pre></div>
+        </div>
+        <div class="terminal">
+          <div class="terminal-head">
+            <span class="t-dot red"></span><span class="t-dot amber"></span><span class="t-dot green"></span>
+            <span class="t-title">redteam eval</span>
+          </div>
+          <div class="terminal-body"><pre>tested      15  (12 claims, 3 controls)
+detected    12/12   = 100%
+blocked     6/12    = 50%  (exit 1)
+precision   6/6     = 100%
+false pos.  0/3 controls, 0 blocked
+
+  → block = hook chặn Write/Edit</pre></div>
+        </div>
+      </div>
     </section>
 
     <section id="stakes">

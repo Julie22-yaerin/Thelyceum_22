@@ -80,6 +80,29 @@ export function adminConfigured(): boolean {
 }
 
 /**
+ * Dev-token check for the news-publishing endpoint.
+ *
+ * Deliberately a separate credential from `LYCEUM_ADMIN_KEYS`: publishing a
+ * benchmark update is a narrower, more automatable act (a CI job can hold
+ * this token) than full admin-console access (approving waitlist entries,
+ * reading the audit log), so it doesn't get the same key. Same timing-safe
+ * comparison, same "env var, never the database" rule.
+ */
+export function authenticateDevToken(presented: string | undefined): boolean {
+  if (!presented) return false;
+  const token = (process.env.LYCEUM_DEV_TOKEN ?? "").trim();
+  if (!token) return false;
+  const presentedBuf = Buffer.from(presented, "utf8");
+  const tokenBuf = Buffer.from(token, "utf8");
+  return tokenBuf.length === presentedBuf.length && crypto.timingSafeEqual(tokenBuf, presentedBuf);
+}
+
+/** True when no dev token is configured — the publish endpoint is then unreachable. */
+export function devTokenConfigured(): boolean {
+  return (process.env.LYCEUM_DEV_TOKEN ?? "").trim().length > 0;
+}
+
+/**
  * Record an admin action.
  *
  * The fingerprint identifies the actor; the key never touches the log. An

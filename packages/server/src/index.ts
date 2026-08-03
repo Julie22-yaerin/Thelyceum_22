@@ -56,7 +56,16 @@ import { registerInstall, listInstalls, unregisterInstall, isHostType, DeviceErr
 import { guideFor, previewOf } from "./guides.js";
 import { PRODUCTS, OSES } from "./downloads.js";
 import * as waitlist from "./waitlist.js";
-import { authenticateAdmin, adminConfigured, recordAdminAction, recentAdminActions, type AdminIdentity } from "./admin.js";
+import * as news from "./news.js";
+import {
+  authenticateAdmin,
+  adminConfigured,
+  recordAdminAction,
+  recentAdminActions,
+  authenticateDevToken,
+  devTokenConfigured,
+  type AdminIdentity,
+} from "./admin.js";
 import { mintTrialToken, activateTrial, TrialError, isLyceumIssuedKey } from "./trial.js";
 import { getTelemetry } from "./telemetry.js";
 import { recordUsage, monthlyUsage, budgetStatus, monthKey } from "./usage.js";
@@ -87,6 +96,12 @@ if (!adminConfigured()) {
   // which is the safe default. But it is worth saying out loud, because the
   // waitlist collects applications nobody can then approve.
   console.warn("[lyceum] LYCEUM_ADMIN_KEYS is not set — the admin console is unreachable.");
+}
+
+if (!devTokenConfigured()) {
+  // Same shape of trade-off as the admin key above: no token means nobody
+  // can post to the waiting-room feed, which is safe but silent.
+  console.warn("[lyceum] LYCEUM_DEV_TOKEN is not set — POST /api/news is unreachable.");
 }
 
 // Missing Lemon Squeezy variants are a startup failure rather than a 500 at
@@ -207,6 +222,11 @@ app.use("/api/*", async (c, next) => {
   //   waitlist     applicants have no account yet — that is the point
   //   webhook      authenticated by HMAC signature, not by a session
   //   admin        has its own middleware below, keyed on LYCEUM_ADMIN_KEYS
+  //   news         GET is public (the waiting-room feed); POST checks its
+  //                own Authorization: Bearer against LYCEUM_DEV_TOKEN, a
+  //                different scheme than the session JWT this middleware
+  //                verifies — left to fall through here, it would 401 a
+  //                correct dev-token before authenticateDevToken ever runs.
   const PUBLIC_PREFIXES = [
     "/api/guides/",
     "/api/waitlist",
@@ -214,6 +234,7 @@ app.use("/api/*", async (c, next) => {
     "/api/admin/",
     "/dev/",
     "/api/telemetry",
+    "/api/news",
   ];
   if (
     c.req.path === "/api/auth/signup" ||
@@ -725,6 +746,33 @@ app.get("/api/waitlist/status", (c) => {
   // no authentication, so returning the row would let anyone enumerate who
   // else has applied and from which company.
   return c.json({ found: !!row, status: row?.status ?? null });
+});
+
+// ── News (waiting-room feed) ─────────────────────────────────────────────────
+// Read is public — it's what a paid, waiting applicant sees at /web/news-out.
+// Write needs LYCEUM_DEV_TOKEN, checked the same timing-safe way as admin
+// keys, but kept as its own credential — see authenticateDevToken in admin.ts.
+
+app.get("/api/news", (c) => {
+  return c.json({ entries: news.list(db, Number(c.req.query("limit")) || 50) });
+});
+
+const NewsBody = z.object({
+  category: z.enum(["progress", "test", "benchmark"]),
+  title: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(5000),
+});
+
+app.post("/api/news", async (c) => {
+  const auth = c.req.header("Authorization") ?? "";
+  const token = auth.match(/^Bearer (.+)$/)?.[1];
+  if (!authenticateDevToken(token)) return c.json({ error: "unauthorized" }, 401);
+
+  const body = NewsBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input", issues: body.error.issues }, 400);
+
+  const row = news.publish(db, body.data);
+  return c.json({ entry: row }, 201);
 });
 
 // ── Admin console ───────────────────────────────────────────────────────────

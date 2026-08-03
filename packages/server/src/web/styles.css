@@ -90,6 +90,28 @@ footer {
 /* ── Hero ─────────────────────────────────────────────────────────────── */
 
 .hero { text-align: center; padding: 24px 0 48px; }
+
+/* The hero card carries real footage — the coin/money material is the
+   original asset, kept on purpose. The scrim is what makes the existing
+   dark hero text (`.hero h1`, `.lede`, etc.) still readable over it. */
+.hero-visual {
+  position: relative; overflow: hidden; border-radius: 20px;
+  padding: 0; box-shadow: var(--shadow-md);
+}
+.hero-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; z-index: 0;
+}
+.hero-scrim {
+  position: absolute; inset: 0; background: rgba(251, 251, 253, 0.9); z-index: 1;
+}
+.hero-inner { position: relative; z-index: 2; padding: 56px 32px 48px; }
+
+.evidence-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  margin-bottom: 8px;
+}
+.evidence-grid .terminal { margin: 0; max-width: none; }
 .eyebrow {
   color: var(--accent); font-size: 12px; font-weight: 650;
   letter-spacing: 0.09em; text-transform: uppercase; margin-bottom: 14px;
@@ -786,4 +808,6 @@ button.mini:disabled { opacity: 0.5; cursor: not-allowed; }
   .terminal-body pre { font-size: 12px; }
   .thankyou-card { padding: 36px 24px; }
   .products--compact { gap: 18px 28px; }
+  .evidence-grid { grid-template-columns: 1fr; }
+  .hero-inner { padding: 40px 20px 32px; }
 }

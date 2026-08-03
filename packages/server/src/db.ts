@@ -95,6 +95,21 @@ function migrate(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist(status, created_at DESC);
 
+    -- ── News ─────────────────────────────────────────────────────────────
+    -- The waiting-room feed: progress notes, new tests, new benchmarks.
+    -- Written only through the dev-token-gated endpoint (see admin.ts /
+    -- authenticateDevToken) — there is no UI for anyone to post through, on
+    -- purpose. Read is public: it's what a paid, waiting applicant sees.
+    CREATE TABLE IF NOT EXISTS news (
+      id          TEXT PRIMARY KEY,
+      category    TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      body        TEXT NOT NULL,
+      created_at  INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_news_created ON news(created_at DESC);
+
     CREATE TABLE IF NOT EXISTS installs (
       id                  TEXT PRIMARY KEY,
       user_id             TEXT NOT NULL,
@@ -184,6 +199,16 @@ export interface WaitlistRow {
   ls_order_id: string | null;
   reviewed_by: string | null;
   reviewed_at: number | null;
+  created_at: number;
+}
+
+export type NewsCategory = "progress" | "test" | "benchmark";
+
+export interface NewsRow {
+  id: string;
+  category: NewsCategory;
+  title: string;
+  body: string;
   created_at: number;
 }
 
