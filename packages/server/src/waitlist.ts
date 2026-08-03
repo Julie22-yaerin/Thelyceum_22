@@ -23,7 +23,14 @@
 
 import { randomUUID } from "node:crypto";
 import type { DbHandle, WaitlistRow, WaitlistStatus } from "./db.js";
-import { WAITLIST_MAX_APPLICATIONS } from "./plans.js";
+import { WAITLIST_MAX_APPLICATIONS, WAITLIST_DEADLINE_ISO } from "./plans.js";
+
+const WAITLIST_DEADLINE_MS = Date.parse(WAITLIST_DEADLINE_ISO);
+
+/** True once the deadline constant has passed, regardless of headcount. */
+export function pastDeadline(now = Date.now()): boolean {
+  return now >= WAITLIST_DEADLINE_MS;
+}
 
 /**
  * Consumer mail providers. Deliberately short: this is the head of the
@@ -124,9 +131,18 @@ export function apply(db: DbHandle, input: ApplicationInput): WaitlistRow {
     );
   }
 
-  // The cap is checked last, after identity and duplicate checks, so someone
-  // already on the list never gets told the list is full — they get their
-  // real status instead.
+  // Deadline and cap are both checked after identity and duplicate checks,
+  // so someone already on the list never gets told the door is shut — they
+  // get their real status instead. Whichever of the two is hit first closes
+  // applications; the deadline goes first only because it needs no query.
+  if (pastDeadline()) {
+    throw new WaitlistError(
+      "waitlist_closed",
+      `Applications closed ${new Date(WAITLIST_DEADLINE_MS).toDateString()}. Email us directly if you want to be ` +
+        `first in line for the next opening.`
+    );
+  }
+
   if (activeCount(db) >= WAITLIST_MAX_APPLICATIONS) {
     throw new WaitlistError(
       "waitlist_full",
@@ -240,8 +256,22 @@ export function activeCount(db: DbHandle): number {
   return Number(row.n);
 }
 
+export interface PublicAvailability {
+  taken: number;
+  max: number;
+  full: boolean;
+  deadline: string;
+  closed: boolean;
+}
+
 /** What the public site may show: a count and whether it's full, nothing per-row. */
-export function publicAvailability(db: DbHandle): { taken: number; max: number; full: boolean } {
+export function publicAvailability(db: DbHandle): PublicAvailability {
   const taken = activeCount(db);
-  return { taken, max: WAITLIST_MAX_APPLICATIONS, full: taken >= WAITLIST_MAX_APPLICATIONS };
+  return {
+    taken,
+    max: WAITLIST_MAX_APPLICATIONS,
+    full: taken >= WAITLIST_MAX_APPLICATIONS,
+    deadline: WAITLIST_DEADLINE_ISO,
+    closed: pastDeadline(),
+  };
 }

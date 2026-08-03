@@ -727,7 +727,8 @@ app.post("/api/waitlist", async (c) => {
     }, 201);
   } catch (err) {
     if (err instanceof waitlist.WaitlistError) {
-      const status = err.code === "already_applied" ? 409 : err.code === "waitlist_full" ? 403 : 400;
+      const status =
+        err.code === "already_applied" ? 409 : err.code === "waitlist_full" || err.code === "waitlist_closed" ? 403 : 400;
       return c.json({ error: err.code, message: err.message }, status);
     }
     throw err;

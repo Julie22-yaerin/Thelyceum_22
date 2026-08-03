@@ -261,9 +261,18 @@ export const WAITLIST_VARIANT_ID = process.env.LS_VARIANT_WAITLIST_DEPOSIT;
  * Hard cap on the waitlist.
  *
  * The pitch is "we bring teams on in batches so setup gets a person" — that
- * promise is false past some size, and 50 is where the plan actually holds.
+ * promise is false past some size, and 60 is where the plan actually holds.
  * Counts every application that isn't rejected, so a rejection genuinely
- * frees the slot rather than the cap silently meaning "50 non-rejected plus
+ * frees the slot rather than the cap silently meaning "60 non-rejected plus
  * however many were rejected", which nobody could reason about from outside.
  */
-export const WAITLIST_MAX_APPLICATIONS = 50;
+export const WAITLIST_MAX_APPLICATIONS = 60;
+
+/**
+ * Hard close date on the waitlist, independent of the headcount cap —
+ * whichever of the two is hit first closes applications. ISO 8601 / UTC so
+ * "the deadline" means the same instant on the server, in every browser's
+ * countdown, and in this constant — never local server time, which drifts
+ * with wherever the process happens to be deployed.
+ */
+export const WAITLIST_DEADLINE_ISO = "2026-08-20T23:59:59Z";

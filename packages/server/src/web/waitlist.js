@@ -71,15 +71,56 @@ function renderApplied() {
   }
 }
 
-function renderFull() {
+/**
+ * Both "full" and "closed" replace the form outright rather than letting
+ * someone fill it out only to be refused on submit. `message` comes from
+ * the server (either the /api/plans snapshot at load, or the /api/waitlist
+ * error at submit time) so the copy — including the exact date — has one
+ * source of truth instead of a client-side copy that can drift from it.
+ */
+function renderBlocked(title, message) {
   $("#waitlistCard").innerHTML = `
     <div class="waitlist-full">
-      <h3>The waitlist is full</h3>
-      <p>
-        50 is the batch size we can actually onboard by hand. Email us directly
-        if you want to be first in line the next time a spot opens.
-      </p>
+      <h3>${title}</h3>
+      <p>${message}</p>
     </div>`;
+}
+
+/**
+ * Fill bar + live countdown, rendered above the form. Both read from the
+ * same `waitlistAvailability` the full/closed checks use — one source of
+ * truth for taken/max/deadline, never a second copy that can drift from it.
+ */
+function renderSpotsPanel({ taken, max, deadline }) {
+  const panel = document.createElement("div");
+  panel.className = "waitlist-progress";
+  panel.innerHTML = `
+    <div class="progress-row">
+      <span class="progress-label"><strong>${taken}</strong> of ${max} spots filled</span>
+      <span class="progress-countdown" id="waitlistCountdown" aria-live="polite"></span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" style="width: ${Math.min(100, (taken / max) * 100).toFixed(1)}%"></div>
+    </div>`;
+  $("#waitlistForm")?.insertAdjacentElement("beforebegin", panel);
+
+  const countdownEl = panel.querySelector("#waitlistCountdown");
+  const deadlineMs = new Date(deadline).getTime();
+  function tick() {
+    const remaining = deadlineMs - Date.now();
+    if (remaining <= 0) {
+      countdownEl.textContent = "closed";
+      clearInterval(timer);
+      return;
+    }
+    const d = Math.floor(remaining / 86400000);
+    const h = Math.floor((remaining % 86400000) / 3600000);
+    const m = Math.floor((remaining % 3600000) / 60000);
+    const s = Math.floor((remaining % 60000) / 1000);
+    countdownEl.textContent = `closes in ${d}d ${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+  }
+  tick();
+  const timer = setInterval(tick, 1000);
 }
 
 $("#waitlistForm")?.addEventListener("submit", async (e) => {
@@ -113,10 +154,14 @@ $("#waitlistForm")?.addEventListener("submit", async (e) => {
       renderApplied();
       return;
     }
-    // The list can fill between page load and submit — a second person's
-    // click can land in the gap. Treat it the same as arriving already full.
+    // The list can fill, or the deadline can pass, between page load and
+    // submit — a second person's click can land in the gap.
     if (res.status === 403 && json.error === "waitlist_full") {
-      renderFull();
+      renderBlocked("The waitlist is full", json.message);
+      return;
+    }
+    if (res.status === 403 && json.error === "waitlist_closed") {
+      renderBlocked("Applications closed", json.message);
       return;
     }
     if (json.errors) {
@@ -149,14 +194,24 @@ $("#waitlistForm")?.addEventListener("submit", async (e) => {
     }
 
     if (waitlistAvailability) {
-      const { taken, max, full } = waitlistAvailability;
-      if (full) {
-        renderFull();
+      const { taken, max, full, deadline, closed } = waitlistAvailability;
+      const deadlineLong = new Date(deadline).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      if (closed) {
+        renderBlocked(
+          "Applications closed",
+          `The window closed ${deadlineLong}. Email us directly if you want to be first in line the next time a spot opens.`
+        );
+      } else if (full) {
+        renderBlocked(
+          "The waitlist is full",
+          `${max} is the batch size we can actually onboard by hand. Email us directly if you want to be first in line the next time a spot opens.`
+        );
       } else {
-        const spots = document.createElement("p");
-        spots.className = "waitlist-spots";
-        spots.innerHTML = `<strong>${max - taken}</strong> of ${max} spots left`;
-        $("#waitlistForm")?.insertAdjacentElement("beforebegin", spots);
+        renderSpotsPanel({ taken, max, deadline });
       }
     }
   } catch {
