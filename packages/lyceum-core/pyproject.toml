@@ -1,0 +1,22 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "lyceum-core"
+version = "0.1.0"
+description = "Rust state machine for context deduplication and token budget tracking (PyO3, zero-copy)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: 3",
+  "Operating System :: POSIX :: Linux",
+]
+
+[tool.maturin]
+# The compiled extension module name. `import lyceum_core` after install.
+# abi3-py39 is enabled in Cargo.toml (single source of truth for the flag).
+module-name = "lyceum_core"
+python-source = "python"

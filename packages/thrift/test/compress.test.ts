@@ -90,6 +90,80 @@ describe("dedupe", () => {
     expect(changed.applied).not.toContain("dedupe");
   });
 
+  it("never returns a pointer for changed content, even after a pointer was already handed out", () => {
+    // The sequence that matters in a real loop: read → read (pointer granted) →
+    // file edited → read. That third read MUST be the full new content. A
+    // pointer here would tell the model "you already have this" when what it
+    // has is the OLD version — the agent would reason about stale state and
+    // never see the edit it was checking for.
+    const text = bigFile(200);
+    compress(text, ledger, { sourceId: "/a.ts" }); // call 1: baseline
+    const pointer = compress(text, ledger, { sourceId: "/a.ts" }); // call 2: dedupe fires
+    expect(pointer.applied).toContain("dedupe"); // the premise of this test
+
+    const edited = text + "\n// changed mid-loop";
+    const third = compress(edited, ledger, { sourceId: "/a.ts" }); // call 3: content changed
+    expect(third.applied).not.toContain("dedupe");
+    expect(third.text).toContain("// changed mid-loop"); // the edit is visible
+    expect(third.text).toContain("export function fn0"); // full content, not a pointer
+    expect(third.text).not.toMatch(/unchanged since you read it earlier/);
+  });
+
+  it("a file reverted to its original content is still re-sent in full", () => {
+    // read → pointer → edit → read → revert to the ORIGINAL → read. The stored
+    // hash is now the edited content's, so the original no longer matches what
+    // the ledger recorded. The model saw the edited version in between, and the
+    // original may have been compacted — "you already have this" cannot be
+    // trusted, so the original is re-sent.
+    const text = bigFile(200);
+    compress(text, ledger, { sourceId: "/a.ts" });
+    const pointer = compress(text, ledger, { sourceId: "/a.ts" });
+    expect(pointer.applied).toContain("dedupe");
+
+    const edited = text + "\n// edited";
+    const editRead = compress(edited, ledger, { sourceId: "/a.ts" });
+    expect(editRead.applied).not.toContain("dedupe");
+
+    const reverted = compress(text, ledger, { sourceId: "/a.ts" }); // original again
+    expect(reverted.applied).not.toContain("dedupe"); // must NOT match the call-1 hash
+    expect(reverted.text).toContain("export function fn0");
+    expect(reverted.text).not.toMatch(/unchanged since/);
+    // …and the re-sent original becomes the new baseline: the next stable
+    // read dedupes against THIS sighting, not the long-ago call-1 one.
+    const stable = compress(text, ledger, { sourceId: "/a.ts" });
+    expect(stable.applied).toContain("dedupe");
+    expect(stable.text).not.toMatch(/call #1/);
+  });
+
+  it("after a change, the new content becomes the baseline — a stable re-read dedupes against it", () => {
+    // One edit must not kill dedupe for the rest of the session: the ledger
+    // re-baselines on the new hash, so the next read of the same edited content
+    // is a legitimate re-read and gets a pointer — pointing at the NEW call,
+    // never the pre-change sighting.
+    const text = bigFile(200);
+    compress(text, ledger, { sourceId: "/a.ts" }); // call 1
+    const edited = text + "\n// changed";
+    compress(edited, ledger, { sourceId: "/a.ts" }); // call 2: full re-send, new hash stored
+
+    const again = compress(edited, ledger, { sourceId: "/a.ts" }); // call 3
+    expect(again.applied).toContain("dedupe"); // baseline is now the edited content
+    expect(again.text).toMatch(/unchanged since you read it earlier/);
+    expect(again.text).not.toMatch(/call #1/); // never points back at the pre-change sighting
+  });
+
+  it("successive edits each re-send the full file — no pointer hides any intermediate state", () => {
+    // An agent iterating on a file: every intermediate edit must be visible.
+    // Each read overwrites the stored hash, so each next change mismatches.
+    let content = bigFile(200);
+    compress(content, ledger, { sourceId: "/a.ts" });
+    for (let i = 0; i < 5; i++) {
+      content += `\n// change ${i}`;
+      const r = compress(content, ledger, { sourceId: "/a.ts" });
+      expect(r.applied).not.toContain("dedupe");
+      expect(r.text).toContain(`// change ${i}`); // every edit is visible
+    }
+  });
+
   it("does not dedupe across different sources with identical content", () => {
     const text = bigFile(200);
     compress(text, ledger, { sourceId: "/a.ts" });
@@ -113,6 +187,79 @@ describe("dedupe", () => {
     // Telling a fresh conversation "you already have this" is unrecoverable —
     // the model cannot fetch what it was never given.
     expect(afterReset.applied).not.toContain("dedupe");
+  });
+
+  it("refuses the pointer once it is older than maxDedupeAgeCalls", () => {
+    // The host can compact context at any moment. A pointer that says "you
+    // already have this" when the content has since left the window is the
+    // one unrecoverable failure thrift can have — so after N calls the full
+    // content is re-sent instead.
+    const text = bigFile(200);
+    compress(text, ledger, { sourceId: "/a.ts" });
+    // Advance the ledger with unrelated reads — this is what an agent loop
+    // does between two reads of the same file.
+    for (let i = 0; i < 10; i++) {
+      compress(`other file ${i}`, ledger, { sourceId: `/other-${i}.txt` });
+    }
+    const stale = compress(text, ledger, { sourceId: "/a.ts", maxDedupeAgeCalls: 5 });
+    expect(stale.applied).not.toContain("dedupe");
+    expect(stale.text).toContain("export function fn0");
+    expect(stale.note).toMatch(/expired|re-sent/i);
+  });
+
+  it("re-baselines after a stale read, so the next read can dedupe again", () => {
+    const text = bigFile(200);
+    compress(text, ledger, { sourceId: "/a.ts" });
+    for (let i = 0; i < 10; i++) {
+      compress(`other ${i}`, ledger, { sourceId: `/other-${i}.txt` });
+    }
+    // Stale read → full content re-sent, sighting re-baselined to now.
+    compress(text, ledger, { sourceId: "/a.ts", maxDedupeAgeCalls: 5 });
+    // Immediately after, the pointer is fresh again — otherwise one expiry
+    // would kill dedupe for the rest of the session.
+    const again = compress(text, ledger, { sourceId: "/a.ts", maxDedupeAgeCalls: 5 });
+    expect(again.applied).toContain("dedupe");
+  });
+
+  it("expires on tokens emitted even when the call count is still fresh", () => {
+    // A call-count window alone cannot see context pressure. If a LOT of new
+    // content has entered context since the sighting, the earlier copy may
+    // well be gone — so the token window is the second, independent tripwire.
+    const text = bigFile(200);
+    compress(text, ledger, { sourceId: "/a.ts" });
+    for (let i = 0; i < 30; i++) {
+      compress(bigFile(50), ledger, { sourceId: `/big-${i}.txt` });
+    }
+    const stale = compress(text, ledger, {
+      sourceId: "/a.ts",
+      maxDedupeAgeCalls: 1000, // call window wide open
+      maxDedupeAgeTokens: 100, // token window tiny
+    });
+    expect(stale.applied).not.toContain("dedupe");
+    expect(stale.text).toContain("export function fn0");
+  });
+
+  it("a file's own first read does not count toward its own expiry", () => {
+    // A 60k-token file read twice in immediate succession must dedupe: its own
+    // first emission is still in context (it was just sent). Counting it
+    // against its own token window would refuse the pointer for the wrong
+    // reason — the compaction risk is OTHER content entering, not the file
+    // itself. Only dedupe fires when no other source has emitted anything.
+    const text = bigFile(2000); // ~25k tokens by the estimator (70k chars / ~2.7)
+    compress(text, ledger, { sourceId: "/huge.ts", maxDedupeAgeTokens: 100 });
+    const again = compress(text, ledger, { sourceId: "/huge.ts", maxDedupeAgeTokens: 100 });
+    expect(again.applied).toContain("dedupe");
+  });
+
+  it("the pointer names how old the sighting is", () => {
+    const text = bigFile(200);
+    compress(text, ledger, { sourceId: "/a.ts" }); // call 1
+    for (let i = 0; i < 3; i++) {
+      compress(`other ${i}`, ledger, { sourceId: `/other-${i}.txt` }); // calls 2–4
+    }
+    const second = compress(text, ledger, { sourceId: "/a.ts" }); // call 5 → age 4
+    expect(second.applied).toContain("dedupe");
+    expect(second.text).toMatch(/4 calls ago/);
   });
 });
 
@@ -144,6 +291,78 @@ describe("strip", () => {
     const r = compress(`data: ${blob}`, ledger, { sourceId: "blob" });
     expect(r.text).toMatch(/base64 omitted/);
     expect(r.text).toMatch(/3000/);
+  });
+
+  it("does NOT strip a dotted token (JWT) — its claims are facts, not noise", () => {
+    // header.payload.signature, standard base64 per segment. The payload
+    // segment alone is long enough to trip the 200-char rule — a naively
+    // greedy regex would eat it and destroy sub/role/exp the model may need.
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64");
+    const claims = {
+      sub: "user-1042",
+      role: "admin",
+      exp: 1_900_000_000,
+      scope: ["read", "write", "deploy", "build", "release", "audit"],
+      permissions: ["iam.admin", "billing.write", "secrets.read", "infra.deploy", "audit.view"],
+    };
+    const payload = Buffer.from(JSON.stringify(claims)).toString("base64");
+    expect(payload.length).toBeGreaterThanOrEqual(200); // premise of this test
+    const token = `${header}.${payload}.${Buffer.from("signature").toString("base64")}`;
+
+    const r = compress(token, ledger, { sourceId: "jwt.txt" });
+    expect(r.text).toContain(token); // verbatim — nothing cut
+    expect(r.text).not.toMatch(/base64 omitted/);
+    // the claims are still decodable from what was returned — the model can
+    // read role/exp straight out of the payload segment
+    const seg = r.text.split(".")[1];
+    const decoded = JSON.parse(Buffer.from(seg, "base64").toString("utf-8"));
+    expect(decoded.role).toBe("admin");
+    expect(decoded.sub).toBe("user-1042");
+  });
+
+  it("keeps a compact base64url JWT intact", () => {
+    // Real-world JWT: short base64url segments — safe by construction, pinned
+    // so a future rule change cannot regress it.
+    const jwt =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+      "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0." +
+      "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+    const r = compress(jwt, ledger, { sourceId: "jwt2.txt" });
+    expect(r.text).toContain(jwt);
+    expect(r.text).not.toMatch(/base64 omitted/);
+  });
+
+  it("strips an image data URI's payload but keeps the MIME prefix and the length", () => {
+    // The pixel bytes are unusable as text, but the model must still be able
+    // to tell an image was there and how big — so it can ask for it by name.
+    const uri = `data:image/png;base64,${"A".repeat(3000)}`;
+    const r = compress(uri, ledger, { sourceId: "img.txt" });
+    expect(r.text).toContain("data:image/png;base64,");
+    expect(r.text).toMatch(/3000-char base64 omitted/);
+    expect(r.after.tokens).toBeLessThan(r.before.tokens);
+  });
+
+  it("keeps a JSON response parseable when a base64 value inside it is stripped", () => {
+    // Stripping the value must not break the shape: the model still needs the
+    // surrounding fields (status, code) to conclude anything.
+    const json = JSON.stringify({
+      status: "ok",
+      code: 200,
+      requestId: "req_ab12",
+      data: "A".repeat(3000),
+    });
+    const r = compress(json, ledger, { sourceId: "response.json" });
+    const parsed = JSON.parse(r.text);
+    expect(parsed.status).toBe("ok");
+    expect(parsed.code).toBe(200);
+    expect(parsed.data).toMatch(/base64 omitted/);
+  });
+
+  it("still strips a standalone blob at the very start of the text", () => {
+    // The lookaround must not disable the mechanism entirely — a run with no
+    // token context on either side is still machine noise.
+    const r = compress("A".repeat(3000), ledger, { sourceId: "raw" });
+    expect(r.text).toMatch(/base64 omitted/);
   });
 
   it("is lossless by classification", () => {
@@ -188,6 +407,166 @@ describe("slice", () => {
     );
     const r = compress(lines.join("\n"), ledger, { sourceId: "/b.ts", query: "target" });
     expect(isLossless(r.applied)).toBe(false);
+  });
+
+  it("a hit at the start of a function body cuts the definition — the marker names the exact range", () => {
+    // Query matches the signature line only. The window (i ± 12) keeps the
+    // signature and the first lines of the body, but the closing brace lives
+    // past the window. The model must see an UNCLOSED function plus a marker
+    // that names the precise range where the rest of the definition is.
+    const lines = Array.from({ length: 400 }, (_, i) => {
+      if (i === 100) return "function validateLicenseKey(key: string) {";
+      if (i > 100 && i <= 130) return `  const check${i} = key;`;
+      if (i === 131) return "}";
+      return `const filler${i} = ${i};`;
+    });
+    const r = compress(lines.join("\n"), ledger, { sourceId: "/lic.ts", query: "validateLicenseKey" });
+
+    expect(r.applied).toContain("slice");
+    // The signature is kept…
+    expect(r.text).toContain("function validateLicenseKey(key: string) {");
+    // …the closing brace at line 132 is NOT (it sits past the window edge)…
+    expect(r.text).not.toContain("}");
+    // …and the marker names the exact range holding the rest of the definition,
+    // so the model can ask for precisely that span instead of the whole file.
+    expect(r.text).toMatch(/lines \d+-400 omitted — ask for this range to see them/);
+    const m = r.text.match(/lines (\d+)-400 omitted/);
+    expect(m).not.toBeNull();
+    // the omitted range must include the closing brace (line 132)
+    expect(Number(m![1])).toBeLessThanOrEqual(132);
+  });
+
+  it("a definition in the omitted gap is findable by its line range, not guesswork", () => {
+    // The query matches ONLY a call site deep in the file (a unique term), so
+    // the function definition far above falls into the first omitted gap. The
+    // marker must name a range that CONTAINS the definition so the model can
+    // ask for exactly that span.
+    const lines = Array.from({ length: 400 }, (_, i) => {
+      if (i === 20) return "function hydrateSession(sessionId: string) {";
+      if (i > 20 && i < 26) return `  const s${i} = load(sessionId);`;
+      if (i === 26) return "}";
+      if (i === 300) return 'const ok = hydrateSession(session.id, "ARIA-9");';
+      return `const filler${i} = ${i};`;
+    });
+    const r = compress(lines.join("\n"), ledger, { sourceId: "/hyd.ts", query: "ARIA-9" });
+
+    expect(r.applied).toContain("slice");
+    // the call site is kept; the definition (lines 21-27) is inside the gap
+    expect(r.text).toContain('hydrateSession(session.id, "ARIA-9")');
+    expect(r.text).not.toContain("function hydrateSession");
+    // the first gap marker's range must cover the definition lines
+    const first = r.text.match(/lines (\d+)-(\d+) omitted/);
+    expect(first).not.toBeNull();
+    expect(Number(first![1])).toBeLessThanOrEqual(21);
+    expect(Number(first![2])).toBeGreaterThanOrEqual(27);
+  });
+
+  it("never cuts a template literal in half — the window snaps to its closing backtick", () => {
+    // Query hits at line 110 (inside a template that spans 100..160). A
+    // line-based window (98..122) would end mid-template, handing the model an
+    // unterminated literal it cannot parse. The run must extend to line 160
+    // where the closing backtick lives.
+    const lines = Array.from({ length: 400 }, (_, i) => {
+      if (i === 100) return "const sql = `";
+      if (i === 160) return "`;";
+      if (i === 110) return "  SELECT * FROM users WHERE id = ${userId};";
+      if (i > 100 && i < 160) return `  body ${i} of the template`; // unique lines — no repeat-collapse inside the literal
+      return `const filler${i} = ${i};`;
+    });
+    const r = compress(lines.join("\n"), ledger, { sourceId: "/q.ts", query: "SELECT" });
+
+    expect(r.applied).toContain("slice");
+    // the whole literal survives, opening and closing backticks included
+    expect(r.text).toContain("const sql = `");
+    expect(r.text).toContain("`;");
+    // …and there is NO gap marker between the template's opening and closing
+    // lines — the literal is contiguous in what the model receives
+    const fromOpen = r.text.indexOf("const sql = `");
+    const toClose = r.text.indexOf("`;", fromOpen);
+    expect(r.text.slice(fromOpen, toClose)).not.toContain("[thrift:");
+    // the omitted range after the literal is still named precisely
+    expect(r.text).toMatch(/lines 162-400 omitted/);
+  });
+
+  it("never cuts a block comment in half — the window snaps to its closing */", () => {
+    // Query hits at line 210, inside a /* */ comment spanning 200..260. The
+    // window (198..222) would cut the comment mid-body; it must extend to the
+    // line holding the closing */.
+    const lines = Array.from({ length: 400 }, (_, i) => {
+      if (i === 200) return "/*";
+      if (i === 260) return "*/";
+      if (i === 210) return "   * magicToken: explains the algorithm";
+      if (i > 200 && i < 260) return `   * comment body ${i}`; // unique lines — no repeat-collapse inside the comment
+      return `const filler${i} = ${i};`;
+    });
+    const r = compress(lines.join("\n"), ledger, { sourceId: "/c.ts", query: "magicToken" });
+
+    expect(r.applied).toContain("slice");
+    expect(r.text).toContain("/*");
+    expect(r.text).toContain("*/");
+    const fromOpen = r.text.indexOf("/*");
+    const toClose = r.text.indexOf("*/", fromOpen);
+    expect(r.text.slice(fromOpen, toClose)).not.toContain("[thrift:");
+  });
+
+  it("a template containing quotes and // is treated as one literal, not cut mid-way", () => {
+    // Inside a template literal, a " or a // is CONTENT, not syntax. The
+    // scanner must not close the literal early on a fake line-comment or a
+    // quote inside the template body.
+    const lines = Array.from({ length: 400 }, (_, i) => {
+      if (i === 100) return "const html = `";
+      if (i === 200) return "`;";
+      if (i === 120) return '  <div class="box">click me</div> // not a comment';
+      if (i === 150) return '  const x = "text inside template"; magicToken';
+      if (i > 100 && i < 200) return `  template body line ${i}`; // unique — no repeat-collapse inside the literal
+      return `const filler${i} = ${i};`;
+    });
+    const r = compress(lines.join("\n"), ledger, { sourceId: "/t.ts", query: "magicToken" });
+
+    expect(r.applied).toContain("slice");
+    // the hit at 150 is deep inside the template; the window (138..162) must
+    // snap to the full literal 100..200
+    expect(r.text).toContain("const html = `");
+    expect(r.text).toContain("`;");
+    expect(r.text).toContain('class="box"');
+    const fromOpen = r.text.indexOf("const html = `");
+    const toClose = r.text.indexOf("`;", fromOpen);
+    expect(r.text.slice(fromOpen, toClose)).not.toContain("[thrift:");
+  });
+
+  it("does not over-extend for a single-line // comment at the window edge", () => {
+    // A // comment cannot span lines, so a window ending on a comment line
+    // needs no snapping — extending it would keep lines the model does not
+    // need. This pins that the syntax guard is not over-eager.
+    const lines = Array.from({ length: 400 }, (_, i) => {
+      if (i === 300) return "// TODO magicToken fix this";
+      return `const filler${i} = ${i};`;
+    });
+    const r = compress(lines.join("\n"), ledger, { sourceId: "/d.ts", query: "magicToken" });
+
+    expect(r.applied).toContain("slice");
+    expect(r.text).toContain("// TODO magicToken fix this");
+    // window is 288..312 — the comment line is whole and nothing past it leaks in.
+    // Gap after index 312 starts at 313 → marker names 314-400 (1-based).
+    expect(r.text).toMatch(/lines 314-400 omitted/);
+  });
+
+  it("declines to slice when snapping to a literal would keep almost everything", () => {
+    // A giant template spanning lines 20..370: the query hits inside it, and
+    // snapping to the literal boundary would keep 351 of 400 lines — more than
+    // the 80% threshold. Honest outcome: decline the slice, return it whole.
+    const lines = Array.from({ length: 400 }, (_, i) => {
+      if (i === 20) return "const giant = `";
+      if (i === 370) return "`;";
+      if (i === 300) return "  magicToken in the middle";
+      if (i > 20 && i < 370) return "  template body";
+      return `const filler${i} = ${i};`;
+    });
+    const r = compress(lines.join("\n"), ledger, { sourceId: "/g.ts", query: "magicToken" });
+
+    expect(r.applied).not.toContain("slice");
+    // full file returned rather than a slice that is barely a slice
+    expect(r.text).toContain("const giant = `");
   });
 });
 

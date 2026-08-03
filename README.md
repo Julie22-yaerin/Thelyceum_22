@@ -47,6 +47,27 @@ npm run build
 npm test
 ```
 
+## Cloud benchmarks
+
+`.github/workflows/throughput.yml` measures brake / redteam / thrift on
+GitHub's cloud runners — **ubuntu x64 and arm64** — nightly and on every
+push to the three packages, and reports the actual measured calls/sec as a
+step summary plus a `benchmark-results.json` artifact. Run the same
+measurement anywhere yourself:
+
+```bash
+npm run build && npm run benchmark
+```
+
+The script shares the corpora and best-of-N methodology of the CI
+throughput tests, and it also runs thrift's **token-guard edge cases** —
+the same JWT / image data-URI / response-JSON fixtures as the unit tests —
+so a cloud runner verifies *behavior* too, not just speed: a JWT whose
+claims got stripped would never show up in a calls-per-second number, so
+the script checks it and exits 1 if any guard is broken or any number
+drops below its floor. A "cloud number" is a measured fact, not a claim
+made on a laptop.
+
 Then start the server:
 
 ```bash
@@ -59,6 +80,7 @@ npm run server
 |---|---|
 | Site | http://localhost:3000/web/ |
 | Showroom (plans, setup guides) | http://localhost:3000/web/showroom |
+| Telemetry (live benchmark report) | http://localhost:3000/web/telemetry |
 | Admin console | http://localhost:3000/web/admin |
 
 `LYCEUM_DEV_MODE=1` bypasses payment so subscriptions activate without one.
@@ -89,7 +111,7 @@ Never set it in production — the server says so loudly at boot.
 
 1. Someone **applies to the waitlist** — name, organisation, work email, phone.
    Consumer mail domains are refused with a route to take instead.
-2. They pay a **refundable $10 deposit**. It credits against their first
+2. They pay a **refundable $50 deposit**. It credits against their first
    invoice. It exists so the list reflects intent, not curiosity.
 3. An operator **approves them by hand** in the admin console. Nothing is
    automatic.

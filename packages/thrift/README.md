@@ -17,8 +17,8 @@ Four mechanisms, in the order they fire:
 | | What it does | Lossless? |
 |---|---|---|
 | **dedupe** | Content already shown this session → a pointer | **Yes** — the model already has it |
-| **strip** | ANSI codes, repeated log lines, base64 blobs, lockfile hashes | **Yes** — removed bytes carry no meaning |
-| **slice** | A query selects the relevant windows of a large file | No — gaps marked with line ranges |
+| **strip** | ANSI codes, repeated log lines, standalone base64 blobs, lockfile hashes | **Yes** — removed bytes carry no meaning (a base64 run that is a segment of a dotted token like a JWT is a *fact* and is left intact) |
+| **slice** | A query selects the relevant windows of a large file; windows snap to string/template/comment boundaries so a literal is never cut in half | No — gaps marked with line ranges |
 | **cap** | Head+tail truncation at a token budget | No — announced as a FRAGMENT |
 
 Every reduction is announced in the payload. A compressor that silently drops the one line the agent needed does not save money — it causes a retry that costs more than it saved, and nobody finds out why the agent got confused.
@@ -36,12 +36,27 @@ On this repository (71 files, ~211k tokens), budget 4000:
 | Targeted reads — query-sliced files >200 lines | 75.4% | — |
 | **Fresh unique reads — every file once** | **50.4%** | **0%** |
 
+> The agent-loop figure was measured before dedupe pointers gained an expiry
+> window. Today a pointer is only handed out while the earlier read is still
+> plausibly in context — within `THRIFT_DEDUPE_MAX_AGE` (default 20) tool calls
+> and `THRIFT_DEDUPE_MAX_AGE_TOKENS` (default 40k) of new output. Past that,
+> the full content is re-sent rather than claiming the model still has it. So
+> the saving on YOUR loop depends on how quickly files are re-read: re-reads
+> inside the window get the pointer, re-reads outside it pay full price — the
+> honest price of never dangling a pointer that references evicted context.
+
 Run it on your own files rather than trusting these:
 
 ```bash
 thrift measure .              # what a first pass saves
 thrift measure . --passes 5   # what an agent iterating saves
 ```
+
+One expectation to set before you run `--passes 5`: on a repo larger than the
+dedupe window, most re-reads are older than `THRIFT_DEDUPE_MAX_AGE` (20 calls)
+so the pointer is refused and full content is re-sent — you will see a lower
+saving than 78.5% and that is the product working as designed, not a bug. A
+loop that re-reads a small working set quickly is where the pointer pays.
 
 ### Read that last row before you budget against the first
 
@@ -111,6 +126,8 @@ thrift tokens file.ts --exact     # calls Anthropic's count_tokens
 | Variable | Purpose |
 |---|---|
 | `THRIFT_BUDGET_TOKENS` | Default per-result cap. Default 4000. |
+| `THRIFT_DEDUPE_MAX_AGE` | Max tool calls a dedupe pointer stays valid. Default 20. The host can compact context at any moment, so a pointer that references content which has since left the window is re-sent in full instead. |
+| `THRIFT_DEDUPE_MAX_AGE_TOKENS` | Max new tokens emitted (across all thrift results) since a sighting while its pointer stays valid. Default 40000. A second, independent expiry — call count alone cannot see context pressure. |
 | `THRIFT_HOME` | Where the ledger lives. Default `~/.thrift`. |
 | `ANTHROPIC_API_KEY` | Only for `--exact` token counting. Nothing else reads it. |
 

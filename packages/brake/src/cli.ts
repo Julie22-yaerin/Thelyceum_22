@@ -55,6 +55,7 @@ import {
   callListInstalls,
   callRegisterInstall,
   callUnregisterInstall,
+  callReportUsage,
   getServerUrl,
 } from "./license.js";
 import { getMode, setMode, isValidMode, configPath } from "./mode.js";
@@ -177,6 +178,25 @@ async function prompt(question: string, silent = false): Promise<string> {
 }
 
 function printErr(msg: string): void { console.error(`brake: ${msg}`); }
+
+/**
+ * Best-effort usage report for the budget dashboard.
+ *
+ * Raced against a short timeout and fully swallowed: a usage report must
+ * never slow the tool (the PreToolUse hook runs `brake scan` per shell
+ * command) or fail it. Without a session there is nothing to attribute to,
+ * so it returns immediately.
+ */
+async function reportUsageBestEffort(input: Parameters<typeof callReportUsage>[0]): Promise<void> {
+  try {
+    await Promise.race([
+      callReportUsage(input),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("usage report timed out")), 150)),
+    ]);
+  } catch {
+    // best effort — the audit line already captured what happened locally
+  }
+}
 
 function formatExpiry(ts: number): string {
   return new Date(ts).toLocaleString();
@@ -487,6 +507,7 @@ async function main(): Promise<void> {
         }),
       });
       console.log(JSON.stringify(result, null, 2));
+      await reportUsageBestEffort({ tool: "brake", kind: "engage", calls: 1 });
       if (!result.engaged) exit(2);
       if (!result.withinSla) exit(1);
       exit(0);
@@ -499,6 +520,10 @@ async function main(): Promise<void> {
         exit(2);
       }
       const danger = scanForDanger(intent);
+      // Report AFTER the verdict is printed, never before — the exit code is
+      // what the hook acts on. Tokens are an estimate (chars/4) of the text
+      // scanned; thrift is the tool that reports exact counts.
+      await reportUsageBestEffort({ tool: "brake", kind: "scan", tokens: Math.ceil(intent.length / 4), calls: 1 });
       if (danger) {
         console.error(JSON.stringify({ matched: true, ...danger }, null, 2));
         exit(1);

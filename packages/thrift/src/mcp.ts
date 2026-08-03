@@ -28,7 +28,12 @@ import { promises as fs } from "node:fs";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
-import { compress, SeenLedger } from "./compress.js";
+import {
+  compress,
+  SeenLedger,
+  DEFAULT_MAX_DEDUPE_AGE_CALLS,
+  DEFAULT_MAX_DEDUPE_AGE_TOKENS,
+} from "./compress.js";
 import { record, summarise } from "./ledger.js";
 
 const execAsync = promisify(exec);
@@ -44,6 +49,12 @@ const execAsync = promisify(exec);
 const seen = new SeenLedger();
 
 const DEFAULT_BUDGET = Number(process.env.THRIFT_BUDGET_TOKENS ?? 4000);
+
+// Dedupe pointers expire — the host can compact context at any moment, and a
+// pointer that references content which has since left the window is the one
+// unrecoverable failure thrift can have. Tunable per deployment.
+const DEDUPE_MAX_AGE_CALLS = Number(process.env.THRIFT_DEDUPE_MAX_AGE ?? DEFAULT_MAX_DEDUPE_AGE_CALLS);
+const DEDUPE_MAX_AGE_TOKENS = Number(process.env.THRIFT_DEDUPE_MAX_AGE_TOKENS ?? DEFAULT_MAX_DEDUPE_AGE_TOKENS);
 
 const server = new McpServer({ name: "thrift", version: "0.1.0" });
 
@@ -67,7 +78,13 @@ server.tool(
         isError: true,
       };
     }
-    const result = compress(text, seen, { sourceId: abs, query, budgetTokens: budget_tokens ?? DEFAULT_BUDGET });
+    const result = compress(text, seen, {
+      sourceId: abs,
+      query,
+      budgetTokens: budget_tokens ?? DEFAULT_BUDGET,
+      maxDedupeAgeCalls: DEDUPE_MAX_AGE_CALLS,
+      maxDedupeAgeTokens: DEDUPE_MAX_AGE_TOKENS,
+    });
     await record(result, abs).catch(() => {});
     return {
       content: [{ type: "text", text: `${result.text}\n\n[thrift: ${result.note}]` }],
@@ -162,8 +179,14 @@ server.resource(
       mimeType: "text/plain",
       text: [
         "dedupe — content already shown this session is replaced by a pointer. LOSSLESS.",
+        "  Pointer expires after ~20 calls or ~40k tokens of new output (env: THRIFT_DEDUPE_MAX_AGE,",
+        "  THRIFT_DEDUPE_MAX_AGE_TOKENS) because the host may compact context — an expired pointer",
+        "  re-sends the full content rather than claiming the model still has it.",
         "slice  — a query selects the relevant windows of a large file. LOSSY, gaps are marked with line ranges.",
-        "strip  — ANSI codes, repeated log lines, base64 blobs, lockfile hashes. LOSSLESS.",
+        "  Windows snap to string/template/comment boundaries — a literal is never cut in half.",
+        "strip  — ANSI codes, repeated log lines, STANDALONE base64 blobs, lockfile hashes. LOSSLESS.",
+        "  A base64 run that is a SEGMENT of a dotted token (a JWT header.payload.signature)",
+        "  is a fact — sub, role, exp — so it is left intact. Only standalone blobs are cut.",
         "cap    — head+tail truncation at a token budget. LOSSY, announced in the payload.",
         "",
         "Savings depend entirely on the workload. Deduplication does nothing on a first read",

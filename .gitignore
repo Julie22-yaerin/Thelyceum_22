@@ -16,3 +16,5 @@ benchmark-summary.md
 benchmark-compare.md
 .vercel
 .env*
+# downloaded third-party source dump — never commit
+criterion.rs-master.zip

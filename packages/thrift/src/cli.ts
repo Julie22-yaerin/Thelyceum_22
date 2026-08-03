@@ -13,8 +13,10 @@ import { readdirSync, statSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { compress, SeenLedger, type CompressResult } from "./compress.js";
 import { estimateTokens, countExact } from "./tokens.js";
+import { classify } from "./classify.js";
 import { summarise, isLossless, DEFAULT_LEDGER_PATH } from "./ledger.js";
 import { installAll, installClaudeDesktop, installClaudeCode, installChatGPT, uninstallAll } from "./install.js";
+import { reportUsageBestEffort } from "./usage.js";
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -71,6 +73,7 @@ async function main(): Promise<void> {
 
       const ledger = new SeenLedger();
       let before = 0, after = 0, lossless = 0, lossy = 0;
+      let hardT = 0, softT = 0;
       const mechanisms: Record<string, number> = {};
 
       for (let pass = 0; pass < Math.max(1, passes); pass++) {
@@ -84,11 +87,16 @@ async function main(): Promise<void> {
           const r: CompressResult = compress(text, ledger, { sourceId: f, budgetTokens: budget });
           before += r.before.tokens;
           after += r.after.tokens;
+          hardT += r.hardTokens;
+          softT += r.softTokens;
           if (isLossless(r.applied)) lossless += r.saved;
           else lossy += r.saved;
           for (const m of r.applied) mechanisms[m] = (mechanisms[m] ?? 0) + 1;
         }
       }
+
+      const hardPct =
+        hardT + softT > 0 ? Math.round((100 * hardT) / (hardT + softT)) : 0;
 
       console.log(`Measured ${files.length} file(s)${passes > 1 ? ` over ${passes} passes` : ""}, budget ${budget} tokens\n`);
       console.log(`  before        ${before.toLocaleString()} tokens`);
@@ -96,6 +104,8 @@ async function main(): Promise<void> {
       console.log(`  saved         ${(before - after).toLocaleString()} (${pct(before, after)})\n`);
       console.log(`  lossless      ${lossless.toLocaleString()} tokens  (dedupe + noise removal — free)`);
       console.log(`  lossy         ${lossy.toLocaleString()} tokens  (truncation — the model sees less)\n`);
+      console.log(`  hard data     ${hardT.toLocaleString()} tokens (${hardPct}%)  (code, config, limits — only dedupe may touch it)`);
+      console.log(`  soft prose    ${softT.toLocaleString()} tokens  (the only thing compression may cut)\n`);
       console.log(`  mechanisms    ${Object.entries(mechanisms).map(([k, v]) => `${k}×${v}`).join(", ") || "none"}`);
       console.log(`\n  Estimated (±15%). Add --exact for Anthropic's own count on a sample.`);
       if (passes === 1) {
@@ -106,6 +116,9 @@ async function main(): Promise<void> {
         console.log(`\n  Most of this saving is truncation, not compression. Raise --budget if`);
         console.log(`  answers come back incomplete.`);
       }
+      // thrift is the one tool with REAL token numbers — report what passed
+      // through this run. Best-effort, never blocks, never fails.
+      await reportUsageBestEffort({ tool: "thrift", kind: "measure", tokens: before, calls: files.length });
       break;
     }
 
@@ -119,6 +132,26 @@ async function main(): Promise<void> {
       });
       process.stdout.write(r.text + "\n");
       printErr(`\n[thrift] ${r.note}`);
+      await reportUsageBestEffort({ tool: "thrift", kind: "compress", tokens: r.before.tokens, calls: 1 });
+      break;
+    }
+
+    // ── classify ──────────────────────────────────────────────────────────
+    case "classify": {
+      const target = args[1];
+      const text = target && target !== "-" ? await fs.readFile(resolve(target), "utf-8") : await readStdin();
+      const c = classify(text);
+      const hardPct = Math.round(c.hardFraction * 100);
+      console.log(`${c.lines.length} lines — ${c.hardLines} hard / ${c.softLines} soft / ${c.blankLines} blank\n`);
+      console.log(`  hard data     ${c.hardTokens.toLocaleString()} tokens (${hardPct}%)  (only dedupe may remove this)`);
+      console.log(`  soft prose    ${c.softTokens.toLocaleString()} tokens  (compressible)`);
+      console.log(`\n  structures    ${c.structuredRuns.length}`);
+      for (const run of c.structuredRuns.slice(0, 20)) {
+        console.log(`    lines ${run.start + 1}-${run.end + 1}   ${run.kind === "fence" ? "fenced block" : "brace-balanced region"}`);
+      }
+      if (c.structuredRuns.length > 20) {
+        console.log(`    … and ${c.structuredRuns.length - 20} more`);
+      }
       break;
     }
 
@@ -195,6 +228,8 @@ async function main(): Promise<void> {
 
   thrift compress <file|->       compress a file or stdin
     --query "<what matters>"     slice to relevant windows
+  thrift classify <file|->       split the payload into hard data (protected)
+                                 vs soft prose (compressible)
   thrift tokens <file|->         estimate tokens; --exact asks Anthropic
   thrift report                  what has actually been saved, from the ledger
 

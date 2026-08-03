@@ -1,0 +1,208 @@
+name: throughput-benchmarks
+
+# Turns the TRIAL_PLAN.md cloud track into real CI jobs. Four jobs, all on
+# cloud runners (x64 AND arm64), all failing loudly on a regression:
+#
+#   benchmark      scripts/benchmark.mjs — real throughput + token-guard edge
+#                  cases, floor-gated, artifacts recorded on failure.
+#   install-smoke  scripts/install-smoke.mjs — npm pack → npm i -g → each CLI
+#                  actually runs on THIS OS (version, scan, challenge,
+#                  measure) on ubuntu / macos / windows.
+#   mcp-handshake  scripts/mcp-smoke.mjs — spawns each dist/mcp.js on stdio,
+#                  does a real initialize handshake via the SDK client, and
+#                  asserts tools/list advertises every expected tool.
+#   latency-drift  scripts/compare-benchmarks.mjs — downloads both arch
+#                  artifacts, cross-checks the latency pass (x64 vs arm64 vs
+#                  a local baseline when provided), and warns (non-blocking
+#                  ::warning::) when p95 drifts > 2x between environments.
+#
+# Triggers:
+#   - nightly (a slowly-rotting claim is a claim nobody re-checks)
+#   - manual dispatch (run on the hardware you care about, whenever)
+#   - push to packages/* or scripts/* (a regression should fail loudly, on
+#     cloud hardware)
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # 03:17 UTC nightly
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "packages/brake/**"
+      - "packages/redteam/**"
+      - "packages/thrift/**"
+      - "scripts/benchmark.mjs"
+      - "scripts/install-smoke.mjs"
+      - "scripts/mcp-smoke.mjs"
+      - "scripts/compare-benchmarks.mjs"
+      - ".github/workflows/throughput.yml"
+
+jobs:
+  benchmark:
+    name: benchmark (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest # x64
+          - runner: ubuntu-24.04-arm # arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build (workspaces)
+        run: npm run build
+
+      - name: Run benchmark
+        id: bench
+        run: node scripts/benchmark.mjs
+        continue-on-error: true # so the artifact + summary still get recorded even on a floor failure
+
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ matrix.runner }}-${{ github.run_id }}
+          path: benchmark-results.json
+          # If the script crashed before writing, don't fail this step too.
+          if-no-files-found: warn
+
+      - name: Post step summary
+        if: always()
+        run: |
+          if [ -f benchmark-summary.md ]; then
+            cat benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Benchmark crashed before writing its summary." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fail on floor breach or edge-case failure
+        # The benchmark already exit-1'd; this makes the JOB fail while the
+        # artifact/summary above still record the numbers for diagnosis.
+        if: steps.bench.outcome == 'failure'
+        run: |
+          echo "::error::Benchmark below CI floor, p95 latency above gate, and/or a thrift token-guard edge case (JWT / image / JSON) failed on ${{ matrix.runner }} — see the summary and artifact."
+          exit 1
+
+  install-smoke:
+    name: install-smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build (workspaces)
+        run: npm run build
+
+      - name: Install smoke (pack → npm i -g → CLI behaves on this OS)
+        # Every assertion runs against the globally-installed artifact, and
+        # the bin is resolved by absolute path from the npm global prefix so
+        # a broken shim cannot hide behind PATH. redteam's `prepare` rebuilds
+        # on pack, so this genuinely tests the tarball a customer downloads.
+        run: node scripts/install-smoke.mjs
+
+  mcp-handshake:
+    name: mcp-handshake (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest # x64
+          - runner: ubuntu-24.04-arm # arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build (workspaces)
+        run: npm run build
+
+      - name: MCP handshake (initialize → tools/list)
+        run: node scripts/mcp-smoke.mjs
+
+  latency-drift:
+    # Download BOTH arch artifacts from the benchmark job (each matrix leg
+    # uploads its own benchmark-results-<runner>-<run_id>) and cross-check the
+    # latency pass x64 vs arm64. Warnings only — the benchmark job itself
+    # already fails on floor/gate breaches; this job is the "cloud number vs
+    # cloud number" sanity check. To also compare against a dev machine:
+    #   node scripts/compare-benchmarks.mjs local=benchmark-results.json \
+    #     x64=artifacts/x64/benchmark-results.json \
+    #     arm64=artifacts/arm64/benchmark-results.json
+    # (local baseline lives on the developer's laptop, never in the repo —
+    # see .gitignore).
+    needs: benchmark
+    # Run even when the benchmark job failed: the benchmark job's contract is
+    # "artifacts recorded on failure" — and the drift check is precisely the
+    # tool that EXPLAINS a floor breach (one arch catastrophically slow). If
+    # the artifacts are missing (benchmark crashed before writing), the
+    # downloads warn and the compare step fails loudly on the missing file.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download x64 benchmark artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results-ubuntu-latest-${{ github.run_id }}
+          path: artifacts/x64
+          if-no-files-found: warn
+
+      - name: Download arm64 benchmark artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results-ubuntu-24.04-arm-${{ github.run_id }}
+          path: artifacts/arm64
+          if-no-files-found: warn
+
+      # Single line on purpose: a YAML plain scalar folds newlines into
+      # spaces, and backslash-space in bash would corrupt the label into a
+      # leading-space token.
+      - name: Cross-check latency (p95 drift > 2x warns)
+        run: node scripts/compare-benchmarks.mjs x64=artifacts/x64/benchmark-results.json arm64=artifacts/arm64/benchmark-results.json
+
+      - name: Post step summary
+        if: always()
+        run: |
+          if [ -f benchmark-compare.md ]; then
+            cat benchmark-compare.md >> "$GITHUB_STEP_SUMMARY"
+          fi

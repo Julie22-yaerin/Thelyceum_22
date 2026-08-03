@@ -172,6 +172,25 @@ export async function callUnregisterInstall(id: string): Promise<void> {
   await serverFetch(`/api/installs/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+export interface UsageReportInput {
+  tool: "brake" | "redteam" | "thrift";
+  kind: string;
+  tokens?: number;
+  calls?: number;
+}
+
+/**
+ * Report usage to the server (budget dashboard). Best-effort: callers race
+ * this against a short timeout and swallow errors — a usage report must
+ * never delay or fail the tool's own work.
+ */
+export async function callReportUsage(input: UsageReportInput): Promise<unknown> {
+  return serverFetch("/api/usage/report", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export interface MeResponse {
   user: { id: string; email: string; createdAt: number };
   subscription: null | { id: string; plan: string; billing: string; status: string; expires_at: number; auto_renew: number };

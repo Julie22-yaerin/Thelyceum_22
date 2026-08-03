@@ -14,7 +14,8 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "server": "npm run dev --workspace @lyceum/server",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "benchmark": "node scripts/benchmark.mjs"
   },
   "engines": {
     "node": ">=22.5.0"

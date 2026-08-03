@@ -36,6 +36,7 @@ import { challenge, rebut, listFlawRules } from "./challenge.js";
 import { readAudit } from "./audit.js";
 import { loadConfig, DEFAULT_CONFIG_PATH, REDTEAM_HOME } from "./config.js";
 import { reportChallenge } from "./notify.js";
+import { reportUsageBestEffort } from "./usage.js";
 import {
   installClaudeDesktop,
   installClaudeCode,
@@ -133,6 +134,9 @@ async function cmdChallenge(rest: string[]): Promise<void> {
     await reportChallenge(cfg, result);
   }
   console.log(JSON.stringify(result, null, 2));
+  // Report AFTER the verdict is printed — the exit code is what the hook
+  // acts on. Tokens are an estimate (chars/4) of the claim challenged.
+  await reportUsageBestEffort({ tool: "redteam", kind: "challenge", tokens: Math.ceil(text.length / 4), calls: 1 });
   exit(result.verdict.blocked ? 1 : 0);
 }
 
@@ -145,6 +149,7 @@ async function cmdRebut(rest: string[]): Promise<void> {
   const cfg = await loadConfig();
   const result = rebut(text, { blockOn: cfg.blockOn });
   console.log(JSON.stringify({ text: result.text, counter: result.counter, verdict: result.verdict }, null, 2));
+  await reportUsageBestEffort({ tool: "redteam", kind: "rebut", tokens: Math.ceil(text.length / 4), calls: 1 });
   exit(0);
 }
 
