@@ -594,7 +594,7 @@ export function compress(
   // 4. CAP — last resort, loudly announced, and hard-data-aware: in a mixed
   // payload it trims prose only, never truncates a line of code/config/limits.
   if (enable.cap) {
-    const outcome = capRespectingHard(working, budgetTokens);
+    const outcome = capRespectingHard(working, budgetTokens, cls);
     if (outcome.text !== working) {
       working = outcome.text;
       applied.push("cap");

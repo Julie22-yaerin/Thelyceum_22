@@ -88,6 +88,47 @@ Never set it in production — the server says so loudly at boot.
 
 ---
 
+## Deploying the server
+
+Runs on Railway, project `proud-analysis`, as **four separate services**
+from this one repo — not one service building everything. Each service has
+its own build/start command and watch paths, set directly on the service
+(Railway isn't reading a `railway.json`/`railway.toml` here — there isn't
+one, and `railwayConfigFile` is unset on every service):
+
+| Service | Build command | Start command | Watches |
+|---|---|---|---|
+| `brake` | `npm run build --workspace=brake` | `npm run dev --workspace=brake` | `/packages/brake/**` |
+| `redteam` | `npm run build --workspace=redteam` | `npm run dev --workspace=redteam` | `/packages/redteam/**` |
+| `@lyceum/site` | `npm run build --workspace=@lyceum/site` | `npm run dev --workspace=@lyceum/site` | `/packages/site/**` |
+| `@lyceum/server` | `npm run build --workspace=brake --workspace=redteam --workspace=thrift --workspace=@lyceum/server` | `npm run start --workspace=@lyceum/server` | `/packages/{brake,redteam,thrift,server}/**` |
+
+`@lyceum/server` needs `brake`, `redteam`, and `thrift` **built first** —
+it imports `brake/danger` and `thrift/compress` at runtime
+([telemetry.ts](packages/server/src/telemetry.ts)), and those subpaths only
+exist once each package's own `tsc` has run and produced `dist/`. Scoping
+the build command to `--workspace=@lyceum/server` alone (Railway's default
+guess for a service rooted there) silently skips that and fails with
+`Cannot find module 'brake/danger'` / `'thrift/compress'` — that happened
+once already; the table above is the fix, kept here so it doesn't drift back.
+`thrift` has no service of its own — it's only ever a build dependency of
+`@lyceum/server`, never deployed standalone.
+
+**No persistent volume is attached to `@lyceum/server`.** It stores state in
+a SQLite file (`node:sqlite`, path from `LYCEUM_DB_PATH`, defaults to
+`packages/server/data/lyceum.db`) on the container's local disk — every
+redeploy currently starts from an empty database, silently. That's a real
+gap (waitlist signups don't survive a redeploy) and needs a Railway volume
+mounted at whatever `LYCEUM_DB_PATH` points to before this is trusted with
+real signups.
+
+The full env var list `@lyceum/server` needs to boot is in
+[Configuration](#configuration) below — it refuses to start if any
+`LS_VARIANT_*` is missing, unless `LYCEUM_DEV_MODE=1` (never set that in
+production).
+
+---
+
 ## Configuration
 
 | Variable | Purpose |
