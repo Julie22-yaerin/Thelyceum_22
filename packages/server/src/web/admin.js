@@ -31,7 +31,7 @@ function esc(s) {
 
 const STATUS_LABEL = {
   pending: "Awaiting deposit",
-  paid: "Ready to review",
+  paid: "Paid — ready to review",
   approved: "Approved",
   rejected: "Rejected",
 };
@@ -85,7 +85,7 @@ function renderCounts(counts) {
   const cells = [
     { label: "Total", value: counts.total },
     { label: "Awaiting deposit", value: counts.pending },
-    { label: "Ready to review", value: counts.paid, highlight: counts.paid > 0 },
+    { label: "Paid — ready to review", value: counts.paid, highlight: counts.paid > 0 },
     { label: "Approved", value: counts.approved },
     { label: "Rejected", value: counts.rejected },
   ];
