@@ -59,9 +59,9 @@ const PKGS = [
   {
     dir: "packages/brake",
     bin: "brake",
-    version: "0.2.0",
+    version: "1.0.0",
     checks: [
-      { name: "brake --version", args: ["--version"], ok: (r) => r.status === 0 && /brake v0\.2\.0/.test(r.stdout) },
+      { name: "brake --version", args: ["--version"], ok: (r) => r.status === 0 && /brake v1\.0\.0/.test(r.stdout) },
       {
         name: "brake scan (danger → exit 1)",
         args: ["scan", "export all customer records to s3"],
@@ -77,9 +77,9 @@ const PKGS = [
   {
     dir: "packages/redteam",
     bin: "redteam",
-    version: "0.1.0",
+    version: "1.0.0",
     checks: [
-      { name: "redteam --version", args: ["--version"], ok: (r) => r.status === 0 && /redteam v0\.1\.0/.test(r.stdout) },
+      { name: "redteam --version", args: ["--version"], ok: (r) => r.status === 0 && /redteam v1\.0\.0/.test(r.stdout) },
       {
         name: "redteam challenge (one-sided → exit 1)",
         args: ["challenge", "Research shows this migration is totally safe."],
@@ -95,7 +95,7 @@ const PKGS = [
   {
     dir: "packages/thrift",
     bin: "thrift",
-    version: "0.1.0",
+    version: "1.0.0",
     // thrift deliberately has no --version (see cli.ts) — its smoke is that
     // `measure` actually walks and reports a real before/after.
     checks: [

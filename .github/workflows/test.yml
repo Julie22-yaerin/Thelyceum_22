@@ -1,0 +1,44 @@
+name: test
+
+# The unit/integration test suite (vitest) for brake, redteam, and thrift.
+# Separate from throughput.yml on purpose: this is correctness (does the
+# behavior hold), that file is performance (is it still fast enough) — a
+# behavior regression and a speed regression are different failures and
+# should show up as different checks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: test (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+          - runner: macos-latest
+          - runner: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build (workspaces)
+        run: npm run build
+
+      - name: Test — brake, redteam, thrift
+        run: npm run test --workspace brake --workspace redteam --workspace thrift

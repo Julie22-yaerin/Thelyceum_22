@@ -52,21 +52,21 @@ const MCP_LIST_GATE_MS = Math.max(1, Number(process.env.BENCH_MCP_LIST_GATE_MS) 
 const SERVERS = [
   {
     name: "brake",
-    version: "0.2.0",
+    version: "1.0.0",
     entry: "packages/brake/dist/mcp.js",
-    tools: ["brake", "danger_scan", "brake_status"],
+    tools: ["brake", "danger_scan", "brake_metrics", "brake_status"],
   },
   {
     name: "redteam",
-    version: "0.1.0",
+    version: "1.0.0",
     entry: "packages/redteam/dist/mcp.js",
-    tools: ["challenge", "rebut", "redteam_status"],
+    tools: ["challenge", "rebut", "compact", "redteam_status"],
   },
   {
     name: "thrift",
-    version: "0.1.0",
+    version: "1.0.0",
     entry: "packages/thrift/dist/mcp.js",
-    tools: ["read_lean", "run_lean", "compress_text", "thrift_report"],
+    tools: ["read_lean", "run_lean", "check_loop", "compress_text", "thrift_report"],
   },
 ];
 
