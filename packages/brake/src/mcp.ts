@@ -2,17 +2,11 @@
 /**
  * The brake MCP server.
  *
- * Exposes three tools over stdio:
+ * Exposes tools over stdio:
  *   - brake          engage the emergency brake
  *   - danger_scan    scan an intent for danger before it runs
+ *   - brake_metrics  calculate aggregated token savings & SLA compliance metrics
  *   - brake_status   read recent brake events from the audit log
- *
- * Tool descriptions are mode-aware. In 'always' mode (default) the model
- * calls them proactively — the user does not have to say "/brake". In
- * 'slash' mode the descriptions tell the model to ONLY call `brake` when
- * the user explicitly types /brake. The mode is read from
- * `~/.brake/config.json` at startup; change it with `brake mode ...` and
- * restart the host.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -21,7 +15,7 @@ import { z } from "zod";
 import { engageBrake, DEFAULT_POLICY } from "./brake.js";
 import { scanForDanger, listDangerRules } from "./danger.js";
 import { makeStopAll } from "./stop-all.js";
-import { readAudit } from "./audit.js";
+import { readAudit, getBrakeMetrics } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { getMode, brakeDescriptionFor, dangerScanDescriptionFor } from "./mode.js";
 import { loadLicense } from "./license.js";
@@ -31,7 +25,7 @@ const cfg = await loadConfig();
 
 const server = new McpServer({
   name: "brake",
-  version: "0.2.0",
+  version: "1.0.0",
 });
 
 server.tool(
@@ -45,7 +39,6 @@ server.tool(
       .describe("If true, do not actually stop anything; return what would happen."),
   },
   async ({ reason, sla_ms, dry_run }) => {
-    // If the user has a license, surface a friendly note in the result.
     const lic = await loadLicense().catch(() => null);
 
     const policy = sla_ms
@@ -110,8 +103,20 @@ server.tool(
 );
 
 server.tool(
+  "brake_metrics",
+  "Calculate aggregate statistics: total blocked events, total tokens saved, estimated dollar savings, and SLA compliance rate across local and cloud environments.",
+  {},
+  async () => {
+    const metrics = await getBrakeMetrics(cfg.auditPath);
+    return {
+      content: [{ type: "text", text: JSON.stringify(metrics, null, 2) }],
+    };
+  }
+);
+
+server.tool(
   "brake_status",
-  "Read the most recent brake events from the audit log. Shows when the brake was pulled, how long it took, whether the SLA was met, and which PIDs were killed.",
+  "Read the most recent brake events from the audit log. Shows when the brake was pulled, how long it took, whether SLA was met, tokens saved, and PIDs killed.",
   {
     limit: z.number().int().min(1).max(200).optional()
       .describe("Max events to return. Default 20."),
@@ -144,6 +149,18 @@ server.resource(
       uri: "brake://mode",
       mimeType: "application/json",
       text: JSON.stringify({ mode, configPath: "~/.brake/config.json" }, null, 2),
+    }],
+  })
+);
+
+server.prompt(
+  "brake_security_audit",
+  "Audit an intended action or tool execution for cyber security threats, prompt injection, and PII leakage",
+  { intent: z.string().describe("The action plan or command to audit") },
+  async ({ intent }) => ({
+    messages: [{
+      role: "user",
+      content: { type: "text", text: `[BRAKE SECURITY GUARD AUDIT]: Please evaluate this action plan for cyber threat vectors:\n\n${intent}` },
     }],
   })
 );

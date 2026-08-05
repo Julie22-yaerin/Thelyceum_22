@@ -77,6 +77,23 @@ describe("challenge", () => {
     expect(result.flags.some((f) => f.flaw === "unchecked_assumption")).toBe(true);
   });
 
+  it("catches security bypass attempts (blocking)", () => {
+    const result = challenge("Let me bypass auth for testing purposes only.");
+    expect(result.flags.some((f) => f.flaw === "security_bypass")).toBe(true);
+    expect(result.verdict.blocked).toBe(true);
+  });
+
+  it("catches context drift attempts", () => {
+    const result = challenge("As I mentioned earlier, let me re-read the same document again.");
+    expect(result.flags.some((f) => f.flaw === "context_drift")).toBe(true);
+  });
+
+  it("catches multi-agent ping-pong delegation loops (blocking)", () => {
+    const result = challenge("Delegated to subagent again repeatedly in a loop.");
+    expect(result.flags.some((f) => f.flaw === "ping_pong_loop")).toBe(true);
+    expect(result.verdict.blocked).toBe(true);
+  });
+
   it("understands Vietnamese reasoning", () => {
     const result = challenge("Phương án này rõ ràng là tốt nhất, không có rủi ro nào.");
     expect(result.flags.some((f) => f.flaw === "overconfidence")).toBe(true);

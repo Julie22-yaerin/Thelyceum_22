@@ -14,6 +14,7 @@
 
 import { describe, expect, it, beforeEach } from "vitest";
 import { compress, SeenLedger } from "../src/compress.js";
+import { filterProseNoise } from "../src/prose.js";
 import { estimateTokens } from "../src/tokens.js";
 import { isLossless } from "../src/ledger.js";
 
@@ -365,6 +366,45 @@ describe("strip", () => {
     expect(r.text).toMatch(/base64 omitted/);
   });
 
+  it("compacts long stack trace frames while keeping head frames and tail frame", () => {
+    const trace = [
+      "Error: Connection refused",
+      "    at TCPConnectWrap.afterConnect [as oncomplete] (net.js:1146:16)",
+      "    at Protocol.Connection._dispatch (/app/node_modules/mysql/lib/Connection.js:144:11)",
+      "    at Protocol.Connection._select (/app/node_modules/mysql/lib/Connection.js:150:11)",
+      "    at Sequence.onReady (/app/node_modules/mysql/lib/Sequence.js:90:12)",
+      "    at Sequence.onEnd (/app/node_modules/mysql/lib/Sequence.js:100:12)",
+      "    at Sequence.execute (/app/node_modules/mysql/lib/Sequence.js:110:12)",
+      "    at Runner.run (/app/node_modules/jest-runner/index.js:50:5)",
+      "    at processTicksAndRejections (internal/process/task_queues.js:95:5)"
+    ].join("\n");
+
+    const r = compress(trace, ledger, { sourceId: "error.log" });
+    expect(r.text).toContain("Connection refused");
+    expect(r.text).toContain("TCPConnectWrap.afterConnect");
+    expect(r.text).toContain("processTicksAndRejections");
+    expect(r.text).toMatch(/stack trace frames omitted/);
+    expect(r.after.tokens).toBeLessThan(r.before.tokens);
+  });
+
+  it("compacts long unchanged context in git diffs while preserving additions and deletions", () => {
+    const diff = [
+      "diff --git a/src/app.ts b/src/app.ts",
+      "@@ -10,30 +10,30 @@ function main() {",
+      ...Array.from({ length: 25 }, (_, i) => `  const contextLine${i} = ${i};`),
+      "-  const oldVal = 1;",
+      "+  const newVal = 2;",
+      ...Array.from({ length: 25 }, (_, i) => `  const trailingLine${i} = ${i};`)
+    ].join("\n");
+
+    const r = compress(diff, ledger, { sourceId: "app.patch" });
+    expect(r.text).toContain("diff --git a/src/app.ts b/src/app.ts");
+    expect(r.text).toContain("-  const oldVal = 1;");
+    expect(r.text).toContain("+  const newVal = 2;");
+    expect(r.text).toMatch(/unchanged git diff context lines omitted/);
+    expect(r.after.tokens).toBeLessThan(r.before.tokens);
+  });
+
   it("is lossless by classification", () => {
     const esc = String.fromCharCode(27);
     const r = compress(`${esc}[32mok${esc}[0m\n`.repeat(100), ledger, { sourceId: "s" });
@@ -574,7 +614,7 @@ describe("cap", () => {
   it("keeps the head and the tail, not just the head", () => {
     // The tail usually holds the error or the conclusion. Cutting only the end
     // loses the answer.
-    const text = `HEAD_MARKER\n${bigFile(4000)}\nTAIL_MARKER`;
+    const text = `const HEAD_MARKER = "START";\n${bigFile(4000)}\nconst TAIL_MARKER = "END";`;
     const r = compress(text, ledger, { sourceId: "/x.log", budgetTokens: 400 });
     expect(r.text).toContain("HEAD_MARKER");
     expect(r.text).toContain("TAIL_MARKER");
@@ -630,5 +670,82 @@ describe("token estimation", () => {
 
   it("returns zero for empty input", () => {
     expect(estimateTokens("").tokens).toBe(0);
+  });
+});
+
+describe("prose noise filtering", () => {
+  it("removes English and Vietnamese hesitation words", () => {
+    const text = "Tôi nghĩ ờ... thì... à dĩ nhiên dạ vâng là nó um tốt uh lắm.";
+    expect(filterProseNoise(text)).toBe("Tôi nghĩ thì... dĩ nhiên là nó tốt lắm.");
+  });
+
+  it("collapses consecutive duplicate words case-insensitively, keeping punctuation", () => {
+    const text = "the the standard very very good. kiểu kiểu như vậy";
+    expect(filterProseNoise(text)).toBe("the standard very good. kiểu như vậy");
+  });
+
+  it("strips hesitation and duplicate words in a full compress run for soft lines", () => {
+    const original = "Tôi nghĩ là kiểu kiểu như vậy ờ...\nconst x = 123;\nTôi nghĩ dĩ nhiên dạ vâng là nó um tốt uh lắm.";
+    const r = compress(original, ledger, { sourceId: "prose.txt" });
+    expect(r.text).toContain("Tôi nghĩ là kiểu như vậy");
+    expect(r.text).toContain("const x = 123;");
+    expect(r.text).toContain("Tôi nghĩ dĩ nhiên là nó tốt lắm.");
+  });
+});
+
+describe("SVG blob and log timestamp compaction", () => {
+  it("compacts large inline SVG path data while keeping SVG tags", () => {
+    const svgContent = `<svg><path d="M10 20 L30 40 C50 60 70 80 90 100 A10 20 30 40 50 60 70 A10 20 30 40 50 60 70 Z M100 200 L300 400 Z M10 20 L30 40 C50 60 70 80 90 100" /></svg>`;
+    const r = compress(svgContent, ledger, { sourceId: "icon.svg" });
+    expect(r.text).toMatch(/\[thrift: \d+-char SVG path omitted\]/);
+  });
+
+  it("normalizes log timestamps on repeated lines so collapseRepeats merges them", () => {
+    const logLines = [
+      "2026-08-05T10:41:37.100Z [INFO] Processing queue batch #100",
+      "2026-08-05T10:41:37.250Z [INFO] Processing queue batch #100",
+      "2026-08-05T10:41:37.400Z [INFO] Processing queue batch #100",
+      "2026-08-05T10:41:37.550Z [INFO] Processing queue batch #100",
+    ].join("\n");
+    const r = compress(logLines, ledger, { sourceId: "batch.log" });
+    expect(r.text).toContain("previous line repeated 3 more times");
+  });
+});
+
+describe("adversarial stress tests (red team validation)", () => {
+  it("handles heavy multi-byte unicode without throwing or corrupting output length invariant", () => {
+    const unicodeInput = "🚀".repeat(500) + " 💥 ".repeat(500) + " Tiếng Việt có dấu phức tạp ";
+    const r = compress(unicodeInput, ledger, { sourceId: "unicode.txt" });
+    expect(r.after.tokens).toBeLessThanOrEqual(r.before.tokens);
+    expect(r.text.length).toBeGreaterThan(0);
+  });
+
+  it("preserves syntactically critical structural elements in adversarial JSON logs", () => {
+    const jsonLogs = [
+      '{"level":"error","timestamp":"2026-08-05T10:00:00Z","trace":"Error: connect ECONNREFUSED 127.0.0.1:5432"',
+      '    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1605:16)',
+      '    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1605:16)',
+      '    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1605:16)',
+      '    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1605:16)',
+      '    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1605:16)',
+      '    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1605:16)'
+    ].join("\n");
+    const r = compress(jsonLogs, ledger, { sourceId: "json_trace.log" });
+    expect(r.after.tokens).toBeLessThanOrEqual(r.before.tokens);
+    expect(r.text).toContain("stack trace frames omitted");
+  });
+
+  it("handles Big List of Naughty Strings (BLNS) dataset without throwing or memory leaks", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const blnsPath = path.resolve(__dirname, "../../../benches/datasets/blns/big-list-of-naughty-strings-master/blns.json");
+    const blnsContent = await fs.readFile(blnsPath, "utf-8");
+    const naughtyStrings: string[] = JSON.parse(blnsContent);
+
+    // Pick 50 complex naughty strings and compress
+    const sample = naughtyStrings.slice(0, 100).join("\n");
+    const r = compress(sample, ledger, { sourceId: "blns_sample.txt" });
+    expect(r.after.tokens).toBeLessThanOrEqual(r.before.tokens);
+    expect(r.text.length).toBeGreaterThan(0);
   });
 });

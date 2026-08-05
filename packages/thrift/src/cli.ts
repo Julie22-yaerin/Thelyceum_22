@@ -17,6 +17,7 @@ import { classify } from "./classify.js";
 import { summarise, isLossless, DEFAULT_LEDGER_PATH } from "./ledger.js";
 import { installAll, installClaudeDesktop, installClaudeCode, installChatGPT, uninstallAll } from "./install.js";
 import { reportUsageBestEffort } from "./usage.js";
+import { globalLoopTracker } from "./loop.js";
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -219,9 +220,20 @@ async function main(): Promise<void> {
       break;
     }
 
-    default:
-      console.log(`thrift — cut the tokens an agent burns on its own tool output
+    // ── check-loop ────────────────────────────────────────────────────────
+    case "check-loop":
+    case "loop": {
+      const key = args[1] || "default_action";
+      const result = globalLoopTracker.trackAndCheck(key);
+      console.log(JSON.stringify(result, null, 2));
+      if (result.tripped) process.exitCode = 1;
+      break;
+    }
 
+    default:
+      console.log(`thrift (Saver) — Token economy & runaway loop interceptor
+
+  thrift check-loop <action>     check if action repeated > 2 times (trips if > 2)
   thrift measure <path>          what thrift would save on YOUR files
     --passes N                   simulate an agent re-reading (dedupe only helps here)
     --budget N                   token cap per result (default 4000)

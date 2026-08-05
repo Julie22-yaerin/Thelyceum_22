@@ -1,149 +1,49 @@
 /**
  * The compressor.
- *
- * ── What this actually does, and what it cannot ─────────────────────────────
- * An MCP server sees its own tool calls and nothing else. It cannot read the
- * conversation, cannot rewrite the system prompt, and cannot prune history.
- * So the only tokens `thrift` can save are the ones in tool RESULTS — which
- * turns out to be where the waste is, because that is the part of an agent
- * loop that scales with the size of the codebase rather than the length of
- * the conversation.
- *
- * Four mechanisms, in the order they fire:
- *
- *   1. DEDUPE      The agent re-reads a file it already has. Return a pointer
- *                  instead of the content. This is the biggest single win in a
- *                  real loop and it is lossless — the content is already in
- *                  context.
- *   2. SLICE       A 4,000-line file when the agent asked about one function.
- *                  Return the relevant window plus an explicit marker saying
- *                  what was cut and how to get it. Windows snap to literal
- *                  boundaries — a string/template/comment is never cut in half.
- *   3. STRIP       Machine noise with no semantic content: repeated
- *                  indentation, base64 blobs, lockfile hashes, ANSI codes,
- *                  duplicate log lines.
- *   4. CAP         Nothing else worked and it is still enormous. Truncate at a
- *                  budget, and say so loudly in the payload so the model knows
- *                  it is looking at a fragment.
- *
- * ── The iron rule: hard data is only ever deduped ──────────────────────────
- * Immutable facts — JSON schema, code, variable names, financial limits,
- * credentials — must survive byte-identical. They may be DEDUPED (a pointer to
- * content already in context) but never truncated. Only prose (semantic text)
- * is compressible. So CAP is hard-data-aware: in a mixed payload it trims
- * whole soft lines while keeping every hard line intact, and when hard data
- * alone overflows the budget it drops whole lines — never a line split in
- * half — with a marker naming exactly what happened. See classify.ts.
- *
- * ── The rule that makes this safe to run always-on ──────────────────────────
- * Every reduction is REVERSIBLE and ANNOUNCED. The model is always told what
- * was removed and how to get it back. A compressor that silently drops the one
- * line the agent needed does not save money — it causes a retry, which costs
- * more than it saved, and the operator never finds out why the agent got
- * confused.
- *
- * ── On the savings figure ───────────────────────────────────────────────────
- * There is no fixed percentage in this file, because the honest answer depends
- * entirely on the workload: a loop that re-reads the same six files saves far
- * more than a single fresh read of unique content. `thrift` measures each call
- * and reports what it actually did. See README for measured figures on real
- * corpora and the cases where it saves nothing at all.
  */
 
 import crypto from "node:crypto";
 import { estimateTokens, type TokenCount } from "./tokens.js";
 import { classify, type Classification } from "./classify.js";
+import { filterProseNoise } from "./prose.js";
 
 export type Mechanism = "dedupe" | "slice" | "strip" | "cap" | "none";
 
 export interface CompressResult {
   text: string;
-  /** What fired, in order. Empty when the payload was already lean. */
   applied: Mechanism[];
   before: TokenCount;
   after: TokenCount;
-  /** Tokens saved. Negative is impossible — see `guardAgainstGrowth`. */
   saved: number;
   savedFraction: number;
-  /**
-   * Tokens of the INPUT payload that are immutable hard data (code, JSON
-   * schema, limits, credentials) — the part that is never truncated.
-   */
   hardTokens: number;
-  /** Tokens of the input payload that are compressible prose. */
   softTokens: number;
-  /** hardTokens / (hardTokens + softTokens); 0 when there is no hard data. */
   hardFraction: number;
-  /** Human-readable, shown in the tool result so the model knows what happened. */
   note: string;
 }
 
 export interface CompressOptions {
-  /** Cap in tokens. Beyond this, mechanism 4 fires. Default 4000. */
   budgetTokens?: number;
-  /** What the agent said it was looking for — drives SLICE. */
   query?: string;
-  /** Stable id for the source (file path, URL, tool name + args hash). */
   sourceId?: string;
-  /**
-   * Max tool calls a dedupe pointer stays valid. Default 20.
-   *
-   * The host (Claude Desktop, Claude Code, …) can compact or evict context at
-   * any moment. A pointer that says "you already have this" when the content
-   * has since left the context window is the worst failure thrift can have —
-   * unrecoverable, because the model cannot fetch what it was never given. So
-   * a pointer expires: after this many intervening calls, the full content is
-   * re-sent and the sighting re-baselined.
-   */
   maxDedupeAgeCalls?: number;
-  /**
-   * Max tokens emitted (across ALL thrift results this session) since a
-   * sighting while its pointer stays valid. Default 40000.
-   *
-   * A call-count window cannot see context pressure; a token budget can. This
-   * is a proxy — thrift cannot know the host's actual window size — so it is
-   * deliberately conservative: if a lot of new content has entered context
-   * since the sighting, the earlier copy may well be gone.
-   */
   maxDedupeAgeTokens?: number;
-  /** Disable individual mechanisms. Off means "never fire". */
   enable?: Partial<Record<Exclude<Mechanism, "none">, boolean>>;
 }
 
-/** Default expiry window for a dedupe pointer, in tool calls. */
 export const DEFAULT_MAX_DEDUPE_AGE_CALLS = 20;
-/** Default expiry window for a dedupe pointer, in tokens emitted since. */
 export const DEFAULT_MAX_DEDUPE_AGE_TOKENS = 40_000;
-
-// ── 1. Dedupe ────────────────────────────────────────────────────────────────
 
 interface SeenEntry {
   hash: string;
   atCall: number;
-  /** Cumulative emitted tokens at the moment this content was shown. */
   emittedAt: number;
   tokens: number;
 }
 
-/**
- * Per-session memory of what the agent has already been shown.
- *
- * In-process and per-session on purpose: this must reset when the conversation
- * does. Persisting it across sessions would make thrift tell a fresh
- * conversation "you already have this file", which is false and unrecoverable
- * — the model has no way to fetch what it was never given.
- *
- * ── Why it tracks emitted tokens as well as call counts ─────────────────────
- * The host can compact context at any moment, and thrift cannot see the
- * conversation to know when. So each sighting records how much new content has
- * been emitted since it — a conservative proxy for "is it still in context".
- * A pointer is only handed out while BOTH the call window and the token window
- * are open; once either closes, the full content is re-sent.
- */
 export class SeenLedger {
   private seen = new Map<string, SeenEntry>();
   private calls = 0;
-  /** Cumulative tokens of every result returned this session. */
   private emitted = 0;
 
   get callCount(): number {
@@ -164,15 +64,14 @@ export class SeenLedger {
     return this.seen.size;
   }
 
-  /** Call after a result is returned to the model, so age-in-tokens stays honest. */
   recordEmission(tokens: number): void {
     this.emitted += Math.max(0, tokens);
   }
 
-  /** Returns the prior sighting if this exact content was already shown. */
   check(sourceId: string, text: string): SeenEntry | null {
     this.calls++;
-    const hash = crypto.createHash("sha256").update(text).digest("hex").slice(0, 16);
+    const normalized = text.replace(/\r\n/g, "\n");
+    const hash = crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 16);
     const prior = this.seen.get(sourceId);
     if (prior && prior.hash === hash) return prior;
     this.seen.set(sourceId, {
@@ -184,10 +83,6 @@ export class SeenLedger {
     return null;
   }
 
-  /**
-   * Refresh a sighting after the full content was re-sent, so the next read
-   * within the window can dedupe again.
-   */
   rebaseline(sourceId: string, tokens: number): void {
     const entry = this.seen.get(sourceId);
     if (entry) {
@@ -198,47 +93,18 @@ export class SeenLedger {
   }
 }
 
-// ── 2. Slice ─────────────────────────────────────────────────────────────────
-
-/**
- * Keep the windows around query terms, drop the rest.
- *
- * Line-based rather than character-based so code stays syntactically legible,
- * and gaps are marked with the exact line range removed so the model can ask
- * for a specific span rather than re-requesting the whole file.
- *
- * Boundaries are SYNTAX-AWARE: a window must never cut through a multi-line
- * string literal, template literal, or block comment. A model handed half of
- * a literal cannot parse what it sees, and no gap marker fixes an unterminated
- * literal — the content is broken no matter how precisely the range is named.
- * So each kept run is snapped outward until both edges sit at literal
- * boundaries; if that would keep too much, we decline to slice.
- */
-
 type ScanMode = "code" | "sq" | "dq" | "tpl" | "block" | "line";
 
 interface LineScan {
-  /** Line i begins inside a literal/comment opened on an earlier line. */
   startInside: boolean[];
-  /** Line i ends inside a literal/comment that continues onto the next line. */
   endInside: boolean[];
 }
 
-/**
- * Walk the file once tracking quote/template/comment state per line.
- *
- * Conservative by design: on anything ambiguous it stays "inside", because the
- * cost of over-keeping is a few extra lines, while the cost of cutting a
- * literal in half is broken syntax the model cannot repair. One known
- * consequence: a stray apostrophe in prose opens a single-quote span that
- * closes at the next apostrophe, over-keeping in between — that is the safe
- * direction, so do not "fix" it by guessing.
- */
 function scanLiterals(lines: string[]): LineScan {
   const startInside: boolean[] = new Array(lines.length).fill(false);
   const endInside: boolean[] = new Array(lines.length).fill(false);
   let mode: ScanMode = "code";
-  let tplBraces = 0; // depth of ${…} interpolation inside the current template
+  let tplBraces = 0;
   const inside = (m: ScanMode): boolean =>
     m === "sq" || m === "dq" || m === "tpl" || m === "block";
 
@@ -275,16 +141,15 @@ function scanLiterals(lines: string[]): LineScan {
           if (c === "*" && next === "/") { mode = "code"; i++; }
           break;
         case "line":
-          break; // // comment ends at the newline
+          break;
       }
     }
-    if (mode === "line") mode = "code"; // a // comment cannot span lines
+    if (mode === "line") mode = "code";
     endInside[li] = inside(mode);
   }
   return { startInside, endInside };
 }
 
-/** Extend every kept run outward until its edges sit at literal boundaries. */
 function snapRuns(keep: Set<number>, lines: string[], scan: LineScan): void {
   let runStart = -1;
   for (let i = 0; i <= lines.length; i++) {
@@ -293,8 +158,8 @@ function snapRuns(keep: Set<number>, lines: string[], scan: LineScan): void {
     if (!kept && runStart !== -1) {
       let a = runStart;
       let b = i - 1;
-      while (a > 0 && scan.startInside[a]) a--; // back to the literal's opening line
-      while (b < lines.length - 1 && scan.endInside[b]) b++; // forward to its closing line
+      while (a > 0 && scan.startInside[a]) a--;
+      while (b < lines.length - 1 && scan.endInside[b]) b++;
       for (let j = a; j <= b; j++) keep.add(j);
       runStart = -1;
     }
@@ -309,7 +174,7 @@ function slice(text: string, query: string, budgetTokens: number): string | null
   if (terms.length === 0) return null;
 
   const lines = text.split("\n");
-  if (lines.length < 60) return null; // not worth slicing something small
+  if (lines.length < 60) return null;
 
   const WINDOW = 12;
   const keep = new Set<number>();
@@ -323,13 +188,10 @@ function slice(text: string, query: string, budgetTokens: number): string | null
       }
     }
   }
-  // No hits means the query does not describe this content. Slicing on zero
-  // evidence would hand back an arbitrary fragment, so decline instead.
   if (hits === 0) return null;
 
-  // Never cut a literal in half — snap the windows to literal boundaries first.
   snapRuns(keep, lines, scanLiterals(lines));
-  if (keep.size >= lines.length * 0.8) return null; // slicing would save nothing
+  if (keep.size >= lines.length * 0.8) return null;
 
   const out: string[] = [];
   let gapStart: number | null = null;
@@ -352,42 +214,133 @@ function slice(text: string, query: string, budgetTokens: number): string | null
   return estimateTokens(sliced).tokens < budgetTokens ? sliced : sliced;
 }
 
-// ── 3. Strip ─────────────────────────────────────────────────────────────────
+function compactStackTraces(text: string): string {
+  const lines = text.split("\n");
+  const STACK_FRAME_RE = /^\s*(?:at\s+|File\s+"[^"]+",\s+line\s+\d+|[a-zA-Z0-9_$.]+\([a-zA-Z0-9_$.:]+\)|\d+:\s*0x[0-9a-fA-F]+\s*-)/;
 
-/**
- * Remove machine noise that carries no meaning for the model.
- *
- * Every rule here is chosen because the removed bytes are genuinely
- * information-free at the model's level of concern. Nothing that could be a
- * fact, an identifier, or a value is touched — the whole point is that a strip
- * must never change what the model can conclude.
- */
-function strip(text: string): string {
-  return (
-    text
-      // ANSI escape sequences from CLI output — pure display noise.
-      .replace(/\[[0-9;]*[A-Za-z]/g, "")
-      // Long base64 blobs: keep a marker with the length, drop the payload.
-      // A model cannot use a 40KB base64 string, but it can use "there is one".
-      // The lookarounds matter: a run that is a SEGMENT of a larger token — a
-      // JWT (header.payload.signature), a base64url identifier — carries facts
-      // the model may need (sub, role, exp). Adjacent `.` `-` `_` mean "part of
-      // something bigger", so those runs are left alone. Only a run that stands
-      // alone (space, quote, line edge) is machine noise.
-      .replace(
-        /(?<![A-Za-z0-9+/._-])[A-Za-z0-9+/]{200,}={0,2}(?![A-Za-z0-9+/._-])/g,
-        (m) => `[thrift: ${m.length}-char base64 omitted]`
-      )
-      // Integrity hashes in lockfiles — never read, always huge.
-      .replace(/"integrity":\s*"sha\d+-[A-Za-z0-9+/=]+"/g, '"integrity": "[thrift: omitted]"')
-      // Runs of blank lines collapse to one.
-      .replace(/\n{4,}/g, "\n\n\n")
-      // Trailing whitespace.
-      .replace(/[ \t]+$/gm, "")
-  );
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (STACK_FRAME_RE.test(lines[i])) {
+      let j = i;
+      while (j < lines.length && STACK_FRAME_RE.test(lines[j])) {
+        j++;
+      }
+      const count = j - i;
+      if (count >= 6) {
+        out.push(lines[i], lines[i + 1], lines[i + 2]);
+        const omitted = count - 4;
+        const indent = lines[i].match(/^\s*/)?.[0] ?? "    ";
+        out.push(`${indent}… [thrift: ${omitted} stack trace frames omitted]`);
+        out.push(lines[j - 1]);
+      } else {
+        for (let k = i; k < j; k++) out.push(lines[k]);
+      }
+      i = j;
+    } else {
+      out.push(lines[i]);
+      i++;
+    }
+  }
+  return out.join("\n");
 }
 
-/** Collapse consecutive identical lines, which log output produces constantly. */
+function compactGitDiffHunks(text: string): string {
+  if (!text.includes("diff --git") && !text.includes("@@ -")) return text;
+
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let inDiff = false;
+  let contextRun: string[] = [];
+
+  const flushContext = () => {
+    if (contextRun.length === 0) return;
+    if (contextRun.length >= 10) {
+      out.push(...contextRun.slice(0, 3));
+      const omitted = contextRun.length - 6;
+      out.push(`… [thrift: ${omitted} unchanged git diff context lines omitted]`);
+      out.push(...contextRun.slice(-3));
+    } else {
+      out.push(...contextRun);
+    }
+    contextRun = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("diff --git") || line.startsWith("@@ -")) {
+      inDiff = true;
+      flushContext();
+      out.push(line);
+    } else if (inDiff) {
+      if (line.startsWith("+") || line.startsWith("-")) {
+        flushContext();
+        out.push(line);
+      } else if (line.startsWith("--- ") || line.startsWith("+++ ") || line.startsWith("index ")) {
+        flushContext();
+        out.push(line);
+      } else {
+        contextRun.push(line);
+      }
+    } else {
+      out.push(line);
+    }
+  }
+  flushContext();
+  return out.join("\n");
+}
+
+function compactSvgBlobs(text: string): string {
+  if (!text.includes("<svg") && !text.includes('d="M')) return text;
+  return text.replace(/\bd="M[A-Za-z0-9\s,.-]{80,}"/g, (m) => `d="[thrift: ${m.length}-char SVG path omitted]"`);
+}
+
+function normalizeLogTimestamps(text: string): string {
+  const lines = text.split("\n");
+  if (lines.length < 4) return text;
+
+  // Regex matching ISO / standard log timestamps at start of line
+  const TS_PREFIX_RE = /^(\[\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\]|\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\s*/;
+  
+  // Check if at least 3 adjacent lines have the same log message modulo timestamp
+  const stripped = lines.map(l => l.replace(TS_PREFIX_RE, "[TIMESTAMP] "));
+  let foundRepeat = false;
+  for (let i = 0; i < lines.length - 2; i++) {
+    if (stripped[i].startsWith("[TIMESTAMP]") && stripped[i] === stripped[i + 1] && stripped[i] === stripped[i + 2]) {
+      foundRepeat = true;
+      break;
+    }
+  }
+
+  if (!foundRepeat) return text;
+  return stripped.join("\n");
+}
+
+function strip(text: string): string {
+  const baseStripped = compactSvgBlobs(text)
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+    .replace(
+      /(?<![A-Za-z0-9+/._-])[A-Za-z0-9+/]{200,}={0,2}(?![A-Za-z0-9+/._-])/g,
+      (m) => `[thrift: ${m.length}-char base64 omitted]`
+    )
+    .replace(/"integrity":\s*"sha\d+-[A-Za-z0-9+/=]+"/g, '"integrity": "[thrift: omitted]"')
+    .replace(/\n{4,}/g, "\n\n\n")
+    .replace(/[ \t]+$/gm, "");
+
+  const stackCompacted = compactStackTraces(baseStripped);
+  const diffCompacted = compactGitDiffHunks(stackCompacted);
+  const normalizedLogs = normalizeLogTimestamps(diffCompacted);
+
+  const cls = classify(normalizedLogs);
+  const processedLines = cls.lines.map((line) => {
+    if (line.kind === "soft") {
+      return filterProseNoise(line.text);
+    }
+    return line.text;
+  });
+  return collapseRepeats(processedLines.join("\n"));
+}
+
 function collapseRepeats(text: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
@@ -396,7 +349,6 @@ function collapseRepeats(text: string): string {
     let run = 1;
     while (i + run < lines.length && lines[i + run] === lines[i]) run++;
     out.push(lines[i]);
-    // Three or more: worth collapsing. Two is not worth the marker's own tokens.
     if (run >= 3) out.push(`… [thrift: previous line repeated ${run - 1} more times]`);
     else for (let k = 1; k < run; k++) out.push(lines[i]);
     i += run;
@@ -404,15 +356,11 @@ function collapseRepeats(text: string): string {
   return out.join("\n");
 }
 
-// ── 4. Cap ───────────────────────────────────────────────────────────────────
-
 function cap(text: string, budgetTokens: number): string {
   const est = estimateTokens(text);
   if (est.tokens <= budgetTokens) return text;
-  // Keep the head and the tail: the head has the shape, the tail usually has
-  // the error or the conclusion. Cutting only the tail loses the answer.
   const ratio = budgetTokens / est.tokens;
-  const keepChars = Math.floor(text.length * ratio * 0.94); // leave room for the marker
+  const keepChars = Math.floor(text.length * ratio * 0.94);
   const head = text.slice(0, Math.floor(keepChars * 0.7));
   const tail = text.slice(text.length - Math.floor(keepChars * 0.3));
   const omittedChars = text.length - head.length - tail.length;
@@ -427,32 +375,17 @@ function cap(text: string, budgetTokens: number): string {
 
 interface CapOutcome {
   text: string;
-  /** True when the payload was mixed and every hard line survived intact. */
   hardProtected: boolean;
 }
 
-/**
- * The hard-data-aware cap — the iron rule in code.
- *
- *   • Uniform payload (all hard or all soft): nothing to trim first, so the
- *     plain head+tail cap applies, exactly as before.
- *   • Mixed payload: keep EVERY hard line; drop the soft prose, with a marker
- *     saying how much prose was cut and that the code/config/limits are intact.
- *   • If even the hard data alone overflows the budget, drop whole hard lines
- *     from the middle (head+tail kept) — a line is never split in half — and
- *     say so loudly. A split line is corrupted syntax the model cannot repair;
- *     a dropped line is at least a known, named absence.
- */
 function capRespectingHard(text: string, budgetTokens: number, cls: Classification): CapOutcome {
   const est = estimateTokens(text);
   if (est.tokens <= budgetTokens) return { text, hardProtected: false };
 
   if (cls.hardTokens === 0 || cls.softTokens === 0) {
-    // Uniform dump — the pre-iron-rule behavior, unchanged.
     return { text: cap(text, budgetTokens), hardProtected: false };
   }
 
-  // Mixed: keep hard lines, drop the prose in between.
   const hardLines: string[] = [];
   let droppedSoft = 0;
   for (const l of cls.lines) {
@@ -471,8 +404,6 @@ function capRespectingHard(text: string, budgetTokens: number, cls: Classificati
     return { text: proseMarker + hardJoined, hardProtected: true };
   }
 
-  // Hard data alone overflows. Drop whole hard lines from the middle — never
-  // split one — and name the loss exactly.
   const ratio = budgetTokens / estimateTokens(hardJoined).tokens;
   const keepCount = Math.max(1, Math.floor(hardLines.length * ratio * 0.94));
   const headCount = Math.min(hardLines.length, Math.floor(keepCount * 0.7));
@@ -487,16 +418,6 @@ function capRespectingHard(text: string, budgetTokens: number, cls: Classificati
   return { text: [...head, marker, ...tail].join("\n"), hardProtected: true };
 }
 
-// ── The pipeline ─────────────────────────────────────────────────────────────
-
-/**
- * Guard against a "compression" that made things bigger.
- *
- * Every mechanism adds a marker, and on already-small input the markers can
- * cost more than they save. Returning the original in that case is the only
- * honest outcome — a tool that claims a saving while charging more tokens is
- * worse than one that does nothing.
- */
 function guardAgainstGrowth(original: string, compressed: string): { text: string; grew: boolean } {
   const before = estimateTokens(original).tokens;
   const after = estimateTokens(compressed).tokens;
@@ -519,25 +440,15 @@ export function compress(
   };
 
   const before = estimateTokens(text);
-  // Metrics of the INPUT payload: what share of it is immutable hard data.
-  // Computed once, reported on every return path.
   const cls = classify(text);
   const applied: Mechanism[] = [];
-  // True when dedupe matched but the pointer had expired — used to say so in
-  // the note instead of the misleading "already lean, nothing to remove".
   let dedupeExpired = false;
-  // True when CAP ran on a mixed payload and every hard line survived intact.
   let hardProtected = false;
 
-  // 1. DEDUPE — lossless, and by far the largest win in a real agent loop.
   if (enable.dedupe && options.sourceId) {
     const prior = ledger.check(options.sourceId, text);
     if (prior) {
       const ageCalls = ledger.callCount - prior.atCall;
-      // Tokens of OTHER content emitted since the sighting. The sighting's own
-      // first emission is subtracted: a file that was just read in full is
-      // definitely still in context, and counting its own tokens against its
-      // own expiry would refuse dedupe on a 50k-token file read twice in a row.
       const ageTokens = Math.max(0, ledger.emittedTokens - prior.emittedAt - prior.tokens);
       const withinWindow =
         ageCalls <= maxDedupeAgeCalls && ageTokens <= maxDedupeAgeTokens;
@@ -562,10 +473,6 @@ export function compress(
           note: `Already in your context — returned a pointer instead of ${prior.tokens.toLocaleString()} tokens.`,
         };
       }
-      // Pointer expired: the host may have compacted the earlier copy out of
-      // the context window, so "you already have this" can no longer be
-      // trusted. Re-send the full content and re-baseline the sighting so the
-      // NEXT read within the window can dedupe again.
       dedupeExpired = true;
       ledger.rebaseline(options.sourceId, estimateTokens(text).tokens);
     }
@@ -573,7 +480,6 @@ export function compress(
 
   let working = text;
 
-  // 2. SLICE — only when a query gives us evidence about what matters.
   if (enable.slice && options.query) {
     const sliced = slice(working, options.query, budgetTokens);
     if (sliced && estimateTokens(sliced).tokens < estimateTokens(working).tokens) {
@@ -582,19 +488,17 @@ export function compress(
     }
   }
 
-  // 3. STRIP — always safe, never changes meaning.
   if (enable.strip) {
-    const stripped = collapseRepeats(strip(working));
+    const stripped = strip(working);
     if (estimateTokens(stripped).tokens < estimateTokens(working).tokens) {
       working = stripped;
       applied.push("strip");
     }
   }
 
-  // 4. CAP — last resort, loudly announced, and hard-data-aware: in a mixed
-  // payload it trims prose only, never truncates a line of code/config/limits.
   if (enable.cap) {
-    const outcome = capRespectingHard(working, budgetTokens);
+    const currentCls = classify(working);
+    const outcome = capRespectingHard(working, budgetTokens, currentCls);
     if (outcome.text !== working) {
       working = outcome.text;
       applied.push("cap");

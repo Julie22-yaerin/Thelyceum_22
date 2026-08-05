@@ -2,9 +2,8 @@
  * Append-only NDJSON audit log at ~/.brake/audit.log.
  *
  * Every brake engagement, every danger scan that triggered, every install
- * event is written here. The log is the source of truth for "what actually
- * happened" — the audit trail you can show later, not the in-memory state
- * you can show now.
+ * event is written here with high-precision timestamping, environment details,
+ * and calculated token savings.
  */
 
 import { promises as fs } from "node:fs";
@@ -16,9 +15,25 @@ export const DEFAULT_AUDIT_PATH = join(homedir(), ".brake", "audit.log");
 
 export interface AuditEvent {
   event: string;
-  timestamp: number;
+  timestamp?: number;
+  timestamp_iso?: string;
+  environment?: "local" | "cloud";
+  cloud_region?: string;
+  tokens_saved?: number;
+  dollars_saved?: number;
   [key: string]: unknown;
 }
+
+export interface BrakeMetrics {
+  totalEvents: number;
+  blockedEvents: number;
+  totalTokensSaved: number;
+  totalDollarsSaved: number;
+  slaCompliancePct: number;
+  environment: string;
+}
+
+const mkdirCache = new Set<string>();
 
 function resolveAuditPath(override?: string): string {
   return override ? resolve(override) : DEFAULT_AUDIT_PATH;
@@ -26,23 +41,22 @@ function resolveAuditPath(override?: string): string {
 
 export async function appendAudit(event: AuditEvent, pathOverride?: string): Promise<void> {
   const path = resolveAuditPath(pathOverride);
-  await fs.mkdir(dirname(path), { recursive: true });
-  await fs.appendFile(path, JSON.stringify(event) + "\n", "utf-8");
+  const dir = dirname(path);
+  if (!mkdirCache.has(dir)) {
+    await fs.mkdir(dir, { recursive: true });
+    mkdirCache.add(dir);
+  }
+  const now = event.timestamp ?? Date.now();
+  const enrichedEvent: AuditEvent = {
+    ...event,
+    timestamp: now,
+    timestamp_iso: event.timestamp_iso ?? new Date(now).toISOString(),
+    environment: event.environment ?? (process.env.BRAKE_ENVIRONMENT === "cloud" ? "cloud" : "local"),
+    cloud_region: event.cloud_region ?? process.env.BRAKE_CLOUD_REGION,
+  };
+  await fs.appendFile(path, JSON.stringify(enrichedEvent) + "\n", "utf-8");
 }
 
-/**
- * Read the last `limit` events without loading the whole file.
- *
- * The obvious version — `readFile` the whole log, split, slice the tail —
- * is fine at demo scale and a real problem at the scale this is now priced
- * for: an enterprise fleet with many agents each triggering audit-worthy
- * events accumulates a log that only grows, never rotates, and every
- * `brake_status` / `redteam_status` call would re-read all of it into memory.
- * That is a live cost paid on every status check for the lifetime of the
- * install, and it gets slower every day the fleet runs. Reading backwards
- * from the end in fixed-size chunks keeps both the time and the memory used
- * bounded by `limit`, not by how long the log has existed.
- */
 export async function readAudit(limit = 20, pathOverride?: string): Promise<AuditEvent[]> {
   const path = resolveAuditPath(pathOverride);
   if (!existsSync(path)) return [];
@@ -64,16 +78,9 @@ export async function readAudit(limit = 20, pathOverride?: string): Promise<Audi
       await handle.read(buf, 0, readSize, position);
       const chunkText = buf.toString("utf-8") + carry;
       const parts = chunkText.split("\n");
-      // The first part may be a partial line continued by the next chunk
-      // read (further back in the file) — hold it as carry rather than
-      // treating it as a complete line.
       carry = position > 0 ? parts.shift()! : "";
       for (let i = parts.length - 1; i >= 0; i--) {
         if (parts[i]) lines.push(parts[i]);
-      }
-      if (position > 0 && carry) {
-        // will be prefixed onto the next (earlier) chunk on the following
-        // loop iteration via `chunkText = buf... + carry` above
       }
     }
     if (carry) lines.push(carry);
@@ -88,4 +95,40 @@ export async function readAudit(limit = 20, pathOverride?: string): Promise<Audi
   } finally {
     await handle.close();
   }
+}
+
+export async function getBrakeMetrics(pathOverride?: string): Promise<BrakeMetrics> {
+  const events = await readAudit(1000, pathOverride);
+  let blockedEvents = 0;
+  let totalTokensSaved = 0;
+  let totalDollarsSaved = 0;
+  let withinSlaCount = 0;
+  let slaTrackedCount = 0;
+
+  for (const ev of events) {
+    if (ev.event === "brake_engaged" || ev.event === "danger_blocked" || ev.action_blocked) {
+      blockedEvents++;
+    }
+    if (typeof ev.tokens_saved === "number") {
+      totalTokensSaved += ev.tokens_saved;
+    }
+    if (typeof ev.dollars_saved === "number") {
+      totalDollarsSaved += ev.dollars_saved;
+    }
+    if (typeof ev.within_sla === "boolean") {
+      slaTrackedCount++;
+      if (ev.within_sla) withinSlaCount++;
+    }
+  }
+
+  const slaCompliancePct = slaTrackedCount > 0 ? parseFloat(((withinSlaCount / slaTrackedCount) * 100).toFixed(2)) : 100.0;
+
+  return {
+    totalEvents: events.length,
+    blockedEvents,
+    totalTokensSaved,
+    totalDollarsSaved: parseFloat(totalDollarsSaved.toFixed(4)),
+    slaCompliancePct,
+    environment: process.env.BRAKE_ENVIRONMENT === "cloud" ? "cloud" : "local",
+  };
 }

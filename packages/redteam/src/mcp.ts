@@ -2,23 +2,18 @@
 /**
  * The red team MCP server.
  *
- * Exposes three tools over stdio:
- *   - challenge       scan a claim/plan for one-sided reasoning
+ * Exposes four tools over stdio:
+ *   - challenge       scan a claim/plan/code for reasoning & code flaws (warns vs blocks)
  *   - rebut           quick devil's advocate: counters + verdict only
+ *   - compact         smart context compacting: strips hesitation fillers & duplicated words
  *   - redteam_status  read recent challenge events from the audit log
- *
- * Tool descriptions are mode-aware. In 'always' mode (default) the model
- * calls them proactively — it attacks its own conclusion before presenting
- * it, without the user asking. In 'slash' mode the descriptions tell the
- * model to ONLY call them when the user explicitly types /redteam. The mode
- * is read from `~/.redteam/config.json` at startup; change it with
- * `redteam mode ...` and restart the host.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { challenge, rebut, listFlawRules } from "./challenge.js";
+import { compactContext } from "./compact.js";
 import { readAudit } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { getMode, challengeDescriptionFor, rebutDescriptionFor } from "./mode.js";
@@ -29,7 +24,7 @@ const cfg = await loadConfig();
 
 const server = new McpServer({
   name: "redteam",
-  version: "0.1.0",
+  version: "1.0.0",
 });
 
 server.tool(
@@ -37,7 +32,7 @@ server.tool(
   challengeDescriptionFor(mode),
   {
     text: z.string()
-      .describe("The claim, plan, or piece of reasoning to challenge. Will be scanned for one-sided reasoning."),
+      .describe("The claim, plan, or piece of code to challenge. Scanned for reasoning flaws and code risks."),
   },
   async ({ text }) => {
     const result = challenge(text, { blockOn: cfg.blockOn });
@@ -66,6 +61,20 @@ server.tool(
     return {
       content: [{ type: "text", text: JSON.stringify({ text: result.text, counter: result.counter, verdict: result.verdict }, null, 2) }],
       isError: result.verdict.blocked,
+    };
+  }
+);
+
+server.tool(
+  "compact",
+  "Filter hesitation fillers (uh, um, ừm, à) and duplicate words from context without losing technical terms or logical structure.",
+  {
+    text: z.string().describe("The text or context to compact."),
+  },
+  async ({ text }) => {
+    const result = compactContext(text);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
   }
 );
@@ -105,6 +114,18 @@ server.resource(
       uri: "redteam://mode",
       mimeType: "application/json",
       text: JSON.stringify({ mode, configPath: "~/.redteam/config.json" }, null, 2),
+    }],
+  })
+);
+
+server.prompt(
+  "redteam_logic_challenge",
+  "Challenge a proposal, plan, or code edit for reasoning flaws, overconfidence, context drift, or ping-pong loops",
+  { proposal: z.string().describe("The proposal or code edit to challenge") },
+  async ({ proposal }) => ({
+    messages: [{
+      role: "user",
+      content: { type: "text", text: `[RED TEAM LOGIC CHALLENGE]: Challenge this proposal for reasoning flaws, context drift, or loop risks:\n\n${proposal}` },
     }],
   })
 );

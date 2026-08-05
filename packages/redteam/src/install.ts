@@ -53,12 +53,13 @@ export async function installClaudeDesktop(): Promise<void> {
   const desktop = await readJsonSafe<{ mcpServers?: Record<string, unknown> }>(configPath, {});
   desktop.mcpServers = desktop.mcpServers ?? {};
   desktop.mcpServers.redteam = {
-    command: resolveRedteamBin(),
-    args: ["mcp"],
+    command: cfg.mcpCommand,
+    args: cfg.mcpArgs,
     env: {
       REDTEAM_AUDIT_PATH: cfg.auditPath,
       ...(cfg.webhookUrl ? { REDTEAM_WEBHOOK_URL: cfg.webhookUrl } : {}),
       ...(cfg.blockOn ? { REDTEAM_BLOCK_ON: [...cfg.blockOn].join(",") } : {}),
+      ...(cfg.mcpEnv ?? {}),
     },
   };
   await writeJsonSafe(configPath, desktop);

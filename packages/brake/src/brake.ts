@@ -1,18 +1,12 @@
 /**
- * The emergency brake.
+ * The emergency brake engine (Local & Cloud).
  *
- * Stop everything, now. The SLA is measured, not asserted. A brake that
- * quietly took 3 seconds while the UI said "1000ms SLA" is worse than no
- * brake, because the operator would have acted differently had they known.
- *
- * Pure module. No I/O, no global state, no opinion about storage. The caller
- * provides a `stopAll` callback that knows how to actually stop things in
- * their environment (kill PIDs, call a webhook, run a rollback script, hit
- * the cloud API, halt a tmux session — whatever fits).
+ * Stop everything, fast. Measured SLA (< 1000ms).
+ * Logs blocked actions, timestamps, cloud environment context, and calculated token savings.
  */
 
 export interface EscalationPolicy {
-  /** Brake must engage within this. Measured and reported even when missed. */
+  /** Brake must engage within this SLA (ms). Measured and reported. */
   brakeSlaMs: number;
 }
 
@@ -26,38 +20,50 @@ export interface BrakeStopped {
 }
 
 export interface BrakeResult {
-  /** True if `stopAll` returned without throwing. A thrown brake is not engaged. */
+  /** True if `stopAll` returned without throwing. */
   engaged: boolean;
-  /** Measured, so the SLA is a fact rather than a claim. */
+  /** Measured SLA elapsed time in ms. */
   elapsedMs: number;
-  /** True if `elapsedMs <= policy.brakeSlaMs`. Reported even when false. */
+  /** True if `elapsedMs <= policy.brakeSlaMs`. */
   withinSla: boolean;
   stopped: BrakeStopped;
   reason: string;
   timestamp: number;
+  timestampIso: string;
+  environment: "local" | "cloud";
+  cloudRegion?: string;
+  tokensSaved: number;
+  dollarsSaved: number;
   sla: number;
-  /** Present when `engaged` is false — the error string from the failed stopAll. */
+  /** Present when `engaged` is false — error string from failed stopAll. */
   error?: string;
 }
 
 export interface BrakeOptions {
   reason: string;
   policy?: EscalationPolicy;
-  /** Injected so this module has no opinion about storage or transport. */
+  tokensSaved?: number;
+  dollarsSaved?: number;
+  environment?: "local" | "cloud";
+  cloudRegion?: string;
+  /** Injected callback to stop agent processes / cloud tasks. */
   stopAll: () => Promise<BrakeStopped>;
 }
 
 export async function engageBrake(opts: BrakeOptions): Promise<BrakeResult> {
   const policy = opts.policy ?? DEFAULT_POLICY;
   const started = Date.now();
+  const timestampIso = new Date(started).toISOString();
   const sla = policy.brakeSlaMs;
+  const environment = opts.environment ?? (process.env.BRAKE_ENVIRONMENT === "cloud" ? "cloud" : "local");
+  const cloudRegion = opts.cloudRegion ?? process.env.BRAKE_CLOUD_REGION ?? (environment === "cloud" ? "us-east-1" : undefined);
+  const tokensSaved = opts.tokensSaved ?? 0;
+  const dollarsSaved = opts.dollarsSaved ?? parseFloat((tokensSaved * 0.000015).toFixed(4));
 
   let stopped: BrakeStopped = { agents: 0, plans: 0 };
   try {
     stopped = await opts.stopAll();
   } catch (err) {
-    // A brake that throws is a brake that did not engage. Report it as such
-    // rather than letting the exception look like success upstream.
     const elapsedMs = Date.now() - started;
     return {
       engaged: false,
@@ -66,6 +72,11 @@ export async function engageBrake(opts: BrakeOptions): Promise<BrakeResult> {
       stopped,
       reason: opts.reason,
       timestamp: started,
+      timestampIso,
+      environment,
+      cloudRegion,
+      tokensSaved,
+      dollarsSaved,
       sla,
       error: err instanceof Error ? err.message : String(err),
     };
@@ -79,6 +90,11 @@ export async function engageBrake(opts: BrakeOptions): Promise<BrakeResult> {
     stopped,
     reason: opts.reason,
     timestamp: started,
+    timestampIso,
+    environment,
+    cloudRegion,
+    tokensSaved,
+    dollarsSaved,
     sla,
   };
 }

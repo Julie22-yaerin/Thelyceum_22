@@ -3,14 +3,18 @@
  * The red team CLI.
  *
  *   redteam challenge "<claim or plan text>"
- *       Scan a claim/plan/reasoning for one-sidedness. Exit 0 if clean,
- *       1 if blocked (a blocking flaw matched or too many flags).
+ *       Scan a claim/plan/code edit for reasoning & code flaws. Exit 0 if clean/warn,
+ *       1 if blocked (blocking flaw matched or too many flags).
  *
  *   redteam rebut "<claim or plan text>"
  *       Quick devil's advocate: counters + verdict only, no flag audit.
  *
+ *   redteam compact "<text>"
+ *       Smart context compacting: filter hesitation fillers and word duplications
+ *       without losing important technical or logical context.
+ *
  *   redteam rules
- *       List the flaw rules the red team watches.
+ *       List the flaw rules the red team watches (reasoning + code flaw classes).
  *
  *   redteam status [--limit N]
  *       Show the most recent challenge events from the audit log.
@@ -33,6 +37,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { exit } from "node:process";
 import { challenge, rebut, listFlawRules } from "./challenge.js";
+import { compactContext } from "./compact.js";
 import { readAudit } from "./audit.js";
 import { loadConfig, DEFAULT_CONFIG_PATH, REDTEAM_HOME } from "./config.js";
 import { reportChallenge } from "./notify.js";
@@ -49,56 +54,43 @@ import {
 } from "./install.js";
 import { getMode, setMode, isValidMode, configPath } from "./mode.js";
 
-const HELP = `redteam — the red team. Attack one-sided reasoning before it ships.
+const HELP = `redteam — the red team. Attack one-sided reasoning and bad code paths before they ship.
 
 Core (no license required):
-  redteam challenge "<claim or plan text>"
-      Scan a claim, plan, or piece of reasoning for red flags: overconfidence,
-      unsupported claims, confirmation bias, false dichotomies, missing
-      trade-offs, straw men, anecdote-as-evidence, slippery slopes, unchecked
-      assumptions. Prints the flags and the counters. Exit 0 if clean,
-      1 if blocked (blocking flaw matched, or 3+ flags).
+  redteam challenge | c "<claim, plan, or code text>"
+      Scan for reasoning flaws (overconfidence, unsupported claims, etc.) and
+      code flaws (code drift, null pointers, unhandled async, guaranteed crashes).
+      Issues WARNINGS to guide agents without blocking, and BLOCKS on severe crash paths.
 
-  redteam rebut "<claim or plan text>"
+  redteam rebut | r "<claim or plan text>"
       Quick devil's advocate: prints only the counter-arguments and verdict.
-      Cheap; pipe your answer through it before presenting conclusions.
+
+  redteam compact | cmp "<text>"
+      Smart context filtering: removes hesitation fillers (uh, um, ừm, à) and
+      duplicate words while strictly preserving critical context and technical terms.
 
   redteam rules
-      List the flaw rules the red team watches.
+      List the flaw rules (reasoning & code) watched by the red team.
 
-  redteam status [--limit N]
+  redteam status | s [--limit N]
       Show the most recent challenge events from the audit log.
 
-  redteam mode
-      Show current mode: 'always' (model challenges its own reasoning
-      proactively) or 'slash' (only on /redteam).
+  redteam mode | m
+      Show current mode: 'always' or 'slash'.
 
-  redteam mode always | slash
+  redteam mode | m always | slash
       Set the mode. Restart Claude Desktop / Claude Code to apply.
 
 Install:
-  redteam install <target>   claude-desktop | claude-code | chatgpt | all
-      Wire the red team into a host, exactly like the brake:
-        claude-desktop   MCP server with challenge/rebut tools auto-loaded
-        claude-code      PreToolUse hook that challenges every Write/Edit
-        chatgpt          Skill file for ChatGPT Skills API
-  redteam uninstall <target>
-
+  redteam install | i <target>   claude-desktop | claude-code | chatgpt | all
+  redteam uninstall | u <target>
   redteam init
-      Write ~/.redteam/config.json with defaults.
-
   redteam mcp
-      Start the MCP server on stdio. Used by hosts that auto-spawn it.
 
 Environment / config (~/.redteam/config.json):
   REDTEAM_AUDIT_PATH         Audit log path (default ~/.redteam/audit.log).
   REDTEAM_WEBHOOK_URL        POST challenge events here (Slack, ops, etc.).
-  REDTEAM_BLOCK_ON           Comma-separated flaw classes that block, e.g.
-                             "unsupported_claim,confirmation_bias".
-
-The point of the red team is that the model attacks its own conclusion before
-presenting it — in 'always' mode by default, or only on /redteam in 'slash'
-mode. One-sided reasoning is the shape of a confident mistake.`;
+  REDTEAM_BLOCK_ON           Comma-separated flaw classes that block.`;
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")).version;
 
@@ -120,12 +112,10 @@ async function readStdin(): Promise<string> {
 // ── Commands ───────────────────────────────────────────────────────────────
 
 async function cmdChallenge(rest: string[]): Promise<void> {
-  // `redteam challenge -` reads the text from stdin (used by the Claude Code
-  // hook, which pipes the proposed change in). Any other arg is the text.
   let text = rest.join(" ").trim();
   if (text === "-") text = (await readStdin()).trim();
   if (!text) {
-    printErr("provide a claim or plan to challenge.");
+    printErr("provide a claim, plan, or code to challenge.");
     exit(2);
   }
   const cfg = await loadConfig();
@@ -134,8 +124,6 @@ async function cmdChallenge(rest: string[]): Promise<void> {
     await reportChallenge(cfg, result);
   }
   console.log(JSON.stringify(result, null, 2));
-  // Report AFTER the verdict is printed — the exit code is what the hook
-  // acts on. Tokens are an estimate (chars/4) of the claim challenged.
   await reportUsageBestEffort({ tool: "redteam", kind: "challenge", tokens: Math.ceil(text.length / 4), calls: 1 });
   exit(result.verdict.blocked ? 1 : 0);
 }
@@ -150,6 +138,18 @@ async function cmdRebut(rest: string[]): Promise<void> {
   const result = rebut(text, { blockOn: cfg.blockOn });
   console.log(JSON.stringify({ text: result.text, counter: result.counter, verdict: result.verdict }, null, 2));
   await reportUsageBestEffort({ tool: "redteam", kind: "rebut", tokens: Math.ceil(text.length / 4), calls: 1 });
+  exit(0);
+}
+
+async function cmdCompact(rest: string[]): Promise<void> {
+  let text = rest.join(" ").trim();
+  if (text === "-") text = (await readStdin()).trim();
+  if (!text) {
+    printErr("provide text to compact.");
+    exit(2);
+  }
+  const result = compactContext(text);
+  console.log(JSON.stringify(result, null, 2));
   exit(0);
 }
 
@@ -221,22 +221,23 @@ async function main(): Promise<void> {
   const [cmd, ...rest] = args;
 
   try {
-    if (cmd === "challenge") return await cmdChallenge(rest);
-    if (cmd === "rebut") return await cmdRebut(rest);
+    if (cmd === "challenge" || cmd === "c") return await cmdChallenge(rest);
+    if (cmd === "rebut" || cmd === "r") return await cmdRebut(rest);
+    if (cmd === "compact" || cmd === "cmp") return await cmdCompact(rest);
     if (cmd === "rules") {
       console.log(JSON.stringify(listFlawRules(), null, 2));
       exit(0);
     }
-    if (cmd === "status") return await cmdStatus(rest);
-    if (cmd === "mode") return await cmdMode(rest);
-    if (cmd === "install") return await cmdInstall(rest);
-    if (cmd === "uninstall") return await cmdUninstall(rest);
+    if (cmd === "status" || cmd === "s") return await cmdStatus(rest);
+    if (cmd === "mode" || cmd === "m") return await cmdMode(rest);
+    if (cmd === "install" || cmd === "i") return await cmdInstall(rest);
+    if (cmd === "uninstall" || cmd === "u") return await cmdUninstall(rest);
     if (cmd === "init") {
       await fs.mkdir(REDTEAM_HOME, { recursive: true });
       const example = {
         audit_path: join(homedir(), ".redteam", "audit.log"),
         webhook_url: null,
-        block_on: ["unsupported_claim", "confirmation_bias"],
+        block_on: ["unsupported_claim", "confirmation_bias", "guaranteed_crash", "malicious_payload"],
       };
       if (existsSync(DEFAULT_CONFIG_PATH)) {
         printErr(`${DEFAULT_CONFIG_PATH} already exists. Edit it directly.`);

@@ -1,24 +1,13 @@
 #!/usr/bin/env node
 /**
- * The thrift MCP server.
+ * The thrift (Saver) MCP server.
  *
- * ── The shape of the problem, stated plainly ────────────────────────────────
- * An MCP server cannot see the conversation. It cannot prune history, cannot
- * touch the system prompt, and cannot intercept another server's tool results.
- * Anything claiming to cut your context by 40% from inside MCP is describing
- * something it structurally cannot do.
- *
- * What it CAN do is be the thing the model reads files and runs commands
- * THROUGH. When `read_lean` replaces the host's own file read, the tokens that
- * would have entered the context never do. That is the whole mechanism, and it
- * only works if the model actually prefers these tools — which is what the
- * skill description is for.
- *
- * Four tools:
- *   read_lean     read a file, deduplicated against this session
- *   run_lean      run a command, compress its output
- *   compress_text compress text the model already has in hand
- *   thrift_report what has actually been saved, from the ledger
+ * Tools:
+ *   read_lean      read a file, deduplicated against this session
+ *   run_lean       run a command, compress its output
+ *   check_loop     runaway loop interceptor (trips if action repeated > 2 times)
+ *   compress_text  compress text the model already has in hand
+ *   thrift_report  what has actually been saved, from the ledger
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -35,37 +24,24 @@ import {
   DEFAULT_MAX_DEDUPE_AGE_TOKENS,
 } from "./compress.js";
 import { record, summarise } from "./ledger.js";
+import { globalLoopTracker, MAX_ALLOWED_REPETITIONS } from "./loop.js";
 
 const execAsync = promisify(exec);
-
-/**
- * One ledger per server process.
- *
- * An MCP stdio server is started per host session, so process lifetime and
- * session lifetime are the same thing. That is exactly the scope dedupe needs:
- * telling a fresh conversation "you already have this" would be false and
- * unrecoverable, because the model has no way to fetch what it was never given.
- */
 const seen = new SeenLedger();
-
 const DEFAULT_BUDGET = Number(process.env.THRIFT_BUDGET_TOKENS ?? 4000);
 
-// Dedupe pointers expire — the host can compact context at any moment, and a
-// pointer that references content which has since left the window is the one
-// unrecoverable failure thrift can have. Tunable per deployment.
 const DEDUPE_MAX_AGE_CALLS = Number(process.env.THRIFT_DEDUPE_MAX_AGE ?? DEFAULT_MAX_DEDUPE_AGE_CALLS);
 const DEDUPE_MAX_AGE_TOKENS = Number(process.env.THRIFT_DEDUPE_MAX_AGE_TOKENS ?? DEFAULT_MAX_DEDUPE_AGE_TOKENS);
 
-const server = new McpServer({ name: "thrift", version: "0.1.0" });
+const server = new McpServer({ name: "thrift", version: "1.0.0" });
 
 server.tool(
   "read_lean",
-  "Read a file, but skip content this session has already seen. Prefer this over the host's own file read whenever you are working through a codebase — on a second read of the same unchanged file it returns a short pointer instead of the full text, which is the single largest saving available in an iterative loop. Pass `query` when you are looking for something specific and it will return the relevant windows instead of the whole file.",
+  "Read a file, but skip content this session has already seen. Prefer this over the host's own file read whenever working through a codebase.",
   {
     path: z.string().describe("Absolute or relative path to the file."),
-    query: z.string().optional().describe("What you are looking for. Enables slicing large files to the relevant windows."),
-    budget_tokens: z.number().int().min(200).max(200_000).optional()
-      .describe(`Cap on returned tokens. Default ${DEFAULT_BUDGET}. Raise it if a previous read came back truncated.`),
+    query: z.string().optional().describe("What you are looking for. Enables slicing large files."),
+    budget_tokens: z.number().int().min(200).max(200_000).optional(),
   },
   async ({ path, query, budget_tokens }) => {
     const abs = resolve(path);
@@ -94,14 +70,25 @@ server.tool(
 
 server.tool(
   "run_lean",
-  "Run a shell command and return its output with machine noise removed — ANSI colour codes, repeated log lines, base64 blobs, lockfile hashes. Prefer this over a raw shell tool for anything that produces long output (installs, test runs, builds, greps): the removed bytes carry no meaning for you, and on a verbose command this is most of the output.",
+  "Run a shell command with machine noise removed. Also checks for runaway tool loops.",
   {
     command: z.string().describe("The shell command to run."),
     cwd: z.string().optional().describe("Working directory."),
-    budget_tokens: z.number().int().min(200).max(200_000).optional()
-      .describe(`Cap on returned tokens. Default ${DEFAULT_BUDGET}.`),
+    budget_tokens: z.number().int().min(200).max(200_000).optional(),
   },
   async ({ command, cwd, budget_tokens }) => {
+    // Runaway loop check (Strict limit: MAX_ALLOWED_REPETITIONS = 2)
+    const loopCheck = globalLoopTracker.trackAndCheck(`cmd:${command}`, 1000);
+    if (loopCheck.tripped) {
+      return {
+        content: [{
+          type: "text",
+          text: `[THRIFT SAVER INTERCEPT]: ${loopCheck.reason}\nTokens Saved: ${loopCheck.tokensSaved} (~$${loopCheck.dollarsSaved} USD).\nPlease revise approach or ask user before repeating.`,
+        }],
+        isError: true,
+      };
+    }
+
     let raw: string;
     let failed = false;
     try {
@@ -114,15 +101,10 @@ server.tool(
     } catch (err) {
       failed = true;
       const e = err as { stdout?: string; stderr?: string; message?: string };
-      // A failed command's output is the MOST valuable output there is — it
-      // has the error. Compress it, never discard it.
       raw = (e.stdout ?? "") + (e.stderr ? `\n[stderr]\n${e.stderr}` : "") || (e.message ?? "command failed");
     }
 
     const result = compress(raw, seen, {
-      // No sourceId: command output is not deduplicated, because two runs of
-      // the same command are meant to be compared, and telling the model
-      // "same as last time" would hide the very change it is checking for.
       budgetTokens: budget_tokens ?? DEFAULT_BUDGET,
     });
     await record(result, `cmd:${command.slice(0, 60)}`).catch(() => {});
@@ -134,11 +116,26 @@ server.tool(
 );
 
 server.tool(
+  "check_loop",
+  "Runaway loop interceptor tool. Checks if an action or intent has repeated more than 2 times. Trips and intercepts execution if loop count > 2.",
+  {
+    action_key: z.string().describe("The tool name, command, or action signature to check."),
+  },
+  async ({ action_key }) => {
+    const res = globalLoopTracker.trackAndCheck(action_key);
+    return {
+      content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
+      isError: res.tripped,
+    };
+  }
+);
+
+server.tool(
   "compress_text",
-  "Compress a block of text you already have — a long tool result, a pasted log, a large document — before working with it further. Returns the compressed text plus what was removed.",
+  "Compress a block of text you already have — returns compressed text plus what was removed.",
   {
     text: z.string().describe("The text to compress."),
-    query: z.string().optional().describe("What matters in it. Enables slicing to relevant windows."),
+    query: z.string().optional().describe("What matters in it."),
     budget_tokens: z.number().int().min(200).max(200_000).optional(),
   },
   async ({ text, query, budget_tokens }) => {
@@ -162,7 +159,7 @@ server.tool(
 
 server.tool(
   "thrift_report",
-  "What thrift has actually saved, read back from the ledger. Reports deduplication separately from truncation, because only one of those is free.",
+  "What thrift has actually saved, read back from the ledger.",
   { limit: z.number().int().min(1).max(50_000).optional() },
   async ({ limit }) => {
     const s = await summarise(limit ?? 5000);
@@ -178,21 +175,24 @@ server.resource(
       uri: "thrift://mechanisms",
       mimeType: "text/plain",
       text: [
+        "loop_interceptor — trips if an action repeats > 2 times. INTERCEPTS RUNAWAY LOOPS.",
         "dedupe — content already shown this session is replaced by a pointer. LOSSLESS.",
-        "  Pointer expires after ~20 calls or ~40k tokens of new output (env: THRIFT_DEDUPE_MAX_AGE,",
-        "  THRIFT_DEDUPE_MAX_AGE_TOKENS) because the host may compact context — an expired pointer",
-        "  re-sends the full content rather than claiming the model still has it.",
-        "slice  — a query selects the relevant windows of a large file. LOSSY, gaps are marked with line ranges.",
-        "  Windows snap to string/template/comment boundaries — a literal is never cut in half.",
+        "slice  — a query selects the relevant windows of a large file. LOSSY.",
         "strip  — ANSI codes, repeated log lines, STANDALONE base64 blobs, lockfile hashes. LOSSLESS.",
-        "  A base64 run that is a SEGMENT of a dotted token (a JWT header.payload.signature)",
-        "  is a fact — sub, role, exp — so it is left intact. Only standalone blobs are cut.",
-        "cap    — head+tail truncation at a token budget. LOSSY, announced in the payload.",
-        "",
-        "Savings depend entirely on the workload. Deduplication does nothing on a first read",
-        "and a great deal in an iterative loop. thrift measures each call rather than",
-        "claiming a fixed percentage.",
+        "cap    — head+tail truncation at a token budget. LOSSY.",
       ].join("\n"),
+    }],
+  })
+);
+
+server.prompt(
+  "thrift_compress_context",
+  "Compress large context blocks, log outputs, or code patches to minimize token burn",
+  { text: z.string().describe("The text or context to compress") },
+  async ({ text }) => ({
+    messages: [{
+      role: "user",
+      content: { type: "text", text: `[THRIFT SAVER COMPRESSION REQUEST]:\n\n${text}` },
     }],
   })
 );

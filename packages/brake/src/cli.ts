@@ -1,15 +1,10 @@
 #!/usr/bin/env node
 /**
- * The brake CLI.
- *
- *   brake login [--email <e>] [--password <p>]
- *   brake logout
- *   brake license (status | refresh)
- *   brake mode (always | slash)
- *   brake connections
+ * The brake CLI (Local & Cloud).
  *
  *   brake engage [--reason <text>] [--sla <ms>] [--dry-run]
  *   brake scan "<intent text>"
+ *   brake metrics
  *   brake status
  *   brake track <pid> <label>
  *   brake untrack <label>
@@ -30,7 +25,7 @@ import { stdin, stdout, exit } from "node:process";
 import { engageBrake, DEFAULT_POLICY } from "./brake.js";
 import { scanForDanger, listDangerRules } from "./danger.js";
 import { makeStopAll, trackPid, untrackPid } from "./stop-all.js";
-import { readAudit } from "./audit.js";
+import { readAudit, appendAudit, getBrakeMetrics } from "./audit.js";
 import { loadConfig, DEFAULT_CONFIG_PATH, BRAKE_HOME } from "./config.js";
 import {
   installClaudeDesktop,
@@ -48,8 +43,8 @@ import {
   saveLicense,
   saveSession,
   clearLicense,
-  callLogin,
   callSignup,
+  callLogin,
   callFetchLicense,
   callMe,
   callListInstalls,
@@ -61,77 +56,41 @@ import {
 import { getMode, setMode, isValidMode, configPath } from "./mode.js";
 import { getDeviceId, getDeviceMeta } from "./device.js";
 
-const HELP = `brake — emergency brake, 1000ms SLA.
+const HELP = `brake — emergency brake, 1000ms SLA (Local & Cloud).
 
-Subscription:
-  brake login [--email <e>] [--password <p>]
-      Authenticate with the brake server. Stores session in ~/.brake/.
-      Prompts for missing email/password.
-
-  brake logout
-      Remove local session and license.
-
-  brake license
-      Show the current license: plan, billing, expiry, auto-renew, connection count.
-
-  brake license refresh
-      Re-fetch the license from the server.
-
-  brake mode
-      Show current mode: 'always' (auto-fire) or 'slash' (only on /brake).
-
-  brake mode always | slash
-      Set the mode. Affects how the MCP server describes its tools. Restart
-      Claude Desktop / Claude Code for the new mode to take effect.
-
-  brake connections
-      List registered AI host installs and connection count vs plan limit.
-
-Core (open-source, no license required):
+Core:
   brake engage [--reason <text>] [--sla <ms>] [--dry-run]
-      Pull the brake. Stops everything tracked in the PID dir, runs the
-      optional stop script, posts to the optional webhook, writes the
-      audit line. Exit 0 on success, 1 on SLA miss, 2 on total failure.
+      Pull the emergency brake. Stops tracked PIDs / cloud processes, runs the
+      optional stop script, posts webhook, logs token savings, and audits.
 
   brake scan "<intent text>"
-      Scan a planned action for danger before it runs. Exit 0 if safe,
-      1 if danger detected (with the matched class on stderr).
+      Scan a planned action for danger before it runs (data leak, runaway loop, etc.).
+      Calculates saved tokens and estimated financial savings if blocked.
+
+  brake metrics
+      Show summary statistics: total blocked events, total tokens saved, money saved,
+      and SLA compliance percentage across local & cloud environments.
 
   brake status [--limit N]
       Show the most recent brake events from the audit log.
 
   brake track <pid> <label>
-      Register a PID the brake should kill on next engage. Idempotent.
-
   brake untrack <label>
-      Remove a tracked PID.
 
-Install (license required):
-  brake install <target>
-      Wire the brake into a host, registering the install with the server.
-      Targets: claude-desktop | claude-code | chatgpt | all.
-
+Install:
+  brake install <target>   claude-desktop | claude-code | chatgpt | all
   brake uninstall <target>
-      Reverse the install.
-
   brake init
-      Write ~/.brake/config.json with defaults so future installs read it.
-
   brake mcp
-      Start the MCP server on stdio. Used by hosts that auto-spawn it.
 
 Environment / config (~/.brake/config.json):
+  BRAKE_ENVIRONMENT        Environment mode ('cloud' or 'local').
+  BRAKE_CLOUD_REGION       Cloud region tag (default 'us-east-1').
   BRAKE_SLA_MS             Default SLA in ms (default 1000).
   BRAKE_PID_DIR            Directory of *.pid files to kill.
   BRAKE_AUDIT_PATH         Audit log path.
   BRAKE_WEBHOOK_URL        POST brake events here.
-  BRAKE_STOP_SCRIPT        Run this script on brake.
-  BRAKE_SERVER_URL         Override the license server (default https://brake.example).
-
-The point of the brake is that pulling it actually stops things, fast, and
-the SLA is measured so a brake that quietly ran slow gets reported rather
-than hidden. The model calls the brake itself when it sees danger — in
-'always' mode by default, or only on /brake in 'slash' mode.`;
+  BRAKE_STOP_SCRIPT        Run this script on brake.`;
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")).version;
 
@@ -146,8 +105,6 @@ async function prompt(question: string, silent = false): Promise<string> {
     throw new Error(`missing required input: ${question}`);
   }
   if (silent) {
-    // Read a line without echoing. Note: this is best-effort; in TTY mode
-    // we mute by writing to stderr.
     process.stderr.write(question);
     return new Promise((resolve) => {
       let buf = "";
@@ -179,14 +136,6 @@ async function prompt(question: string, silent = false): Promise<string> {
 
 function printErr(msg: string): void { console.error(`brake: ${msg}`); }
 
-/**
- * Best-effort usage report for the budget dashboard.
- *
- * Raced against a short timeout and fully swallowed: a usage report must
- * never slow the tool (the PreToolUse hook runs `brake scan` per shell
- * command) or fail it. Without a session there is nothing to attribute to,
- * so it returns immediately.
- */
 async function reportUsageBestEffort(input: Parameters<typeof callReportUsage>[0]): Promise<void> {
   try {
     await Promise.race([
@@ -194,7 +143,7 @@ async function reportUsageBestEffort(input: Parameters<typeof callReportUsage>[0
       new Promise((_, reject) => setTimeout(() => reject(new Error("usage report timed out")), 150)),
     ]);
   } catch {
-    // best effort — the audit line already captured what happened locally
+    // best effort
   }
 }
 
@@ -226,7 +175,6 @@ async function cmdLogin(rest: string[]): Promise<void> {
   await saveSession({ token: result.sessionToken, email: result.user.email, fetchedAt: Date.now() });
   console.log(`✓ signed in as ${result.user.email}`);
 
-  // Try to fetch the license right away; not having one is not fatal.
   try {
     const lic = await callFetchLicense();
     await saveLicense({
@@ -357,6 +305,13 @@ async function cmdConnections(): Promise<void> {
   }, null, 2));
 }
 
+async function cmdMetrics(): Promise<void> {
+  const cfg = await loadConfig();
+  const metrics = await getBrakeMetrics(cfg.auditPath);
+  console.log(JSON.stringify(metrics, null, 2));
+  exit(0);
+}
+
 async function cmdInstall(rest: string[]): Promise<void> {
   const target = rest[0] ?? "all";
   const session = await loadSession();
@@ -374,7 +329,6 @@ async function cmdInstall(rest: string[]): Promise<void> {
     exit(1);
   }
 
-  // Map install target → host type for server registration.
   const targets: { name: string; hostType: "claude-desktop" | "claude-code" | "chatgpt" }[] = [];
   if (target === "claude-desktop" || target === "all") targets.push({ name: "claude-desktop", hostType: "claude-desktop" });
   if (target === "claude-code" || target === "all") targets.push({ name: "claude-code", hostType: "claude-code" });
@@ -384,7 +338,6 @@ async function cmdInstall(rest: string[]): Promise<void> {
     exit(2);
   }
 
-  // Register each install with the server first. If any one fails, abort.
   const deviceId = await getDeviceId();
   const deviceMeta = await getDeviceMeta();
   for (const t of targets) {
@@ -410,7 +363,6 @@ async function cmdInstall(rest: string[]): Promise<void> {
     }
   }
 
-  // Now write the host config files.
   if (target === "claude-desktop") await installClaudeDesktop();
   else if (target === "claude-code") await installClaudeCode();
   else if (target === "chatgpt") await installChatGPT();
@@ -420,7 +372,6 @@ async function cmdInstall(rest: string[]): Promise<void> {
 
 async function cmdUninstall(rest: string[]): Promise<void> {
   const target = rest[0] ?? "all";
-  // Remove server-side install records (idempotent).
   const session = await loadSession();
   if (session) {
     try {
@@ -436,7 +387,7 @@ async function cmdUninstall(rest: string[]): Promise<void> {
         }
       }
     } catch {
-      // server unreachable — proceed with local uninstall anyway
+      // server unreachable
     }
   }
 
@@ -469,6 +420,7 @@ async function main(): Promise<void> {
     if (cmd === "license") return await cmdLicense(rest);
     if (cmd === "mode") return await cmdMode(rest);
     if (cmd === "connections") return await cmdConnections();
+    if (cmd === "metrics") return await cmdMetrics();
 
     if (cmd === "engage") {
       const cfg = await loadConfig();
@@ -520,14 +472,29 @@ async function main(): Promise<void> {
         exit(2);
       }
       const danger = scanForDanger(intent);
-      // Report AFTER the verdict is printed, never before — the exit code is
-      // what the hook acts on. Tokens are an estimate (chars/4) of the text
-      // scanned; thrift is the tool that reports exact counts.
-      await reportUsageBestEffort({ tool: "brake", kind: "scan", tokens: Math.ceil(intent.length / 4), calls: 1 });
+      const cfg = await loadConfig();
+
       if (danger) {
+        await appendAudit(
+          {
+            event: "danger_blocked",
+            intent,
+            danger_class: danger.danger,
+            evidence: danger.evidence,
+            explanation: danger.explanation,
+            tokens_saved: danger.tokensSaved,
+            dollars_saved: danger.dollarsSaved,
+            action_blocked: true,
+          },
+          cfg.auditPath
+        );
+
+        await reportUsageBestEffort({ tool: "brake", kind: "scan", tokens: Math.ceil(intent.length / 4), calls: 1 });
         console.error(JSON.stringify({ matched: true, ...danger }, null, 2));
         exit(1);
       }
+
+      await reportUsageBestEffort({ tool: "brake", kind: "scan", tokens: Math.ceil(intent.length / 4), calls: 1 });
       console.log(JSON.stringify({ danger: false }, null, 2));
       exit(0);
     }

@@ -1,6 +1,6 @@
 {
   "name": "brake",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "The emergency brake for AI agents, 1000ms SLA. CLI + MCP server + installable skill. The model pulls it itself when danger is detected \u2014 no slash required.",
   "type": "module",
   "bin": {

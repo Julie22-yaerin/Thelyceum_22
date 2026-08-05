@@ -1,6 +1,6 @@
 {
   "name": "thrift",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Cuts the tokens an AI agent burns on its own tool output. Deduplicates repeated reads, caps runaway results, and strips machine noise — measured per call, never estimated. CLI + MCP server + installable skill.",
   "type": "module",
   "bin": { "thrift": "./dist/cli.js" },

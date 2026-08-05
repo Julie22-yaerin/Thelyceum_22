@@ -23,6 +23,9 @@ export interface RedteamConfigFile {
   block_on?: string[];
   claude_desktop_path?: string;
   claude_code_settings_path?: string;
+  mcp_command?: string;
+  mcp_args?: string[];
+  mcp_env?: Record<string, string>;
 }
 
 export interface ResolvedConfig {
@@ -31,6 +34,9 @@ export interface ResolvedConfig {
   blockOn: ReadonlySet<FlawClass>;
   claudeDesktopPath: string;
   claudeCodeSettingsPath: string;
+  mcpCommand: string;
+  mcpArgs: string[];
+  mcpEnv?: Record<string, string>;
 }
 
 /** Parses an array or comma-separated string of flaw classes. Null when nothing valid was given. */
@@ -75,5 +81,8 @@ export async function loadConfig(path: string = DEFAULT_CONFIG_PATH): Promise<Re
         file.claude_code_settings_path ??
         join(homedir(), ".claude", "settings.json")
     ),
+    mcpCommand: process.env.REDTEAM_MCP_COMMAND ?? file.mcp_command ?? "redteam",
+    mcpArgs: file.mcp_args ?? ["mcp"],
+    mcpEnv: file.mcp_env,
   };
 }

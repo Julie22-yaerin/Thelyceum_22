@@ -1,15 +1,17 @@
 {
   "name": "redteam",
-  "version": "0.1.0",
-  "description": "The red team. An adversarial rebuttal layer for AI reasoning: scans claims and plans for overconfidence, unsupported claims, confirmation bias, false dichotomies, missing trade-offs and more, then steelmans the other side. CLI + MCP server + installable skill.",
+  "version": "1.0.0",
+  "description": "The red team. An adversarial rebuttal layer for AI reasoning and code: scans claims, plans, and code edits for reasoning flaws, code drift, and crash risks, with intelligent context compacting. CLI + MCP server + installable skill.",
   "type": "module",
   "bin": {
     "redteam": "./dist/cli.js"
   },
-  "main": "./dist/challenge.js",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./dist/challenge.js",
+    ".": "./dist/index.js",
     "./challenge": "./dist/challenge.js",
+    "./compact": "./dist/compact.js",
+    "./code_scanner": "./dist/code_scanner.js",
     "./audit": "./dist/audit.js",
     "./config": "./dist/config.js",
     "./mode": "./dist/mode.js"
@@ -51,7 +53,9 @@
     "devils-advocate",
     "reasoning",
     "debiasing",
-    "adversarial"
+    "adversarial",
+    "compacting",
+    "code-scanner"
   ],
   "license": "MIT"
 }
