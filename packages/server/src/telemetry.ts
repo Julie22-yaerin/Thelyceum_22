@@ -224,8 +224,9 @@ export async function getTelemetry(root: string): Promise<TelemetryResult> {
       3
     );
     const agentLoop = await measureThriftAgentLoop(root, compress, SeenLedger);
+    const now = Date.now();
     const result: TelemetryResult = {
-      measuredAt: Date.now(),
+      measuredAt: now,
       source: "live",
       measurements: [
         { tool: "brake", label: "danger scans / sec", callsPerSec: Math.round(brake.callsPerSec), avgUs: brake.avgUs },
@@ -234,7 +235,7 @@ export async function getTelemetry(root: string): Promise<TelemetryResult> {
       ],
       thriftAgentLoop: agentLoop,
     };
-    cache = { at: Date.now(), result };
+    cache = { at: now, result };
     return result;
   } catch {
     // Never let a benchmark failure take down the marketing page.

@@ -111,7 +111,7 @@ describe("applying", () => {
 describe("the 50-application cap", () => {
   // Import here rather than at module scope so it's obvious in the test
   // itself which constant governs the cap, without hunting through plans.ts.
-  const MAX = 50 as const;
+  const MAX = 60 as const;
 
   it("accepts applications up to the cap", () => {
     for (let i = 0; i < MAX; i++) {
@@ -183,8 +183,8 @@ describe("the 50-application cap", () => {
       waitlist.apply(db, { ...VALID, workEmail: `person${i}@fleetcorp.io` });
     }
     const avail = waitlist.publicAvailability(db);
-    expect(avail).toEqual({ taken: 3, max: MAX, full: false });
-    expect(Object.keys(avail).sort()).toEqual(["full", "max", "taken"]);
+    expect(avail).toEqual({ taken: 3, max: MAX, full: false, deadline: "2026-08-20T23:59:59Z", closed: false });
+    expect(Object.keys(avail).sort()).toEqual(["closed", "deadline", "full", "max", "taken"]);
   });
 
   it("publicAvailability.full flips true exactly at the cap", () => {

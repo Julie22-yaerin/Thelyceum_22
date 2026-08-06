@@ -67,7 +67,7 @@ export async function readAudit(limit = 20, pathOverride?: string): Promise<Audi
       // The first part may be a partial line continued by the next chunk
       // read (further back in the file) — hold it as carry rather than
       // treating it as a complete line.
-      carry = position > 0 ? parts.shift()! : "";
+      carry = position > 0 ? (parts.shift() ?? "") : "";
       for (let i = parts.length - 1; i >= 0; i--) {
         if (parts[i]) lines.push(parts[i]);
       }
