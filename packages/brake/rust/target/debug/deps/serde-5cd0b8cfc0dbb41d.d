@@ -1,0 +1,12 @@
+/Users/mac/Desktop/the-lyceum/packages/brake/rust/target/debug/deps/serde-5cd0b8cfc0dbb41d.d: /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /Users/mac/Desktop/the-lyceum/packages/brake/rust/target/debug/build/serde-6f73b565271a964f/out/private.rs
+
+/Users/mac/Desktop/the-lyceum/packages/brake/rust/target/debug/deps/libserde-5cd0b8cfc0dbb41d.rmeta: /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /Users/mac/Desktop/the-lyceum/packages/brake/rust/target/debug/build/serde-6f73b565271a964f/out/private.rs
+
+/Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs:
+/Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs:
+/Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs:
+/Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs:
+/Users/mac/Library/Caches/puccinialin/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs:
+/Users/mac/Desktop/the-lyceum/packages/brake/rust/target/debug/build/serde-6f73b565271a964f/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/mac/Desktop/the-lyceum/packages/brake/rust/target/debug/build/serde-6f73b565271a964f/out

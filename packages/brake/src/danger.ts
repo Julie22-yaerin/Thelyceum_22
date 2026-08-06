@@ -124,6 +124,24 @@ const DANGER_RULES: DangerRule[] = [
     explanation: "Unauthorized cloud infrastructure privilege escalation attempt.",
     baseTokensSaved: 200000,
   },
+  {
+    danger: "sandbox_escape",
+    pattern: /\b(?:\/run\/secrets|\/var\/run\/docker\.sock|replit\.nix|\.replit|REPL_IDENTITY|REPL_OWNER|REPLIT_DB_URL|process\.env\.REPL)\b/i,
+    explanation: "Cloud Workspace / Replit Container environment variable & identity file exfiltration attempt.",
+    baseTokensSaved: 250000,
+  },
+  {
+    danger: "credential_access",
+    pattern: /\b(?:ghp_[a-zA-Z0-9]{36}|sk-[a-zA-Z0-9]{48}|replit_[a-zA-Z0-9]{32,}|xoxb-[0-9]{11,13}-[0-9]{11,13}-[a-zA-Z0-9]{24})\b/i,
+    explanation: "Hardcoded enterprise credential, GitHub personal token, or Replit secret leak.",
+    baseTokensSaved: 300000,
+  },
+  {
+    danger: "infrastructure_attack",
+    pattern: /\b(?:npm\s+publish\s+--access\s+public|pip\s+upload|pnpm\s+publish|cargo\s+publish)\b/i,
+    explanation: "Unauthorized package publishing or supply-chain package poisoning command.",
+    baseTokensSaved: 350000,
+  },
 ];
 
 export function estimateTokens(text: string): number {

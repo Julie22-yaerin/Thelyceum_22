@@ -95,6 +95,21 @@ describe("scanForDanger", () => {
     expect(danger?.danger).toBe("sandbox_escape");
   });
 
+  it("catches Replit workspace container secrets and environment leaks", () => {
+    const danger = scanForDanger("cat /run/secrets/REPLIT_DB_URL or process.env.REPL");
+    expect(danger?.danger).toBe("sandbox_escape");
+  });
+
+  it("catches hardcoded GitHub personal access tokens and Replit secrets", () => {
+    const danger = scanForDanger("const token = 'ghp_1234567890abcdefghijklmnopqrstuvwxyz';");
+    expect(danger?.danger).toBe("credential_access");
+  });
+
+  it("catches supply chain package publishing attacks", () => {
+    const danger = scanForDanger("npm publish --access public");
+    expect(danger?.danger).toBe("infrastructure_attack");
+  });
+
   it("truncates evidence to 200 chars", () => {
     const long = "export all customer records " + "x".repeat(500);
     const danger = scanForDanger(long);

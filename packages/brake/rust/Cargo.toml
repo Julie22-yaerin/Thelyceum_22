@@ -1,0 +1,12 @@
+[package]
+name = "brake-core"
+version = "1.0.0"
+edition = "2021"
+authors = ["Lyceum Team <dev@the-lyceum.org>"]
+description = "High-performance emergency brake engine & token savings calculator for AI agents in local & cloud environments."
+
+[dependencies]
+regex = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }

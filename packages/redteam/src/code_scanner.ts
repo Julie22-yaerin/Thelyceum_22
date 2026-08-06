@@ -102,6 +102,14 @@ export const CODE_RULES: CodeScanRule[] = [
     pattern: /\b(?:npm\s+i(?:nstall)?|pip\s+install|yarn\s+add)\s+[^\n]*\b(?:non[-_]?existent|fake[-_]?pkg|test[-_]?dep[-_]?123)\b/i,
   },
   {
+    flaw: "security_bypass",
+    severity: "warning",
+    explanation: "Code contains direct file reads of system secrets or cloud workspace metadata (.env, /run/secrets, REPL_IDENTITY).",
+    counter: "Use proper configuration context or environment secret injectors instead of raw filesystem reads.",
+    advice: "Avoid reading raw secret files directly in application code paths.",
+    pattern: /\b(?:fs\.readFile|readFileSync)\s*\(\s*["'](?:.*\.env|\/run\/secrets\/.*|\.replit)["']\)/i,
+  },
+  {
     flaw: "code_drift",
     severity: "warning",
     explanation: "Code structure shows signs of drift: empty catch blocks swallowing errors, deep callback nesting, or global state mutation.",
