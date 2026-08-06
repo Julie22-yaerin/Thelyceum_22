@@ -86,10 +86,10 @@ const CREDENTIAL_RE =
   /(api[_-]?key|secret|password|passwd|token|bearer|authorization|x-api-key|access[_-]?key|private[_-]?key|BEGIN [A-Z0-9 ]*PRIVATE KEY|arn:[a-z0-9:]+)/i;
 /** URLs, emails, and source paths. */
 const URL_RE =
-  /https?:\/\/\S+|[\w.+-]+@[\w.-]+\.\w+|(?:\/|\.\.\/)[\w@./-]*(?:\.(?:ts|tsx|js|jsx|py|go|rs|java|rb|json|yml|yaml|md|html|css|sh))[\w@./-]*|\b(?:src|lib|test|packages|node_modules)\/[\w@./-]+/;
+  /https?:\/\/\S+|\b[\w.+-]+@[\w.-]+\.\w+\b|(?:\/|\.\.\/)[\w@./-]*(?:\.(?:ts|tsx|js|jsx|py|go|rs|java|rb|json|yml|yaml|md|html|css|sh))[\w@./-]*|\b(?:src|lib|test|packages|node_modules)\/[\w@./-]+/;
 /** Identifiers: snake_case, multi-hump camelCase, PascalCase. Rare in prose. */
 const IDENT_RE =
-  /[a-z][a-zA-Z0-9]*(?:_[a-zA-Z0-9]+)+|\b[a-z]+(?:[A-Z][a-z0-9]+){2,}\b|\b[A-Z][a-z]+(?:[A-Z][a-z0-9]+)+\b/;
+  /\b[a-z]+(?:_[a-zA-Z0-9]+)+|\b[a-z]+(?:[A-Z][a-z0-9]+){2,}\b|\b[A-Z][a-z]+(?:[A-Z][a-z0-9]+)+\b/;
 /** Long hex hashes, semantic versions, lockfile integrity fields. */
 const HASH_RE = /\b[0-9a-f]{40,}\b|\bv\d+\.\d+\.\d+\b|"integrity":/;
 /** Markdown table row. */

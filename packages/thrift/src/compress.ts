@@ -453,10 +453,17 @@ function capRespectingHard(text: string, budgetTokens: number, cls: Classificati
   }
 
   // Mixed: keep hard lines, drop the prose in between.
+  // HOWEVER, we must always preserve the absolute head and tail of the ORIGINAL text,
+  // even if they are soft, because they often hold the shape, error, or conclusion.
+  // We'll keep them by taking a few lines from the start and end of `cls.lines`.
+  const startLines = cls.lines.slice(0, 5);
+  const endLines = cls.lines.slice(-5);
+  const alwaysKeep = new Set([...startLines.map((l) => l.index), ...endLines.map((l) => l.index)]);
+
   const hardLines: string[] = [];
   let droppedSoft = 0;
   for (const l of cls.lines) {
-    if (l.kind === "hard") hardLines.push(l.text);
+    if (l.kind === "hard" || alwaysKeep.has(l.index)) hardLines.push(l.text);
     else droppedSoft++;
   }
 
