@@ -22,6 +22,10 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:local-trial": "echo 'export const TARGET = \"local-trial\";' > src/variant.ts && tsc -p tsconfig.json",
+    "build:local-full": "echo 'export const TARGET = \"local-full\";' > src/variant.ts && tsc -p tsconfig.json",
+    "build:cloud-trial": "echo 'export const TARGET = \"cloud-trial\";' > src/variant.ts && tsc -p tsconfig.json",
+    "build:cloud-full": "echo 'export const TARGET = \"cloud-full\";' > src/variant.ts && tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
     "mcp:dev": "tsx src/mcp.ts",
     "test": "vitest run",

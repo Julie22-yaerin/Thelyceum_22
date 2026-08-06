@@ -23,6 +23,8 @@ import { readAudit } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { getMode, challengeDescriptionFor, rebutDescriptionFor } from "./mode.js";
 import { reportChallenge } from "./notify.js";
+import { TARGET } from "./variant.js";
+import { checkTrialLimits } from "./trial.js";
 
 const mode = await getMode();
 const cfg = await loadConfig();
@@ -40,6 +42,7 @@ server.tool(
       .describe("The claim, plan, or piece of reasoning to challenge. Will be scanned for one-sided reasoning."),
   },
   async ({ text }) => {
+    if (TARGET === "local-trial") checkTrialLimits();
     const result = challenge(text, { blockOn: cfg.blockOn });
     if (result.flags.length > 0) {
       await reportChallenge(cfg, result);
@@ -59,6 +62,7 @@ server.tool(
       .describe("The claim or plan to get a devil's advocate on."),
   },
   async ({ text }) => {
+    if (TARGET === "local-trial") checkTrialLimits();
     const result = rebut(text, { blockOn: cfg.blockOn });
     if (result.flags.length > 0) {
       await reportChallenge(cfg, result);

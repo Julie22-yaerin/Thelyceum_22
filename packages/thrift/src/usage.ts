@@ -18,6 +18,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { TARGET } from "./variant.js";
 
 export interface UsageReportInput {
   tool: "brake" | "redteam" | "thrift";
@@ -51,6 +52,7 @@ function serverUrl(): string {
  * cannot hang the CLI.
  */
 export async function reportUsageBestEffort(input: UsageReportInput): Promise<void> {
+  if (TARGET === "local-full" || TARGET === "local-trial") return;
   try {
     if (!existsSync(SESSION_PATH)) return;
     const session = JSON.parse(readFileSync(SESSION_PATH, "utf-8")) as { token?: string };

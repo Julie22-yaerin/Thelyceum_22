@@ -569,6 +569,15 @@ app.post("/api/usage/report", async (c) => {
 
   const sub = getSubscription(db, userId);
   const usage = monthlyUsage(db, userId);
+
+  // Cloud BYOC Trial Limit Check
+  if (sub && sub.status === "active" && sub.license_key?.startsWith("LYCEUM-TRIAL-")) {
+    if (usage.calls >= 10) {
+      db.raw.prepare("UPDATE subscriptions SET status = 'locked', locked_at = ? WHERE id = ?").run(Date.now(), sub.id);
+      sub.status = "locked";
+    }
+  }
+
   return c.json({
     ok: true,
     month: monthKey(),

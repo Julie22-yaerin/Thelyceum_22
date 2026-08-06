@@ -25,6 +25,8 @@ import { readAudit } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { getMode, brakeDescriptionFor, dangerScanDescriptionFor } from "./mode.js";
 import { loadLicense } from "./license.js";
+import { TARGET } from "./variant.js";
+import { checkTrialLimits } from "./trial.js";
 
 const mode = await getMode();
 const cfg = await loadConfig();
@@ -45,6 +47,7 @@ server.tool(
       .describe("If true, do not actually stop anything; return what would happen."),
   },
   async ({ reason, sla_ms, dry_run }) => {
+    if (TARGET === "local-trial") checkTrialLimits();
     // If the user has a license, surface a friendly note in the result.
     const lic = await loadLicense().catch(() => null);
 
@@ -96,6 +99,7 @@ server.tool(
       .describe("What the agent is about to do. Will be scanned for danger patterns."),
   },
   async ({ intent }) => {
+    if (TARGET === "local-trial") checkTrialLimits();
     const danger = scanForDanger(intent);
     if (danger) {
       return {

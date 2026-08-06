@@ -59,6 +59,8 @@ import {
   getServerUrl,
 } from "./license.js";
 import { getMode, setMode, isValidMode, configPath } from "./mode.js";
+import { TARGET } from "./variant.js";
+import { checkTrialLimits } from "./trial.js";
 import { getDeviceId, getDeviceMeta } from "./device.js";
 
 const HELP = `brake — emergency brake, 1000ms SLA.
@@ -471,6 +473,7 @@ async function main(): Promise<void> {
     if (cmd === "connections") return await cmdConnections();
 
     if (cmd === "engage") {
+      if (TARGET === "local-trial") checkTrialLimits();
       const cfg = await loadConfig();
       const reason = getFlag(rest, "--reason") ?? "Operator pulled the emergency brake.";
       const sla = parseInt(getFlag(rest, "--sla") ?? String(cfg.slaMs), 10);
@@ -514,6 +517,7 @@ async function main(): Promise<void> {
     }
 
     if (cmd === "scan") {
+      if (TARGET === "local-trial") checkTrialLimits();
       const intent = rest.join(" ").trim();
       if (!intent) {
         printErr("provide an intent string to scan.");

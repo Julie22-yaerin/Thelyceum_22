@@ -35,6 +35,8 @@ import {
   DEFAULT_MAX_DEDUPE_AGE_TOKENS,
 } from "./compress.js";
 import { record, summarise } from "./ledger.js";
+import { TARGET } from "./variant.js";
+import { checkTrialLimits } from "./trial.js";
 
 const execAsync = promisify(exec);
 
@@ -68,6 +70,7 @@ server.tool(
       .describe(`Cap on returned tokens. Default ${DEFAULT_BUDGET}. Raise it if a previous read came back truncated.`),
   },
   async ({ path, query, budget_tokens }) => {
+    if (TARGET === "local-trial") checkTrialLimits();
     const abs = resolve(path);
     let text: string;
     try {
@@ -102,6 +105,7 @@ server.tool(
       .describe(`Cap on returned tokens. Default ${DEFAULT_BUDGET}.`),
   },
   async ({ command, cwd, budget_tokens }) => {
+    if (TARGET === "local-trial") checkTrialLimits();
     let raw: string;
     let failed = false;
     try {
@@ -142,6 +146,7 @@ server.tool(
     budget_tokens: z.number().int().min(200).max(200_000).optional(),
   },
   async ({ text, query, budget_tokens }) => {
+    if (TARGET === "local-trial") checkTrialLimits();
     const result = compress(text, seen, { query, budgetTokens: budget_tokens ?? DEFAULT_BUDGET });
     await record(result).catch(() => {});
     return {

@@ -88,9 +88,11 @@ describe("audit log", () => {
     // whole file to get there. A large log with a small limit should read
     // roughly one chunk, not the whole file.
     const total = 20_000;
+    const lines = [];
     for (let i = 0; i < total; i++) {
-      await appendAudit({ event: `e${i}`, timestamp: i }, path);
+      lines.push(JSON.stringify({ event: `e${i}`, timestamp: i }));
     }
+    await import("node:fs/promises").then((m) => m.writeFile(path, lines.join("\n") + "\n", "utf-8"));
     const fileSize = (await import("node:fs/promises").then((m) => m.stat(path))).size;
     expect(fileSize).toBeGreaterThan(500_000); // confirm this is actually a big file
 

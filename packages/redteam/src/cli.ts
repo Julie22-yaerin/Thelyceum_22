@@ -48,6 +48,8 @@ import {
   uninstallAll,
 } from "./install.js";
 import { getMode, setMode, isValidMode, configPath } from "./mode.js";
+import { TARGET } from "./variant.js";
+import { checkTrialLimits } from "./trial.js";
 
 const HELP = `redteam — the red team. Attack one-sided reasoning before it ships.
 
@@ -120,6 +122,7 @@ async function readStdin(): Promise<string> {
 // ── Commands ───────────────────────────────────────────────────────────────
 
 async function cmdChallenge(rest: string[]): Promise<void> {
+  if (TARGET === "local-trial") checkTrialLimits();
   // `redteam challenge -` reads the text from stdin (used by the Claude Code
   // hook, which pipes the proposed change in). Any other arg is the text.
   let text = rest.join(" ").trim();
@@ -141,6 +144,7 @@ async function cmdChallenge(rest: string[]): Promise<void> {
 }
 
 async function cmdRebut(rest: string[]): Promise<void> {
+  if (TARGET === "local-trial") checkTrialLimits();
   const text = rest.join(" ").trim();
   if (!text) {
     printErr("provide a claim or plan to rebut.");

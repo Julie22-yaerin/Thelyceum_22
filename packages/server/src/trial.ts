@@ -31,7 +31,7 @@ import { activateSubscription, getSubscription } from "./lemonsqueezy.js";
 import { getByEmail } from "./waitlist.js";
 import { recordAdminAction, type AdminIdentity } from "./admin.js";
 
-export const TRIAL_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+export const TRIAL_DURATION_MS = 2 * 24 * 60 * 60 * 1000;
 /** The trial's license key is deliberately recognisable, like LYCEUM-DEV-. */
 export const TRIAL_LICENSE_PREFIX = "LYCEUM-TRIAL-";
 /** Every key Lyceum itself mints shares this prefix — trial and dev keys. */

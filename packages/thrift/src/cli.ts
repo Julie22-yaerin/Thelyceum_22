@@ -17,6 +17,8 @@ import { classify } from "./classify.js";
 import { summarise, isLossless, DEFAULT_LEDGER_PATH } from "./ledger.js";
 import { installAll, installClaudeDesktop, installClaudeCode, installChatGPT, uninstallAll } from "./install.js";
 import { reportUsageBestEffort } from "./usage.js";
+import { TARGET } from "./variant.js";
+import { checkTrialLimits } from "./trial.js";
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -56,6 +58,7 @@ async function main(): Promise<void> {
   switch (cmd) {
     // ── measure ───────────────────────────────────────────────────────────
     case "measure": {
+      if (TARGET === "local-trial") checkTrialLimits();
       const target = args[1] ?? ".";
       const abs = resolve(target);
       if (!existsSync(abs)) {
@@ -124,6 +127,7 @@ async function main(): Promise<void> {
 
     // ── compress ──────────────────────────────────────────────────────────
     case "compress": {
+      if (TARGET === "local-trial") checkTrialLimits();
       const target = args[1];
       const text = target && target !== "-" ? await fs.readFile(resolve(target), "utf-8") : await readStdin();
       const r = compress(text, new SeenLedger(), {

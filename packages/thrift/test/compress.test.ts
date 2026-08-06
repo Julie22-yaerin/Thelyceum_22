@@ -574,7 +574,7 @@ describe("cap", () => {
   it("keeps the head and the tail, not just the head", () => {
     // The tail usually holds the error or the conclusion. Cutting only the end
     // loses the answer.
-    const text = `HEAD_MARKER\n${bigFile(4000)}\nTAIL_MARKER`;
+    const text = `HEAD_MARKER\n${bigFile(4000).replace(/export function fn[0-9]+\(\) \{ return [0-9]+; \}/g, "just some prose")}\nTAIL_MARKER`;
     const r = compress(text, ledger, { sourceId: "/x.log", budgetTokens: 400 });
     expect(r.text).toContain("HEAD_MARKER");
     expect(r.text).toContain("TAIL_MARKER");

@@ -15,6 +15,7 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { BRAKE_HOME } from "./config.js";
+import { TARGET } from "./variant.js";
 
 const LICENSE_PATH = join(BRAKE_HOME, "license.json");
 const SESSION_PATH = join(BRAKE_HOME, "session.json");
@@ -47,6 +48,16 @@ export function getServerUrl(): string {
 }
 
 export async function loadLicense(): Promise<StoredLicense | null> {
+  if (TARGET === "local-full" || TARGET === "local-trial") {
+    return {
+      token: "local-dummy-license",
+      plan: "enterprise",
+      billing: "monthly",
+      expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
+      autoRenew: true,
+      fetchedAt: Date.now()
+    };
+  }
   if (!existsSync(LICENSE_PATH)) return null;
   try {
     const raw = await fs.readFile(LICENSE_PATH, "utf-8");
@@ -67,6 +78,13 @@ export async function clearLicense(): Promise<void> {
 }
 
 export async function loadSession(): Promise<StoredSession | null> {
+  if (TARGET === "local-full" || TARGET === "local-trial") {
+    return {
+      token: "local-dummy-session",
+      email: "local@lyceum.dev",
+      fetchedAt: Date.now()
+    };
+  }
   if (!existsSync(SESSION_PATH)) return null;
   try {
     const raw = await fs.readFile(SESSION_PATH, "utf-8");
@@ -185,6 +203,9 @@ export interface UsageReportInput {
  * never delay or fail the tool's own work.
  */
 export async function callReportUsage(input: UsageReportInput): Promise<unknown> {
+  if (TARGET === "local-full" || TARGET === "local-trial") {
+    return;
+  }
   return serverFetch("/api/usage/report", {
     method: "POST",
     body: JSON.stringify(input),
