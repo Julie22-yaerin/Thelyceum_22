@@ -12,6 +12,7 @@ import { promises as fs } from "node:fs";
 import { readdirSync, statSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { compress, SeenLedger, type CompressResult } from "./compress.js";
+import { checkBetaGate } from "./beta.js";
 import { estimateTokens, countExact } from "./tokens.js";
 import { classify } from "./classify.js";
 import { summarise, isLossless, DEFAULT_LEDGER_PATH } from "./ledger.js";
@@ -125,6 +126,11 @@ async function main(): Promise<void> {
 
     // ── compress ──────────────────────────────────────────────────────────
     case "compress": {
+      const gate = await checkBetaGate();
+      if (!gate.allowed) {
+        printErr(gate.message ?? "beta trial limit reached.");
+        process.exit(1);
+      }
       const target = args[1];
       const text = target && target !== "-" ? await fs.readFile(resolve(target), "utf-8") : await readStdin();
       const r = compress(text, new SeenLedger(), {

@@ -18,6 +18,7 @@ import { readAudit } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { getMode, challengeDescriptionFor, rebutDescriptionFor } from "./mode.js";
 import { reportChallenge } from "./notify.js";
+import { checkBetaGate } from "./beta.js";
 
 const mode = await getMode();
 const cfg = await loadConfig();
@@ -35,6 +36,11 @@ server.tool(
       .describe("The claim, plan, or piece of code to challenge. Scanned for reasoning flaws and code risks."),
   },
   async ({ text }) => {
+    const gate = await checkBetaGate();
+    if (!gate.allowed) {
+      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+    }
+
     const result = challenge(text, { blockOn: cfg.blockOn });
     if (result.flags.length > 0) {
       await reportChallenge(cfg, result);
@@ -54,6 +60,11 @@ server.tool(
       .describe("The claim or plan to get a devil's advocate on."),
   },
   async ({ text }) => {
+    const gate = await checkBetaGate();
+    if (!gate.allowed) {
+      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+    }
+
     const result = rebut(text, { blockOn: cfg.blockOn });
     if (result.flags.length > 0) {
       await reportChallenge(cfg, result);
@@ -72,6 +83,11 @@ server.tool(
     text: z.string().describe("The text or context to compact."),
   },
   async ({ text }) => {
+    const gate = await checkBetaGate();
+    if (!gate.allowed) {
+      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+    }
+
     const result = compactContext(text);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

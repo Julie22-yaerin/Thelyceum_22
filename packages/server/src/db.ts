@@ -143,6 +143,35 @@ function migrate(db: DatabaseSync): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_accumulate ON usage(user_id, month, tool, kind);
     CREATE INDEX IF NOT EXISTS idx_installs_user ON installs(user_id);
     CREATE INDEX IF NOT EXISTS idx_audit_user_created ON audit_events(user_id, created_at DESC);
+
+    -- ── Beta licenses ────────────────────────────────────────────────────
+    -- A standalone trial key for a named external recipient (no waitlist
+    -- account needed — this is for handing a zip to someone directly). The
+    -- key is a signed JWT so a live server outage doesn't leave the tool
+    -- with no answer, but expiry/limit/revocation are enforced from this
+    -- table, not the token alone, so a mint can be revoked after the fact.
+    CREATE TABLE IF NOT EXISTS beta_licenses (
+      id           TEXT PRIMARY KEY,
+      label        TEXT NOT NULL,
+      daily_limit  INTEGER NOT NULL,
+      issued_at    INTEGER NOT NULL,
+      expires_at   INTEGER NOT NULL,
+      revoked_at   INTEGER
+    );
+
+    -- One row per (license, UTC day) actually used. Only rows for days with
+    -- at least one call exist — no pre-allocation, no cleanup job, and the
+    -- day boundary is exactly "today's row doesn't exist yet" rather than a
+    -- reset timer to get right.
+    CREATE TABLE IF NOT EXISTS beta_usage (
+      license_id  TEXT NOT NULL,
+      day         TEXT NOT NULL,
+      count       INTEGER NOT NULL DEFAULT 0,
+      UNIQUE (license_id, day),
+      FOREIGN KEY (license_id) REFERENCES beta_licenses(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_beta_usage_license_day ON beta_usage(license_id, day);
   `);
 }
 

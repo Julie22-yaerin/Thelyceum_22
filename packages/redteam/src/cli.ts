@@ -37,6 +37,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { exit } from "node:process";
 import { challenge, rebut, listFlawRules } from "./challenge.js";
+import { checkBetaGate } from "./beta.js";
 import { compactContext } from "./compact.js";
 import { readAudit } from "./audit.js";
 import { loadConfig, DEFAULT_CONFIG_PATH, REDTEAM_HOME } from "./config.js";
@@ -117,6 +118,11 @@ async function cmdChallenge(rest: string[]): Promise<void> {
   if (!text) {
     printErr("provide a claim, plan, or code to challenge.");
     exit(2);
+  }
+  const gate = await checkBetaGate();
+  if (!gate.allowed) {
+    printErr(gate.message ?? "beta trial limit reached.");
+    exit(1);
   }
   const cfg = await loadConfig();
   const result = challenge(text, { blockOn: cfg.blockOn });

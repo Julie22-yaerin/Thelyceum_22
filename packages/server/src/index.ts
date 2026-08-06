@@ -58,6 +58,7 @@ import { PRODUCTS, OSES } from "./downloads.js";
 import * as waitlist from "./waitlist.js";
 import { authenticateAdmin, adminConfigured, recordAdminAction, recentAdminActions, type AdminIdentity } from "./admin.js";
 import { mintTrialToken, activateTrial, TrialError, isLyceumIssuedKey } from "./trial.js";
+import { mintBetaLicense, checkBetaUsage, BetaError } from "./beta.js";
 import { getTelemetry } from "./telemetry.js";
 import { recordUsage, monthlyUsage, budgetStatus, monthKey } from "./usage.js";
 
@@ -226,6 +227,9 @@ app.use("/api/*", async (c, next) => {
     // The key Lemon Squeezy emailed is the credential — the customer may not
     // be signed in on this browser yet, so entry must be reachable anonymous.
     c.req.path === "/api/license/enter" ||
+    // Called by a CLI on someone else's machine with nothing but the beta
+    // license key — there is no session to have. Same shape as license/enter.
+    c.req.path === "/api/beta/check" ||
     PUBLIC_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))
   ) {
     return next();
@@ -813,6 +817,47 @@ app.post("/api/trial/activate", async (c) => {
     if (err instanceof TrialError) {
       const status = err.code === "already_used" || err.code === "has_subscription" ? 409 : 400;
       return c.json({ error: err.code, message: err.message }, status);
+    }
+    throw err;
+  }
+});
+
+// ── Beta licenses (standalone trial for a named external recipient) ────────
+// Minting is an admin act, audit-logged. Checking is public and unauthenticated
+// on purpose — it's called by a CLI on someone else's machine with nothing but
+// the license key, the same way license validation already works.
+
+const BetaMintBody = z.object({
+  label: z.string().min(1),
+  days: z.number().int().positive().optional(),
+  dailyLimit: z.number().int().positive().optional(),
+});
+
+app.post("/api/admin/beta/tokens", async (c) => {
+  const admin = c.get("admin" as never) as AdminIdentity;
+  const body = BetaMintBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    const minted = mintBetaLicense(db, JWT_SECRET, admin, body.data);
+    return c.json({ ok: true, ...minted });
+  } catch (err) {
+    if (err instanceof BetaError) return c.json({ error: err.code, message: err.message }, 400);
+    throw err;
+  }
+});
+
+const BetaCheckBody = z.object({ licenseKey: z.string().min(1) });
+
+app.post("/api/beta/check", async (c) => {
+  const body = BetaCheckBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    const result = checkBetaUsage(db, JWT_SECRET, body.data.licenseKey);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof BetaError) {
+      const status = err.code === "limit_reached" ? 429 : err.code === "expired" || err.code === "revoked" ? 403 : 401;
+      return c.json({ ok: false, error: err.code, message: err.message }, status);
     }
     throw err;
   }

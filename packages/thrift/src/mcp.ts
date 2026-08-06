@@ -26,6 +26,7 @@ import {
 import { record, summarise } from "./ledger.js";
 import { globalLoopTracker, MAX_ALLOWED_REPETITIONS } from "./loop.js";
 import { ToolCatalog, SkillCatalog } from "./catalog.js";
+import { checkBetaGate } from "./beta.js";
 
 const execAsync = promisify(exec);
 const seen = new SeenLedger();
@@ -65,6 +66,11 @@ server.tool(
     budget_tokens: z.number().int().min(200).max(200_000).optional(),
   },
   async ({ path, query, budget_tokens }) => {
+    const gate = await checkBetaGate();
+    if (!gate.allowed) {
+      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+    }
+
     const abs = resolve(path);
     let text: string;
     try {
@@ -98,6 +104,11 @@ server.tool(
     budget_tokens: z.number().int().min(200).max(200_000).optional(),
   },
   async ({ command, cwd, budget_tokens }) => {
+    const gate = await checkBetaGate();
+    if (!gate.allowed) {
+      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+    }
+
     // Runaway loop check (Strict limit: MAX_ALLOWED_REPETITIONS = 2)
     const loopCheck = globalLoopTracker.trackAndCheck(`cmd:${command}`, 1000);
     if (loopCheck.tripped) {
@@ -179,6 +190,11 @@ server.tool(
     budget_tokens: z.number().int().min(200).max(200_000).optional(),
   },
   async ({ tool_id, args, budget_tokens }) => {
+    const gate = await checkBetaGate();
+    if (!gate.allowed) {
+      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+    }
+
     try {
       const res = await toolCatalog.invoke(tool_id, args ?? {}, {
         budgetTokens: budget_tokens ?? DEFAULT_BUDGET,
@@ -225,6 +241,11 @@ server.tool(
     budget_tokens: z.number().int().min(200).max(200_000).optional(),
   },
   async ({ text, query, budget_tokens }) => {
+    const gate = await checkBetaGate();
+    if (!gate.allowed) {
+      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+    }
+
     const result = compress(text, seen, { query, budgetTokens: budget_tokens ?? DEFAULT_BUDGET });
     await record(result).catch(() => {});
     return {
