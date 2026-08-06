@@ -18,7 +18,10 @@
     "test": "npm run test --workspaces --if-present",
     "server": "npm run dev --workspace @lyceum/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "benchmark": "node scripts/benchmark.mjs"
+    "benchmark": "node scripts/benchmark.mjs",
+    "package:beta": "node scripts/package-distribution.mjs --beta",
+    "package:commercial": "node scripts/package-distribution.mjs --commercial",
+    "package:all": "node scripts/package-distribution.mjs --all"
   },
   "engines": {
     "node": ">=22.5.0"

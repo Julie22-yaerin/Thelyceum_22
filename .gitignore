@@ -18,3 +18,4 @@ benchmark-compare.md
 .env*
 # downloaded third-party source dump — never commit
 criterion.rs-master.zip
+dist-releases/
