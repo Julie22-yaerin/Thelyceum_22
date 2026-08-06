@@ -47,7 +47,7 @@ export const BRAKE_GUIDE: Guide = {
     {
       title: "1. Install the CLI",
       command: "npm install -g .",
-      expect: "brake --version prints 0.2.0",
+      expect: "brake --version prints 1.0.0",
       detail:
         "From the package you downloaded, or from source with `npm install && npm run build && npm link`. If `brake` is not found after this, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
     },
@@ -113,7 +113,7 @@ export const REDTEAM_GUIDE: Guide = {
     {
       title: "1. Install",
       command: "npm install -g .",
-      expect: "redteam --version prints 0.1.0",
+      expect: "redteam --version prints 1.0.0",
       detail: "From source: `npm install && npm run build && npm link`.",
     },
     {

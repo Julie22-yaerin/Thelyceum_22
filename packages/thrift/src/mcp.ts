@@ -25,6 +25,7 @@ import {
 } from "./compress.js";
 import { record, summarise } from "./ledger.js";
 import { globalLoopTracker, MAX_ALLOWED_REPETITIONS } from "./loop.js";
+import { ToolCatalog, SkillCatalog } from "./catalog.js";
 
 const execAsync = promisify(exec);
 const seen = new SeenLedger();
@@ -33,7 +34,27 @@ const DEFAULT_BUDGET = Number(process.env.THRIFT_BUDGET_TOKENS ?? 4000);
 const DEDUPE_MAX_AGE_CALLS = Number(process.env.THRIFT_DEDUPE_MAX_AGE ?? DEFAULT_MAX_DEDUPE_AGE_CALLS);
 const DEDUPE_MAX_AGE_TOKENS = Number(process.env.THRIFT_DEDUPE_MAX_AGE_TOKENS ?? DEFAULT_MAX_DEDUPE_AGE_TOKENS);
 
-const server = new McpServer({ name: "thrift", version: "1.0.0" });
+const toolCatalog = new ToolCatalog(seen);
+const skillCatalog = new SkillCatalog();
+
+// Register built-in default tools into Savier catalog
+toolCatalog.register({
+  id: "read_lean",
+  name: "read_lean",
+  description: "Read a file, but skip content this session has already seen. Prefer this over normal file read.",
+  tags: ["file", "read", "context", "lean"],
+  inputSchema: { path: "string", query: "string?", budget_tokens: "number?" },
+});
+
+toolCatalog.register({
+  id: "run_lean",
+  name: "run_lean",
+  description: "Run a shell command with machine noise removed.",
+  tags: ["shell", "terminal", "exec", "lean"],
+  inputSchema: { command: "string", cwd: "string?", budget_tokens: "number?" },
+});
+
+const server = new McpServer({ name: "savier-thrift", version: "2.0.0" });
 
 server.tool(
   "read_lean",
@@ -127,6 +148,71 @@ server.tool(
       content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
       isError: res.tripped,
     };
+  }
+);
+
+server.tool(
+  "search_capabilities",
+  "Search registered tools and skills dynamically. Allows progressive capability disclosure without context window bloat.",
+  {
+    query: z.string().describe("Keyword or topic describing the capability needed."),
+    limit: z.number().int().min(1).max(20).optional(),
+  },
+  async ({ query, limit }) => {
+    const tools = toolCatalog.search(query, { limit: limit ?? 5 });
+    const skills = skillCatalog.search(query, { limit: limit ?? 5 });
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({ query, tools, skills }, null, 2),
+      }],
+    };
+  }
+);
+
+server.tool(
+  "invoke_tool",
+  "Execute a catalog tool by ID with automatic Savier output compression.",
+  {
+    tool_id: z.string().describe("The tool ID to execute."),
+    args: z.record(z.any()).optional().describe("Arguments object for the tool."),
+    budget_tokens: z.number().int().min(200).max(200_000).optional(),
+  },
+  async ({ tool_id, args, budget_tokens }) => {
+    try {
+      const res = await toolCatalog.invoke(tool_id, args ?? {}, {
+        budgetTokens: budget_tokens ?? DEFAULT_BUDGET,
+      });
+      return {
+        content: [{ type: "text", text: res.compressedText }],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: "text", text: `Tool invocation error: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.tool(
+  "get_skill_content",
+  "Fetch the body playbook instructions for a skill by skill ID.",
+  {
+    skill_id: z.string().describe("The skill ID to fetch."),
+  },
+  async ({ skill_id }) => {
+    try {
+      const skill = skillCatalog.getSkillContent(skill_id);
+      return {
+        content: [{ type: "text", text: JSON.stringify(skill, null, 2) }],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: "text", text: `Skill fetch error: ${err instanceof Error ? err.message : String(err)}` }],
+        isError: true,
+      };
+    }
   }
 );
 

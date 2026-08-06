@@ -4,6 +4,9 @@
   "private": true,
   "description": "The Lyceum \u2014 circuit breakers for AI. brake stops a dangerous action; redteam stops a one-sided conclusion.",
   "type": "module",
+  "bin": {
+    "lyceum": "./scripts/lyceum.js"
+  },
   "workspaces": [
     "packages/brake",
     "packages/redteam",
