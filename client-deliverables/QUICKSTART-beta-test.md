@@ -16,6 +16,18 @@ node beta-activate.mjs LYCEUM-BETA-xxxxxxxx...   # key được gửi kèm email
 
 Chỉ cần chạy một lần — cả ba công cụ đều đọc chung key này.
 
+**Quan trọng — trỏ đúng server:** key này được xác thực bởi một license
+server (BYOC, tự host trên hạ tầng của chúng tôi cho đợt beta). Trước khi
+chạy `scan`/`challenge`/`compress` lần đầu, set biến môi trường này (địa
+chỉ cụ thể gửi kèm email cùng key):
+
+```bash
+export LYCEUM_SERVER_URL=http://<địa-chỉ-server-được-cấp>
+```
+
+Thiếu bước này, công cụ sẽ tự động thử gọi server mặc định (chưa sẵn sàng
+cho đợt beta) và mọi lệnh sẽ báo lỗi ngay từ lần đầu — không phải do key sai.
+
 ---
 
 ## 1. Cài đặt

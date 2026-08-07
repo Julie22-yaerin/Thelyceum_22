@@ -485,6 +485,16 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
 .launch-banner strong { color: var(--accent-dim); }
 .launch-banner a { text-decoration: underline; font-weight: 600; }
 
+/* ── Book a call ──────────────────────────────────────────────────────────── */
+
+.book-a-call-section { padding: 24px 0; text-align: center; }
+.book-a-call-cta {
+  background: var(--accent); color: #fff; border: 0; padding: 15px 28px;
+  border-radius: 999px; font-size: 15px; font-weight: 650; cursor: pointer;
+  font-family: inherit; box-shadow: var(--shadow-md);
+}
+.book-a-call-cta:hover { filter: brightness(1.08); }
+
 /* ── Waitlist ─────────────────────────────────────────────────────────────── */
 
 .waitlist-section { padding: 24px 0 64px; }

@@ -37,7 +37,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { exit } from "node:process";
 import { challenge, rebut, listFlawRules } from "./challenge.js";
-import { checkBetaGate } from "./beta.js";
+import { checkLicenseGate } from "./gate.js";
 import { compactContext } from "./compact.js";
 import { readAudit } from "./audit.js";
 import { loadConfig, DEFAULT_CONFIG_PATH, REDTEAM_HOME } from "./config.js";
@@ -119,9 +119,9 @@ async function cmdChallenge(rest: string[]): Promise<void> {
     printErr("provide a claim, plan, or code to challenge.");
     exit(2);
   }
-  const gate = await checkBetaGate();
+  const gate = await checkLicenseGate();
   if (!gate.allowed) {
-    printErr(gate.message ?? "beta trial limit reached.");
+    printErr(gate.message ?? "license check failed.");
     exit(1);
   }
   const cfg = await loadConfig();

@@ -78,6 +78,88 @@ async function refresh() {
   renderCounts(list.counts);
   renderTable(list.entries);
   renderAudit(audit.entries);
+  void refreshSubLicenses();
+}
+
+// ── Subscription license pool ───────────────────────────────────────────────
+
+async function refreshSubLicenses() {
+  let { licenses } = await api("/api/admin/sub-licenses");
+  if (licenses.length === 0) {
+    ({ licenses } = await api("/api/admin/sub-licenses/seed", { method: "POST", body: JSON.stringify({}) }));
+  }
+  renderSubLicenses(licenses);
+}
+
+function daysLeft(expiresAt) {
+  if (!expiresAt) return "—";
+  const ms = expiresAt - Date.now();
+  if (ms <= 0) return "expired";
+  return `${Math.ceil(ms / (24 * 60 * 60 * 1000))}d left`;
+}
+
+function renderSubLicenses(licenses) {
+  const wrap = $("#subLicenseWrap");
+  wrap.innerHTML = `
+    <table class="admin-table">
+      <thead>
+        <tr><th>Code</th><th>Status</th><th>Label</th><th>Expires</th><th></th></tr>
+      </thead>
+      <tbody>
+        ${licenses
+          .map(
+            (l) => `
+          <tr data-id="${esc(l.id)}">
+            <td class="mono">${esc(l.license_key)}</td>
+            <td><span class="pill ${l.status === "taken" ? "approved" : "pending"}">${l.status === "taken" ? "Taken" : "Not taken"}</span></td>
+            <td>${esc(l.label ?? "—")}</td>
+            <td class="dim">${daysLeft(l.expires_at)}</td>
+            <td class="actions-cell">
+              <button class="mini copy" data-id="${esc(l.id)}">Copy</button>
+              ${
+                l.status === "taken"
+                  ? `<button class="mini reject" data-id="${esc(l.id)}">Mark not taken</button>`
+                  : `<button class="mini approve" data-id="${esc(l.id)}">Mark taken</button>`
+              }
+            </td>
+          </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>`;
+
+  for (const btn of wrap.querySelectorAll("button.copy")) {
+    btn.addEventListener("click", () => {
+      const row = licenses.find((x) => x.id === btn.dataset.id);
+      navigator.clipboard?.writeText(row.license_key);
+      btn.textContent = "Copied";
+      setTimeout(() => (btn.textContent = "Copy"), 1200);
+    });
+  }
+
+  for (const btn of wrap.querySelectorAll("button.mini.approve, button.mini.reject")) {
+    btn.addEventListener("click", async () => {
+      const row = licenses.find((x) => x.id === btn.dataset.id);
+      const toTaken = btn.classList.contains("approve");
+      let label = row.label;
+      if (toTaken) {
+        label = prompt("Label this code (e.g. customer/company name):", row.label || "") ?? row.label;
+      } else if (!confirm(`Mark ${row.license_key} as not taken? This clears its expiry.`)) {
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await api(`/api/admin/sub-licenses/${encodeURIComponent(row.id)}/status`, {
+          method: "POST",
+          body: JSON.stringify({ status: toTaken ? "taken" : "not_taken", label: label || undefined }),
+        });
+        await refreshSubLicenses();
+      } catch (err) {
+        alert(err.message || "Could not update.");
+        btn.disabled = false;
+      }
+    });
+  }
 }
 
 function renderCounts(counts) {

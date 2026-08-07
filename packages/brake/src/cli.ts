@@ -24,7 +24,7 @@ import * as readline from "node:readline/promises";
 import { stdin, stdout, exit } from "node:process";
 import { engageBrake, DEFAULT_POLICY } from "./brake.js";
 import { scanForDanger, listDangerRules } from "./danger.js";
-import { checkBetaGate } from "./beta.js";
+import { checkLicenseGate } from "./gate.js";
 import { makeStopAll, trackPid, untrackPid } from "./stop-all.js";
 import { readAudit, appendAudit, getBrakeMetrics } from "./audit.js";
 import { loadConfig, DEFAULT_CONFIG_PATH, BRAKE_HOME } from "./config.js";
@@ -472,9 +472,9 @@ async function main(): Promise<void> {
         printErr("provide an intent string to scan.");
         exit(2);
       }
-      const gate = await checkBetaGate();
+      const gate = await checkLicenseGate();
       if (!gate.allowed) {
-        printErr(gate.message ?? "beta trial limit reached.");
+        printErr(gate.message ?? "license check failed.");
         exit(1);
       }
       const danger = scanForDanger(intent);

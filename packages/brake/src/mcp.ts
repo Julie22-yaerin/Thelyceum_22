@@ -19,7 +19,7 @@ import { readAudit, getBrakeMetrics } from "./audit.js";
 import { loadConfig } from "./config.js";
 import { getMode, brakeDescriptionFor, dangerScanDescriptionFor } from "./mode.js";
 import { loadLicense } from "./license.js";
-import { checkBetaGate } from "./beta.js";
+import { checkLicenseGate } from "./gate.js";
 
 const mode = await getMode();
 const cfg = await loadConfig();
@@ -40,9 +40,9 @@ server.tool(
       .describe("If true, do not actually stop anything; return what would happen."),
   },
   async ({ reason, sla_ms, dry_run }) => {
-    const gate = await checkBetaGate();
+    const gate = await checkLicenseGate();
     if (!gate.allowed) {
-      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+      return { content: [{ type: "text", text: gate.message ?? "License check failed." }], isError: true };
     }
 
     const lic = await loadLicense().catch(() => null);
@@ -95,9 +95,9 @@ server.tool(
       .describe("What the agent is about to do. Will be scanned for danger patterns."),
   },
   async ({ intent }) => {
-    const gate = await checkBetaGate();
+    const gate = await checkLicenseGate();
     if (!gate.allowed) {
-      return { content: [{ type: "text", text: gate.message ?? "Beta trial limit reached." }], isError: true };
+      return { content: [{ type: "text", text: gate.message ?? "License check failed." }], isError: true };
     }
 
     const danger = scanForDanger(intent);

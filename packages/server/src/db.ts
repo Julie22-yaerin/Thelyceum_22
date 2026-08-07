@@ -172,6 +172,24 @@ function migrate(db: DatabaseSync): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_beta_usage_license_day ON beta_usage(license_id, day);
+
+    -- ── Subscription license pool ───────────────────────────────────────
+    -- A fixed pool of pre-generated CLI unlock codes for the manual-sale
+    -- model: a customer pays outside this system (a call, a bank transfer),
+    -- and an admin hands them one of these codes and flips it to "taken" by
+    -- hand — status is never inferred from usage, only set by an admin
+    -- action, because the payment itself never touches this database.
+    CREATE TABLE IF NOT EXISTS subscription_licenses (
+      id          TEXT PRIMARY KEY,
+      license_key TEXT UNIQUE NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'not_taken',
+      label       TEXT,
+      created_at  INTEGER NOT NULL,
+      taken_at    INTEGER,
+      expires_at  INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sub_licenses_status ON subscription_licenses(status);
   `);
 }
 

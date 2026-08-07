@@ -27,7 +27,14 @@ cp "$ROOT_DIR/scripts/beta-activate.mjs" "$OUT_DIR/"
 cd "$ROOT_DIR/client-deliverables"
 zip -r "Lyceum-Beta-Test-Package.zip" "beta-package" -x "*.DS_Store"
 
+# BYOC beta license server — separate zip, separate audience (whoever runs
+# the customer's infra, not necessarily the evaluating engineer). Zero
+# dependencies, so this is just the two files, no build step.
+zip -r "Lyceum-BYOC-Beta-Server.zip" "byoc-beta-server" -x "*.DS_Store" -x "*beta-server.db*"
+
 echo ""
-echo "Xong. Gói beta nằm ở: client-deliverables/Lyceum-Beta-Test-Package.zip"
+echo "Xong. Hai gói nằm ở:"
+echo "  client-deliverables/Lyceum-Beta-Test-Package.zip   (thrift/brake/redteam CLIs + beta-activate.mjs)"
+echo "  client-deliverables/Lyceum-BYOC-Beta-Server.zip    (self-hosted license server, for their infra team)"
 echo "Kiểm tra nhanh trước khi gửi khách:"
 echo "  unzip -l client-deliverables/Lyceum-Beta-Test-Package.zip   # không được thấy file .ts nào"

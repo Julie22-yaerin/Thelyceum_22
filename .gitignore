@@ -19,3 +19,7 @@ benchmark-compare.md
 # downloaded third-party source dump — never commit
 criterion.rs-master.zip
 dist-releases/
+# build output of client-deliverables/build-beta-package.sh — regenerate, never commit
+client-deliverables/beta-package/
+client-deliverables/*.zip
+client-deliverables/byoc-beta-server/beta-server.db

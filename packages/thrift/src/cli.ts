@@ -12,7 +12,7 @@ import { promises as fs } from "node:fs";
 import { readdirSync, statSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { compress, SeenLedger, type CompressResult } from "./compress.js";
-import { checkBetaGate } from "./beta.js";
+import { checkLicenseGate } from "./gate.js";
 import { estimateTokens, countExact } from "./tokens.js";
 import { classify } from "./classify.js";
 import { summarise, isLossless, DEFAULT_LEDGER_PATH } from "./ledger.js";
@@ -126,9 +126,9 @@ async function main(): Promise<void> {
 
     // ── compress ──────────────────────────────────────────────────────────
     case "compress": {
-      const gate = await checkBetaGate();
+      const gate = await checkLicenseGate();
       if (!gate.allowed) {
-        printErr(gate.message ?? "beta trial limit reached.");
+        printErr(gate.message ?? "license check failed.");
         process.exit(1);
       }
       const target = args[1];

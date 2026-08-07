@@ -59,6 +59,7 @@ import * as waitlist from "./waitlist.js";
 import { authenticateAdmin, adminConfigured, recordAdminAction, recentAdminActions, type AdminIdentity } from "./admin.js";
 import { mintTrialToken, activateTrial, TrialError, isLyceumIssuedKey } from "./trial.js";
 import { mintBetaLicense, checkBetaUsage, BetaError } from "./beta.js";
+import { seedLicensePool, listLicensePool, setLicenseStatus, validateSubLicense, SubLicenseError } from "./sub-license.js";
 import { getTelemetry } from "./telemetry.js";
 import { recordUsage, monthlyUsage, budgetStatus, monthKey } from "./usage.js";
 
@@ -230,6 +231,10 @@ app.use("/api/*", async (c, next) => {
     // Called by a CLI on someone else's machine with nothing but the beta
     // license key — there is no session to have. Same shape as license/enter.
     c.req.path === "/api/beta/check" ||
+    // Same reasoning again for the subscription pool: a CLI or the redeem
+    // page calls these with nothing but a pasted code, no session at all.
+    c.req.path === "/api/license-pool/validate" ||
+    c.req.path === "/api/license-pool/enter" ||
     PUBLIC_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))
   ) {
     return next();
@@ -857,6 +862,69 @@ app.post("/api/beta/check", async (c) => {
   } catch (err) {
     if (err instanceof BetaError) {
       const status = err.code === "limit_reached" ? 429 : err.code === "expired" || err.code === "revoked" ? 403 : 401;
+      return c.json({ ok: false, error: err.code, message: err.message }, status);
+    }
+    throw err;
+  }
+});
+
+// ── Subscription license pool (manual-sale model) ───────────────────────────
+// Seeding and status are admin acts, audit-logged, never automatic — the
+// payment itself happens outside this system. validate/enter are public: a
+// CLI or the redeem page calls them with nothing but the code.
+
+app.post("/api/admin/sub-licenses/seed", async (c) => {
+  const admin = c.get("admin" as never) as AdminIdentity;
+  const count = Number((await c.req.json().catch(() => ({}))).count) || 10;
+  return c.json({ ok: true, licenses: seedLicensePool(db, admin, count) });
+});
+
+app.get("/api/admin/sub-licenses", (c) => {
+  return c.json({ licenses: listLicensePool(db) });
+});
+
+const SubLicenseStatusBody = z.object({
+  status: z.enum(["taken", "not_taken"]),
+  label: z.string().optional(),
+});
+
+app.post("/api/admin/sub-licenses/:id/status", async (c) => {
+  const admin = c.get("admin" as never) as AdminIdentity;
+  const body = SubLicenseStatusBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    return c.json({ ok: true, license: setLicenseStatus(db, admin, c.req.param("id"), body.data) });
+  } catch (err) {
+    if (err instanceof SubLicenseError) return c.json({ error: err.code, message: err.message }, err.code === "not_found" ? 404 : 400);
+    throw err;
+  }
+});
+
+const LicensePoolKeyBody = z.object({ licenseKey: z.string().min(1) });
+
+app.post("/api/license-pool/validate", async (c) => {
+  const body = LicensePoolKeyBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    return c.json(validateSubLicense(db, body.data.licenseKey));
+  } catch (err) {
+    if (err instanceof SubLicenseError) {
+      const status = err.code === "expired" ? 403 : err.code === "not_taken" ? 403 : 401;
+      return c.json({ ok: false, error: err.code, message: err.message }, status);
+    }
+    throw err;
+  }
+});
+
+app.post("/api/license-pool/enter", async (c) => {
+  const body = LicensePoolKeyBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    const result = validateSubLicense(db, body.data.licenseKey);
+    return c.json({ ...result, redirectTo: "/web/showroom#guides" });
+  } catch (err) {
+    if (err instanceof SubLicenseError) {
+      const status = err.code === "expired" ? 403 : err.code === "not_taken" ? 403 : 401;
       return c.json({ ok: false, error: err.code, message: err.message }, status);
     }
     throw err;

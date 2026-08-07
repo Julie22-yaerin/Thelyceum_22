@@ -3,112 +3,107 @@
 **Chuẩn bị cho:** Khách hàng đánh giá trước khi mua source code
 **Ngày:** 06/08/2026
 **Phạm vi:** 4 package trong monorepo — `thrift`, `brake`, `redteam`, `server`
-**Loại kiểm thử:** Empirical (chạy thật, đo thật) — không phải số liệu ước tính hay mô phỏng
+**Loại kiểm thử:** Empirical — chạy thật trên máy local (`npm test`) và trên GitHub Actions cloud runner thật (x64 + arm64), không phải số liệu mô phỏng
 
 ---
 
 ## 1. Tóm tắt điều hành
 
-The Lyceum là một bộ công cụ guardrail và tối ưu hóa cho AI agent, gồm ba module lõi bán được (`thrift`, `brake`, `redteam`) và một lớp hạ tầng vận hành (`server`). Toàn bộ 248 test trong monorepo đã chạy và pass 100%, không có panic, không rò rỉ bộ nhớ, đo trên môi trường thật với các lệnh gọi API LLM thật qua OpenRouter — không phải mock.
+The Lyceum là bộ ba circuit breaker cho AI agent — `brake` (chặn hành vi nguy hiểm), `redteam` (chặn kết luận một chiều/code có rủi ro), `thrift` (nén context, khử trùng lặp token) — cộng một lớp hạ tầng vận hành (`server`, dùng nếu chọn mô hình SaaS/subscription).
 
-| Package | Vai trò | Test Pass | Chỉ số hiệu năng chính |
-| :--- | :--- | :---: | :--- |
-| `thrift` | Nén context, khử trùng lặp token | 68/68 | Giảm 66–68% token lần đọc đầu, 95–96% khi đọc lại |
-| `brake` | Circuit breaker khẩn cấp, chặn hành vi nguy hiểm | 36/36 | Phát hiện + dừng trong 0–3ms (SLA mục tiêu 1000ms) |
-| `redteam` | Phát hiện lỗi lập luận, vòng lặp logic | 54/54 | Phát hiện cục bộ dưới 0.15ms, quét tĩnh dưới 50ms |
-| `server` | Telemetry, license, usage metering | 90/90 | 100% tuân thủ API multi-tenant |
-| **Tổng** | **Toàn bộ monorepo** | **248/248** | **0 panic, 0 memory leak, 100% pass rate** |
+| Package | Vai trò | Test Pass | Throughput (cloud, x64) | Floor gate |
+| :--- | :--- | :---: | :--- | :--- |
+| `brake` | Circuit breaker khẩn cấp | 39/39 | 1.45M calls/sec | 200k (7.3× floor) |
+| `redteam` | Phát hiện lỗi lập luận & code | 54/54 | 295.3k calls/sec | 100k (2.9× floor) |
+| `thrift` | Nén context, khử trùng lặp token | 72/72 | 47.5k calls/sec | 8k (5.9× floor) |
+| `server` | Telemetry, license, beta trial, usage | 109/109 | — | — |
+| **Tổng** | **Toàn bộ monorepo** | **274/274** | | |
 
-Kết luận ngắn gọn: cả ba module bán được đều đã được đo bằng workload thật (log lỗi thật, payload tấn công thật, lập luận sai thật), không phải test case dựng sẵn để đẹp số liệu.
+Toàn bộ 274 test pass 100%, đo tại `2026-08-06`. Số liệu throughput lấy từ lần chạy CI thành công gần nhất trên GitHub Actions cloud runner thật (không phải máy dev), cả x64 lẫn arm64 — dẫn nguồn cụ thể ở mục 5.
 
 ---
 
 ## 2. Phương pháp đo
 
-- **Môi trường:** Node.js ≥22.5, TypeScript, test runner Vitest (v2.1.9 / v3.2.7).
-- **Model LLM thật:** Claude 3.5 Sonnet, Claude 3 Haiku, GPT-4o, GPT-4o Mini, Gemini 2.5 Flash, Gemini 2.5 Pro — gọi qua OpenRouter, không dùng response giả lập.
-- **Payload thật:** stack trace Node.js thật, git diff thật, 500+ chuỗi Unicode "ác ý" (Big List of Naughty Strings) để test edge-case, các payload tấn công thật (reverse shell, SQL injection, `rm -rf`, credential leak).
-- **Đo lường:** thời gian tính bằng `performance.now()` tại runtime, không phải log ước lượng; token count đối chiếu trực tiếp với response usage của API.
-- **Ngày chạy:** 05/08/2026. Báo cáo gốc từng package nằm trong `test-results/` của repo (`thrift-benchmark-report.md`, `brake-benchmark-report.md`, `redteam-benchmark-report.md`, `master-stress-test-report.md`).
+- **Test suite:** `npm test --workspace brake --workspace redteam --workspace thrift --workspace @lyceum/server` — Vitest v3.2.7, chạy trực tiếp trên máy đang chuẩn bị gói beta này ngay trước khi viết báo cáo.
+- **Throughput/latency:** `scripts/benchmark.mjs` — best-of-N trên corpus cố định, chạy qua GitHub Actions CI (`.github/workflows/throughput.yml`) trên **cả `ubuntu-latest` (x64) và `ubuntu-24.04-arm` (arm64)**, không phải máy dev cá nhân. CI fail cứng (exit 1) nếu bất kỳ số nào tụt dưới floor đã định — nghĩa là các con số dưới đây không thể "âm thầm thối" theo thời gian mà không ai biết.
+- **MCP wire latency:** đo handshake `initialize → tools/list` qua stdio thật, dùng chính MCP SDK client, không mock transport.
+- **`brake`/`redteam` là tính toán cục bộ thuần túy** (regex + heuristic trên chuỗi văn bản) — không gọi mạng, không gọi LLM API nào. Đây là lý do chúng an toàn để chạy trên *mọi* tool call thay vì lấy mẫu, và cũng là lý do benchmark của chúng không cần (và không có) bất kỳ API key ngoài nào.
 
 ---
 
 ## 3. Breakdown theo package
 
-### 3.1 `thrift` — Nén context & khử trùng lặp token
+### 3.1 `brake` — Circuit breaker khẩn cấp
 
-Bài toán: agent AI đọc lại file, log, hoặc output dài lặp lại nhiều lần trong một phiên làm việc, đốt token một cách vô ích. `thrift` chặn việc này ở đúng thời điểm dữ liệu được trả về, trước khi nó vào context.
+Quét ý định của agent trước khi hành động chạy, dừng khẩn cấp nếu khớp một trong các lớp nguy hiểm. Bộ rule hiện tại phủ **11 lớp nguy hiểm** (21 rule cụ thể): `prompt_injection`, `remote_code_execution`, `credential_access`, `data_exfiltration`, `destructive_operation`, `financial_movement`, `impersonation`, `infrastructure_attack`, `pii_leak`, `sandbox_escape`, `unauthorized_cloud_access`.
 
-| Model | Token gốc | Token sau thrift | Giảm lần đầu | Token khi đọc lại | Giảm khi đọc lại | Độ chính xác |
-|---|---|---|---|---|---|---|
-| Claude 3.5 Sonnet | 2,914 | 989 | **66%** | 76 | **95.0%** | 100% |
-| Claude 3 Haiku | 2,310 | 755 | **67%** | 62 | **95.2%** | 100% |
-| GPT-4o | 1,821 | 592 | **67%** | 57 | **95.4%** | 100% |
-| GPT-4o Mini | 1,821 | 592 | **67%** | 57 | **95.4%** | 100% |
-| Gemini 2.5 Flash | 2,266 | 723 | **68%** | 53 | **95.8%** | 100% |
-| Gemini 2.5 Pro | 2,266 | 723 | **68%** | 53 | **96.0%** | 100% |
+| Chỉ số | Giá trị (cloud x64) | Giá trị (cloud arm64) | Floor CI |
+|---|---|---|---|
+| Throughput | 1.45M calls/sec | 1.36M calls/sec | 200k |
+| Latency p50 | 0.80µs | 0.86µs | — |
+| Latency p95 | 1.59µs | 1.08µs | gate 1000ms |
+| Latency p99 | 1.92µs | 1.16µs | — |
 
-Ba cơ chế nén đều lossless (không mất thông tin): khử trùng lặp (đọc lại file không đổi → trả pointer thay vì nội dung), lược bỏ noise (mã ANSI, dòng log lặp, blob base64), và cắt theo query khi file quá lớn (có đánh dấu range rõ ràng, không âm thầm cắt bỏ). Toàn bộ 6 model đều trả lời đúng 100% các câu hỏi suy luận và code dựa trên payload đã nén — nghĩa là nén không làm giảm chất lượng output.
+SLA mục tiêu cho việc dừng khẩn cấp là 1000ms — thực đo dưới 2 micro-giây, nhanh hơn mục tiêu khoảng 500,000 lần vì đây là tính toán cục bộ thuần túy, không round-trip mạng.
 
-Stress test riêng: nén 10.000 dòng log hỗn loạn (màu ANSI, timestamp ISO, stack trace) trong 417ms dưới ngân sách 250 token. Chạy 1.000 lần nén song song trong 302ms, 0 lỗi trạng thái.
+### 3.2 `redteam` — Phát hiện lỗi lập luận & code
 
-### 3.2 `brake` — Circuit breaker khẩn cấp
+Chặn kết luận nghe tự tin nhưng một chiều, hoặc code có nguy cơ crash/rò rỉ, trước khi nó được trình bày như sự thật. Phủ **21 lớp lỗi**: 9 lỗi lập luận (overconfidence, confirmation bias, false dichotomy, missing tradeoff, strawman, anecdote-as-evidence, slippery slope, unchecked assumption, security bypass), 2 lỗi vòng lặp đa-agent (`context_drift`, `ping_pong_loop`), và 10 lỗi code (crash chắc chắn, async không xử lý, null pointer, type safety, resource leak, malicious payload, infinite loop, hallucinated package, v.v.).
 
-Bài toán: agent AI có quyền thực thi lệnh có thể vô tình (hoặc bị dụ) chạy hành vi phá hoại — xóa dữ liệu, rò rỉ credential, remote code execution. `brake` quét ý định trước khi hành động chạy, và dừng khẩn cấp nếu phát hiện nguy hiểm.
+| Chỉ số | Giá trị (cloud x64) | Giá trị (cloud arm64) | Floor CI |
+|---|---|---|---|
+| Throughput | 295.3k calls/sec | 262.9k calls/sec | 100k |
+| Latency p50 | 3.07µs | 3.76µs | — |
+| Latency p95 | 4.33µs | 4.96µs | gate 1000ms |
+| Latency p99 | 7.05µs | 5.44µs | — |
 
-| Vector tấn công | Loại nguy hiểm | Phát hiện cục bộ | Độ trễ dừng khẩn cấp | Trạng thái |
-|---|---|---|---|---|
-| Prompt injection / jailbreak | `prompt_injection` | ✅ | 2ms | PASS |
-| Remote code execution (reverse shell) | `remote_code_execution` | ✅ | 3ms | PASS |
-| Đánh cắp credential | `credential_access` | ✅ | 0ms | PASS |
-| Rò rỉ dữ liệu ra ngoài | `data_exfiltration` | ✅ | 0ms | PASS |
-| Xóa dữ liệu không hồi phục (`rm -rf`) | `destructive_operation` | ✅ | 0ms | PASS |
+Có cơ chế loại trừ false positive: code comment (`// Note: rm -rf...`) được nhận diện là tài liệu, không bị chặn nhầm.
 
-SLA mục tiêu là 1000ms — thực đo 0–3ms, tức nhanh hơn mục tiêu khoảng 300 lần. Ngoài 5 vector trên, `brake` còn phủ thêm sandbox escape, financial movement, và infrastructure attack (nmap, sqlmap) — tổng cộng 8 lớp nguy hiểm được quét trong bộ test đầy đủ. Throughput đo trên một core CPU: ~1.37 triệu lượt quét/giây, p99 dưới 1 micro-giây mỗi lượt — vì đây là tính toán cục bộ thuần túy, không gọi mạng, nên an toàn để chạy trên *mọi* tool call thay vì chỉ lấy mẫu.
+### 3.3 `thrift` — Nén context & khử trùng lặp token
 
-### 3.3 `redteam` — Phát hiện lỗi lập luận & vòng lặp
+Bài toán: agent đọc lại file/log/output dài lặp lại trong một phiên, đốt token vô ích. `thrift` chặn việc này ở đúng thời điểm dữ liệu được trả về, trước khi vào context — bốn cơ chế: dedupe (đọc lại → trả pointer), strip (bỏ noise: mã ANSI, log lặp, base64 blob), slice (cắt theo query khi file lớn, có đánh dấu rõ phần bị cắt), cap (ngân sách cứng, hard-data-aware — dữ liệu code/config/limit không bao giờ bị cắt, chỉ prose mới bị nén).
 
-Bài toán: agent AI có thể đưa ra kết luận nghe rất tự tin nhưng một chiều — bỏ qua trade-off, lý luận thiên kiến, hoặc code có nguy cơ crash — mà không ai chặn lại trước khi nó được trình bày như sự thật.
+| Chỉ số | Giá trị (cloud x64) | Giá trị (cloud arm64) | Floor CI |
+|---|---|---|---|
+| Throughput | 47.5k calls/sec | 53.0k calls/sec | 8k |
+| Latency p50 | 16.63µs | 18.04µs | — |
+| Latency p95 | 51.40µs | 36.25µs | gate 10ms |
+| Latency p99 | 55.29µs | 42.16µs | — |
+| Agent-loop saving (12 file × 5 pass) | **87.2%** saved, 39.6% trong đó lossless | | |
+| Token-guard edge case | JWT: 0% saved (giữ nguyên byte, không cắt) ✓ · image base64: 97.8% ✓ · JSON response: 95.6% ✓ | | |
 
-| Trường hợp kiểm thử | Loại lỗi | Phát hiện | Hành động | Độ trễ cục bộ | Trạng thái |
-|---|---|---|---|---|---|
-| Bypass bảo mật (tắt auth/CORS) | `security_bypass` | ✅ | BLOCK | 0.15ms | PASS |
-| Vòng lặp vô hạn không có điều kiện thoát | `infinite_loop_risk` | ✅ | BLOCK | 0.12ms | PASS |
-| Rò rỉ credential cứng trong code | `malicious_payload` | ✅ | BLOCK | 0.10ms | PASS |
-| Tự tin thái quá / thiên kiến xác nhận | `confirmation_bias` | ✅ | BLOCK | 0.14ms | PASS |
-| Import package không tồn tại / giả mạo | `hallucinated_package_risk` | ✅ | WARN | 0.11ms | PASS |
+Token-guard edge case là bộ test cố ý thử "phá": một JWT không bao giờ được cắt dù chỉ 1 ký tự (0% saved đúng là kỳ vọng — nghĩa là dữ liệu cứng được bảo toàn tuyệt đối), trong khi ảnh base64 và JSON response dài được nén sâu.
 
-Bộ đầy đủ phủ 21 lớp lỗi (reasoning flaws + code risks + vòng lặp đa agent như `context_drift` và `ping_pong_loop` giữa các subagent), quét tĩnh dưới 50ms. Có cơ chế loại trừ false positive rõ ràng: code comment (`// Note: rm -rf...`) được nhận diện là tài liệu, không bị chặn nhầm — quan trọng với đội DevOps/Security hay viết comment cảnh báo. Stress test: 2.000 lượt gọi `challenge()` song song trong 582ms, 100% verdict nhất quán.
+### 3.4 `server` — Hạ tầng vận hành (nếu chọn mô hình SaaS)
 
-### 3.4 `server` — Hạ tầng vận hành
-
-90/90 test pass cho telemetry multi-tenant, license, và rate limiting — 100% tuân thủ API. Đây là lớp hạ tầng hỗ trợ vận hành SaaS (nếu khách chọn mô hình subscription), không phải sản phẩm bán trực tiếp cho end-user.
+109/109 test pass: telemetry multi-tenant, license, usage metering, và **cơ chế beta-trial mới** (xem mục 4).
 
 ---
 
-## 4. Kiểm thử tải & độ ổn định (Concurrency)
+## 4. Mới: Beta trial gate (server-validated)
 
-| Bài test | Kết quả | Ghi chú |
-|---|---|---|
-| 1.000 lượt nén `thrift` song song | 302ms | 0 lỗi trạng thái |
-| Nén log 10.000 dòng | 417ms | Dưới ngân sách 250 token |
-| 2.000 lượt `challenge()` song song | 582ms | 100% verdict nhất quán |
+Bổ sung hôm nay, phục vụ đúng gói beta gửi kèm báo cáo này — license 7 ngày, tối đa 10 lần gọi thực/ngày (UTC), enforce từ phía server (không phải giới hạn client có thể chỉnh sửa). Đã test:
 
-Không có race condition, không có memory leak, không có panic trên toàn bộ 248 test — kể cả dưới tải song song cao.
+- 14 unit test (`beta.test.ts`) + 5 integration test qua HTTP thật (`beta-routes.test.ts`) — bao gồm test đua 20 request đồng thời trên hạn mức 5/ngày, xác nhận đúng 5 request pass, không có race condition.
+- Test tay end-to-end trên cả 3 CLI thật (`brake`/`redteam`/`thrift`): 3 lần đầu pass, lần 4 bị chặn đúng lúc với message rõ ràng; lệnh `status` không tính vào hạn mức.
+- Gói **BYOC** (Bring-Your-Own-Cloud) đi kèm: license server tự host, zero dependency ngoài Node.js builtin, dữ liệu dùng thử không rời khỏi hạ tầng của bên vận hành server.
 
 ---
 
-## 5. Vì sao số liệu này đáng tin
+## 5. Nguồn dẫn — đối chiếu độc lập
 
-- **Không mock:** benchmark của `thrift` gọi thật 6 model LLM qua OpenRouter, đối chiếu token usage thật từ response, không phải đếm ước lượng.
-- **Payload thật:** dữ liệu test lấy từ log lỗi Node.js thật, git diff thật, payload tấn công thật (không phải chuỗi test giả "attack-1", "attack-2").
-- **Đo tại runtime:** toàn bộ độ trễ đo bằng `performance.now()` ngay trong code, có threshold test tự động fail build nếu hiệu năng tụt dưới mức sàn — nghĩa là con số không thể "âm thầm thối" theo thời gian mà không ai biết.
-- **Toàn bộ log gốc** của 4 bản benchmark nằm trong thư mục `test-results/` của repo, sẵn sàng đối chiếu độc lập.
+- **Test suite:** chạy `npm test --workspace brake --workspace redteam --workspace thrift --workspace @lyceum/server` từ gốc repo.
+- **Benchmark cloud:** GitHub Actions run công khai (nếu có quyền truy cập repo) — workflow `throughput-benchmarks`, job `benchmark (ubuntu-latest)` và `benchmark (ubuntu-24.04-arm)`. Artifact `benchmark-results.json` được đính kèm mỗi lần chạy.
+- **Không có claim nào trong báo cáo này dựa trên lệnh gọi LLM API bên ngoài** (OpenRouter hay tương đương) — `brake`/`redteam` không cần và không gọi bất kỳ API LLM nào để hoạt động, đúng với kiến trúc "zero network call trên hot path" của toàn bộ sản phẩm.
 
 ---
 
 ## 6. Gói Beta Test gửi kèm
 
-Khách hàng nhận được bản build/dist đã đóng gói của `thrift`, `brake`, `redteam` — **không kèm mã nguồn TypeScript gốc** — để tự cài và test chức năng thật trên máy trước khi quyết định mua source code. Chi tiết cài đặt và lệnh test mẫu nằm trong `QUICKSTART-beta-test.md` đi kèm.
+Hai gói:
+
+1. **CLI package** — bản build/dist đã đóng gói của `thrift`, `brake`, `redteam` (không kèm mã nguồn TypeScript gốc) + `beta-activate.mjs`. Chi tiết cài đặt và lệnh test mẫu trong `QUICKSTART-beta-test.md`.
+2. **BYOC beta server** — license server tự host cho đợt beta, đi kèm README riêng.
 
 Sau khi khách xác nhận hài lòng với bản beta, quy trình chuyển giao source code đầy đủ (TypeScript, test suite, tài liệu kiến trúc) được xử lý riêng theo hợp đồng.
