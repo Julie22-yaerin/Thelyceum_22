@@ -1,11 +1,14 @@
 {
   "name": "the-lyceum",
   "version": "0.1.0",
-  "private": true,
-  "description": "The Lyceum \u2014 circuit breakers for AI. brake stops a dangerous action; redteam stops a one-sided conclusion.",
+  "private": false,
+  "description": "The Lyceum — circuit breakers for AI. brake stops a dangerous action; redteam stops a one-sided conclusion; thrift stops the bill.",
   "type": "module",
   "bin": {
-    "lyceum": "./scripts/lyceum.js"
+    "lyceum": "./scripts/lyceum.js",
+    "brake": "./packages/brake/dist/cli.js",
+    "redteam": "./packages/redteam/dist/cli.js",
+    "thrift": "./packages/thrift/dist/cli.js"
   },
   "workspaces": [
     "packages/brake",
@@ -14,6 +17,7 @@
     "packages/server"
   ],
   "scripts": {
+    "prepare": "npm run build",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "server": "npm run dev --workspace @lyceum/server",
@@ -24,6 +28,6 @@
     "package:all": "node scripts/package-distribution.mjs --all"
   },
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=18.0.0"
   }
 }

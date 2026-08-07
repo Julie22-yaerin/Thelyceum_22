@@ -69,18 +69,30 @@ async function main() {
     return;
   }
 
+  function runSubCli(pkgName, subArgs) {
+    const distPath = resolve(`packages/${pkgName}/dist/cli.js`);
+    const srcPath = resolve(`packages/${pkgName}/src/cli.ts`);
+    if (existsSync(distPath)) {
+      execFileSync(process.execPath, [distPath, ...subArgs], { stdio: "inherit" });
+    } else if (existsSync(srcPath)) {
+      execFileSync("npx", ["tsx", srcPath, ...subArgs], { stdio: "inherit" });
+    } else {
+      execFileSync(pkgName, subArgs, { stdio: "inherit" });
+    }
+  }
+
   if (command === "redteam") {
-    execFileSync("npx", ["tsx", "packages/redteam/src/cli.ts", ...args.slice(1)], { stdio: "inherit" });
+    runSubCli("redteam", args.slice(1));
     return;
   }
 
   if (command === "brake") {
-    execFileSync("npx", ["tsx", "packages/brake/src/cli.ts", ...args.slice(1)], { stdio: "inherit" });
+    runSubCli("brake", args.slice(1));
     return;
   }
 
   if (command === "savier" || command === "saver" || command === "thrift") {
-    execFileSync("npx", ["tsx", "packages/thrift/src/cli.ts", ...args.slice(1)], { stdio: "inherit" });
+    runSubCli("thrift", args.slice(1));
     return;
   }
 

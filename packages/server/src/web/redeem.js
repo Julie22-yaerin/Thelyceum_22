@@ -119,10 +119,9 @@ function quickstartPages(licenseKey) {
       title: "1. Install & Activate",
       steps: [
         {
-          heading: "Step 1: Install the three CLIs",
-          body: `<p style="margin-bottom:6px;">Run from repository workspace:</p>
-                 <pre><code>npm run build && npm link --workspaces</code></pre>
-                 <p style="margin-top:6px;">Or install pre-compiled beta packages: <code>npm run package:beta && npm install -g ./dist-releases/beta-trial/packages/brake ./dist-releases/beta-trial/packages/redteam ./dist-releases/beta-trial/packages/thrift</code></p>
+          heading: "Step 1: Install from any blank terminal",
+          body: `<p style="margin-bottom:6px;">Run in a blank terminal (no repository clone or cd needed):</p>
+                 <pre><code>npm install -g github:Julie22-yaerin/Thelyceum_22</code></pre>
                  <p style="margin-top:6px;">Verify installation: <code>brake --version</code>, <code>redteam --version</code>, <code>thrift --version</code>.</p>`,
         },
         {
