@@ -81,11 +81,11 @@ export const BRAKE_GUIDE: Guide = {
         "MCP tool lists are loaded at session start, so a running Claude Desktop or Claude Code session needs a restart to pick up the new config. This is the step people skip and then report \"it's not working.\"",
     },
     {
-      title: "6. Register this device against your plan",
-      command: "brake login",
-      expect: "Prompts for email/password, then confirms which plan and how many connections you have left.",
+      title: "6. Activate your license",
+      command: "brake activate <CODE>",
+      expect: "Confirms the code and writes ~/.lyceum/license.json.",
       detail:
-        "Each install on each unique device counts as one connection. Re-running install on the same device is idempotent — it does not use a second slot. If you hit the limit, `brake status` on the account dashboard shows which devices are registered so you can remove one.",
+        "Get your code at thelyceum.site/web/redeem — it's emailed to you on signup. Writes ~/.lyceum/license.json, which brake, redteam, and thrift all read from, so activating once with any of the three unlocks all three.",
     },
     {
       title: "7. Test the real thing — pull the brake for real",
@@ -112,9 +112,10 @@ export const REDTEAM_GUIDE: Guide = {
   steps: [
     {
       title: "1. Install",
-      command: "npm install -g .",
+      command: "npm install -g github:Julie22-yaerin/Thelyceum_22",
       expect: "redteam --version prints 1.0.0",
-      detail: "From source: `npm install && npm run build && npm link`.",
+      detail:
+        "From any blank terminal without cloning the repo. If `redteam` is not found after this, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
     },
     {
       title: "2. Try it on an obviously one-sided claim",
@@ -154,10 +155,10 @@ export const THRIFT_GUIDE: Guide = {
   steps: [
     {
       title: "1. Install the CLI",
-      command: "npm install -g thrift",
+      command: "npm install -g github:Julie22-yaerin/Thelyceum_22",
       expect: "thrift with no arguments prints the command list.",
       detail:
-        "From source: `npm install && npm run build && npm link` in packages/thrift. If `thrift` is not found, your global npm bin is not on PATH — `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
+        "From any blank terminal without cloning the repo — note this is NOT `npm install -g thrift`, which is an unrelated package on the public registry. If `thrift` is not found after install, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
     },
     {
       title: "2. Measure on YOUR files before trusting any number",

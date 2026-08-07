@@ -121,13 +121,13 @@ function quickstartPages(licenseKey) {
         {
           heading: "Step 1: Install from any blank terminal",
           body: `<p style="margin-bottom:6px;">Run in a blank terminal (no repository clone or cd needed):</p>
-                 <pre><code>npm install -g github:Julie22-yaerin/Thelyceum_22</code></pre>
+                 <pre><code>npm install -g https://github.com/Julie22-yaerin/Thelyceum_22.git</code></pre>
                  <p style="margin-top:6px;">Verify installation: <code>brake --version</code>, <code>redteam --version</code>, <code>thrift --version</code>.</p>`,
         },
         {
           heading: "Step 2: Activate your license key",
-          body: `<pre><code>brake login --key ${esc(licenseKey)}</code></pre>
-                 <p style="margin-top:6px;">Your license key: <code style="color:var(--green); font-weight:600;">${esc(licenseKey)}</code>. One license unlocks <strong>brake</strong>, <strong>redteam</strong>, and <strong>thrift</strong>.</p>`,
+          body: `<pre><code>brake activate ${esc(licenseKey)}</code></pre>
+                 <p style="margin-top:6px;">Your license key: <code style="color:var(--green); font-weight:600;">${esc(licenseKey)}</code>. Writes <code>~/.lyceum/license.json</code> — one activation unlocks <strong>brake</strong>, <strong>redteam</strong>, and <strong>thrift</strong>, since all three read the same file.</p>`,
         },
       ],
     },

@@ -20,6 +20,7 @@
 import { promises as fs } from "node:fs";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import * as readline from "node:readline/promises";
 import { stdin, stdout, exit } from "node:process";
 import { engageBrake, DEFAULT_POLICY } from "./brake.js";
@@ -60,6 +61,10 @@ import { getDeviceId, getDeviceMeta } from "./device.js";
 const HELP = `brake — emergency brake, 1000ms SLA (Local & Cloud).
 
 Core:
+  brake activate <CODE>
+      Install a license code (from thelyceum.site/web/redeem) into
+      ~/.lyceum/license.json. Unlocks brake, redteam, and thrift.
+
   brake engage [--reason <text>] [--sla <ms>] [--dry-run]
       Pull the emergency brake. Stops tracked PIDs / cloud processes, runs the
       optional stop script, posts webhook, logs token savings, and audits.
@@ -153,6 +158,26 @@ function formatExpiry(ts: number): string {
 }
 
 // ── Commands ───────────────────────────────────────────────────────────────
+
+/**
+ * Installs a manual-sale subscription code (from thelyceum.site/web/redeem)
+ * into ~/.lyceum/license.json — separate from the login/session system
+ * above, which is a different, older auth path. sub-license.ts's runtime
+ * gate reads this file directly; no login or session token involved.
+ */
+async function cmdActivate(rest: string[]): Promise<void> {
+  const key = rest[0]?.trim();
+  if (!key) {
+    printErr("usage: brake activate <CODE>");
+    exit(1);
+    return;
+  }
+  const dir = join(homedir(), ".lyceum");
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+  await fs.writeFile(join(dir, "license.json"), JSON.stringify({ licenseKey: key }, null, 2), { mode: 0o600 });
+  console.log(`✓ license activated: ${key}`);
+  console.log("brake, redteam, and thrift will now check in with the license server on each real tool call.");
+}
 
 async function cmdLogin(rest: string[]): Promise<void> {
   let email = getFlag(rest, "--email");
@@ -416,6 +441,7 @@ async function main(): Promise<void> {
   const [cmd, ...rest] = args;
 
   try {
+    if (cmd === "activate") return await cmdActivate(rest);
     if (cmd === "login") return await cmdLogin(rest);
     if (cmd === "logout") return await cmdLogout();
     if (cmd === "license") return await cmdLicense(rest);
