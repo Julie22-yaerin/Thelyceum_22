@@ -1,8 +1,8 @@
-// Signup / sign-in — Firebase handles the actual auth (email/password +
-// Google, both with built-in verified-email tracking); this page's job is
-// just driving the UI and handing the resulting ID token to
-// /api/auth/firebase/complete, which is the only thing that actually issues
-// a license (server-verified, never decided here).
+// Signup / sign-in — Firebase handles the actual auth (email/password, with
+// built-in verified-email tracking); this page's job is just driving the UI
+// and handing the resulting ID token to /api/auth/firebase/complete, which
+// is the only thing that actually issues a license (server-verified, never
+// decided here).
 
 const $ = (s) => document.querySelector(s);
 const KEY_STORE = "lyceum_license_key";
@@ -98,21 +98,9 @@ function renderVerifyPending(auth, authMod, user, name) {
     ({ auth, authMod } = await loadFirebase());
   } catch (err) {
     setError(err.message ?? "Couldn't load sign-in. Try again shortly.");
-    $("#googleBtn").disabled = true;
     $("#emailSubmit").disabled = true;
     return;
   }
-
-  $("#googleBtn").addEventListener("click", async () => {
-    setError("");
-    try {
-      const provider = new authMod.GoogleAuthProvider();
-      const cred = await authMod.signInWithPopup(auth, provider);
-      await finishWithUser(auth, authMod, cred.user, cred.user.displayName ?? "");
-    } catch (err) {
-      setError(err.message ?? "Google sign-in failed.");
-    }
-  });
 
   $("#toggleSignin").addEventListener("click", (e) => {
     e.preventDefault();

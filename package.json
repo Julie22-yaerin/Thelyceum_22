@@ -17,7 +17,6 @@
     "packages/server"
   ],
   "scripts": {
-    "prepare": "npm run build",
     "build": "node scripts/build-all.mjs",
     "test": "npm run test --workspaces --if-present",
     "server": "npm run dev --workspace @lyceum/server",

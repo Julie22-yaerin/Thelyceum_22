@@ -5,7 +5,7 @@
  *
  *   • Red Team (@lyceum/redteam) : Context Compacting & Anti-Drift Scanner
  *   • Brake    (@lyceum/brake)   : Cyber Security & Data Leak Safeguard
- *   • Saver    (@lyceum/thrift)  : Token Economy & Runaway Loop Interceptor (Max 2 repetitions)
+ *   • Thrift   (@lyceum/thrift)  : Token Economy & Runaway Loop Interceptor (Max 2 repetitions)
  */
 
 import { existsSync } from "node:fs";
@@ -41,11 +41,11 @@ function printHelp() {
   \x1b[36mstatus\x1b[0m        Display active safeguard status & token savings metrics
   \x1b[36mredteam\x1b[0m       Run Red Team scanner (compacting, advice, flaw checks)
   \x1b[36mbrake\x1b[0m         Invoke Brake security scanner & PID emergency brake
-  \x1b[36msavier / thrift\x1b[0m Token economy & runaway loop interceptor (Max 2 reps)
+  \x1b[36mthrift\x1b[0m        Token economy & runaway loop interceptor (Max 2 reps)
 
 \x1b[1mSafeguard Roles:\x1b[0m
   • \x1b[33mBrake\x1b[0m   Strictly handles Security & Cyber risks (exfiltration, creds, attacks)
-  • \x1b[32mSaver\x1b[0m   Handles Token Economy & Runaway Loops (Trips if repeated > 2 times)
+  • \x1b[32mThrift\x1b[0m  Handles Token Economy & Runaway Loops (Trips if repeated > 2 times)
   • \x1b[35mRedTeam\x1b[0m Handles Context Compacting & Code Flaw Advice (Warn vs Block)
 `);
 }
@@ -64,7 +64,7 @@ async function main() {
     console.log(`\x1b[1m=== THE LYCEUM SYSTEM STATUS ===\x1b[0m`);
     console.log(`\x1b[32m✔ Red Team Core\x1b[0m: ACTIVE (Goldilocks Context Compacter + Dual-Tier Code Flaws)`);
     console.log(`\x1b[32m✔ Brake Security\x1b[0m: ACTIVE (Local & Cloud Engine, 1000ms SLA)`);
-    console.log(`\x1b[32m✔ Saver (Thrift)\x1b[0m: ACTIVE (Runaway Loop Interceptor, Max 2 Repetitions)`);
+    console.log(`\x1b[32m✔ Thrift\x1b[0m: ACTIVE (Runaway Loop Interceptor, Max 2 Repetitions)`);
     console.log(`\x1b[34m✔ Logo Asset\x1b[0m   : file://${LOGO_PATH}\n`);
     return;
   }
