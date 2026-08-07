@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { openDb, type DbHandle } from "../src/db.js";
 import { seedLicensePool } from "../src/sub-license.js";
 import { completeSignup, listFirebaseSignups, getPublicWebConfig, FirebaseAuthError, type TokenVerifier, type DecodedToken } from "../src/firebase-auth.js";
+import type { EmailSender } from "../src/email.js";
 
 const ADMIN = { fingerprint: "fp_firebase_admin" };
 
@@ -32,6 +33,16 @@ beforeEach(() => {
 function fakeVerifier(decoded: DecodedToken | (() => Promise<DecodedToken>)): TokenVerifier {
   return {
     verifyIdToken: async () => (typeof decoded === "function" ? decoded() : decoded),
+  };
+}
+
+function fakeSender(): EmailSender & { calls: { to: string; name: string; licenseKey: string; expiresAt: number }[] } {
+  const calls: { to: string; name: string; licenseKey: string; expiresAt: number }[] = [];
+  return {
+    calls,
+    async sendLicenseEmail(to, name, licenseKey, expiresAt) {
+      calls.push({ to, name, licenseKey, expiresAt });
+    },
   };
 }
 
@@ -79,6 +90,17 @@ describe("completeSignup", () => {
     const second = await completeSignup(db, { idToken: "x", name: "Dev Person" }, fakeVerifier(GOOGLE_USER));
     expect(second.licenseKey).toBe(first.licenseKey);
     expect(listFirebaseSignups(db)).toHaveLength(1);
+  });
+
+  it("emails the license key once, on first issuance only — not on the idempotent repeat", async () => {
+    const sender = fakeSender();
+    await completeSignup(db, { idToken: "x", name: "Dev Person" }, fakeVerifier(GOOGLE_USER), sender);
+    await completeSignup(db, { idToken: "x", name: "Dev Person" }, fakeVerifier(GOOGLE_USER), sender);
+
+    expect(sender.calls).toHaveLength(1);
+    expect(sender.calls[0].to).toBe("dev@example.com");
+    expect(sender.calls[0].name).toBe("Dev Person");
+    expect(sender.calls[0].licenseKey).toMatch(/^[A-Z0-9]{8}$/);
   });
 
   it("falls back to the token's name, then the email prefix, when no name is supplied", async () => {

@@ -20,6 +20,7 @@
 
 import type { DbHandle } from "./db.js";
 import { autoAssignLicense, SubLicenseError } from "./sub-license.js";
+import { resendEmailSender, type EmailSender } from "./email.js";
 
 const SUBSCRIPTION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -116,7 +117,8 @@ interface SignupRow {
 export async function completeSignup(
   db: DbHandle,
   input: CompleteSignupInput,
-  verifier?: TokenVerifier
+  verifier?: TokenVerifier,
+  sender: EmailSender = resendEmailSender
 ): Promise<CompleteSignupResult> {
   if (!input.idToken) throw new FirebaseAuthError("invalid_input", "idToken is required.");
 
@@ -162,6 +164,10 @@ export async function completeSignup(
         "INSERT INTO firebase_signups (uid, email, name, provider, license_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
       )
       .run(decoded.uid, decoded.email, name, provider, license.id, Date.now());
+  }
+
+  if (license.expires_at) {
+    void sender.sendLicenseEmail(decoded.email, name, license.license_key, license.expires_at);
   }
 
   return { verified: true, licenseKey: license.license_key, expiresAt: license.expires_at ?? undefined };

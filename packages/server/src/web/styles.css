@@ -572,6 +572,15 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
 }
 .waitlist-form button[type="submit"]:disabled { background: var(--border-strong); cursor: not-allowed; }
 
+.google-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: #fff; color: #3c4043; border: 1px solid var(--border-strong);
+  border-radius: 8px; padding: 11px; font-size: 14.5px; font-weight: 600;
+  font-family: inherit; cursor: pointer; transition: background 120ms ease, box-shadow 120ms ease;
+}
+.google-btn:hover { background: #f8f8f8; box-shadow: var(--shadow-sm); }
+.google-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* ── OTP-style license code entry (8 cells, one char each) ────────────── */
 .otp-input { display: flex; gap: 8px; justify-content: center; }
 .otp-cell {
@@ -876,3 +885,244 @@ button.mini:disabled { opacity: 0.5; cursor: not-allowed; }
   .thankyou-card { padding: 36px 24px; }
   .products--compact { gap: 18px 28px; }
 }
+
+/* ── Token Savings Before & After Chart Component ────────────────────────── */
+
+.token-savings-section {
+  margin: 48px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.ts-title-group h2 {
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.ts-title-group p {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.ts-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--green-wash);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(18, 133, 91, 0.2);
+}
+
+.ts-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.ts-scenario-btn {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ts-scenario-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.ts-scenario-btn.active {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+
+.ts-chart-card {
+  background: #111116;
+  color: #ededf5;
+  border-radius: 10px;
+  padding: 24px;
+  font-family: var(--font);
+  border: 1px solid #242432;
+  margin-bottom: 24px;
+}
+
+.ts-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ts-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ts-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ts-bar-label .dim {
+  color: #9090a8;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.ts-bar-track {
+  height: 28px;
+  background: #1c1c28;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  position: relative;
+}
+
+.ts-fill-before {
+  background: linear-gradient(90deg, #ff5f57, #e0342c);
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+
+.ts-fill-after {
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+
+.ts-fill-lossless {
+  background: linear-gradient(90deg, #10b981, #059669);
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.ts-fill-lossy {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.ts-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.ts-metric {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+}
+
+.ts-metric-num {
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.ts-metric-num.saved { color: var(--green); }
+.ts-metric-num.lossless { color: #059669; }
+
+.ts-metric-label {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.ts-calc-box {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.ts-calc-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ts-calc-input label {
+  font-size: 13.5px;
+  font-weight: 550;
+}
+
+.ts-calc-input input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-size: 14px;
+  width: 130px;
+  font-family: var(--mono);
+}
+
+.ts-calc-results {
+  display: flex;
+  gap: 20px;
+}
+
+.ts-calc-res {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.ts-calc-res .val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.ts-calc-res .sub {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+@media (max-width: 768px) {
+  .ts-metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .ts-calc-box { flex-direction: column; align-items: stretch; }
+  .ts-calc-results { justify-content: space-between; }
+}
+
