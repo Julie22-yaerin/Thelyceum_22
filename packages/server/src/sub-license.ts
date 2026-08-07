@@ -194,3 +194,31 @@ export function upgradeSubLicense(db: DbHandle, licenseKey: string, months: numb
     daysRemaining: (expiresAt - Date.now()) / (24 * 60 * 60 * 1000),
   };
 }
+
+// ── Auto-assign (system actor — a confirmed on-chain payment, not an admin) ─
+// Same effect as setLicenseStatus(taken), but for a caller that isn't a
+// human admin: no AdminIdentity to attribute the action to, so it logs to
+// the same audit_events table under a "system:" actor instead of
+// "admin:<fingerprint>" — visible in the same admin console audit list,
+// clearly distinguishable from a hand action.
+
+export function autoAssignLicense(db: DbHandle, label: string, durationMs = DEFAULT_SUBSCRIPTION_MS): SubLicenseRow {
+  const slot = db.raw
+    .prepare("SELECT * FROM subscription_licenses WHERE status = 'not_taken' ORDER BY created_at ASC LIMIT 1")
+    .get() as SubLicenseRow | undefined;
+  if (!slot) {
+    throw new SubLicenseError("not_found", "No license slots available — the pool is fully sold. Contact the operator to add more.");
+  }
+
+  const now = Date.now();
+  const expiresAt = now + durationMs;
+  db.raw
+    .prepare("UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ? WHERE id = ?")
+    .run(label, now, expiresAt, slot.id);
+
+  db.raw
+    .prepare("INSERT INTO audit_events (user_id, event, data, created_at) VALUES (?, ?, ?, ?)")
+    .run("system:solana-pay", "sub_license.auto_assign", JSON.stringify({ id: slot.id, label }), now);
+
+  return db.raw.prepare("SELECT * FROM subscription_licenses WHERE id = ?").get(slot.id) as unknown as SubLicenseRow;
+}

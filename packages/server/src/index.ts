@@ -69,6 +69,12 @@ import {
   upgradeSubLicense,
   SubLicenseError,
 } from "./sub-license.js";
+import {
+  createCheckout as createSolanaCheckout,
+  checkoutStatus as solanaCheckoutStatus,
+  checkoutQrPng,
+  SolanaPayError,
+} from "./solana-pay.js";
 import { getTelemetry } from "./telemetry.js";
 import { recordUsage, monthlyUsage, budgetStatus, monthKey } from "./usage.js";
 
@@ -225,6 +231,9 @@ app.use("/api/*", async (c, next) => {
     "/api/admin/",
     "/dev/",
     "/api/telemetry",
+    // No session exists to check here either: a checkout is looked up by its
+    // reference id (or verified on-chain), same shape as license-pool above.
+    "/api/checkout/solana/",
   ];
   if (
     c.req.path === "/api/auth/signup" ||
@@ -976,6 +985,50 @@ app.post("/api/license-pool/upgrade", async (c) => {
     }
     throw err;
   }
+});
+
+// ── Solana Pay checkout (USDC) ───────────────────────────────────────────
+// Public on purpose, same reasoning as the license-pool routes above: a
+// checkout has no session, only a reference id. Verification is on-chain —
+// nothing here trusts the client's say-so about payment.
+
+const SolanaCreateBody = z.object({ connections: z.number().int().min(2).max(15) });
+
+app.post("/api/checkout/solana/create", async (c) => {
+  const body = SolanaCreateBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    return c.json(createSolanaCheckout(db, body.data.connections));
+  } catch (err) {
+    if (err instanceof SolanaPayError) return c.json({ error: err.code, message: err.message }, 400);
+    throw err;
+  }
+});
+
+app.get("/api/checkout/solana/status/:reference", async (c) => {
+  try {
+    return c.json(await solanaCheckoutStatus(db, c.req.param("reference")));
+  } catch (err) {
+    if (err instanceof SolanaPayError) {
+      const status =
+        err.code === "not_found"
+          ? 404
+          : err.code === "not_configured"
+            ? 503
+            : err.code === "pool_exhausted"
+              ? 409
+              : 400;
+      return c.json({ error: err.code, message: err.message }, status);
+    }
+    throw err;
+  }
+});
+
+app.get("/api/checkout/solana/qr", async (c) => {
+  const url = c.req.query("url");
+  if (!url) return c.json({ error: "invalid_input" }, 400);
+  const png = await checkoutQrPng(url);
+  return c.body(new Uint8Array(png), 200, { "Content-Type": "image/png", "Cache-Control": "no-store" });
 });
 
 // ── Dev activation (BRAKE_DEV_MODE only) ────────────────────────────────────

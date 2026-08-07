@@ -44,19 +44,22 @@
           <span class="pricing-period">/month</span>
         </div>
 
+        <button type="button" id="payUsdcBtn" style="width:100%;">Pay with USDC (Solana)</button>
         <button
           type="button"
           class="book-a-call-cta"
+          style="width:100%; margin-top:10px;"
           data-cal-link="nhu-y-pham-aliana-afiwbr/thelyceum.site"
           data-cal-namespace="thelyceum.site"
           data-cal-config='{"layout":"month_view","useSlotsViewOnSmallScreen":"true"}'
         >
-          Book a call to get set up
+          Or book a call
         </button>
-        <p class="muted small" style="margin-top:12px;">
-          No self-serve checkout yet — a call gets you a license key by
-          email, activated on your machine in a couple of minutes.
-        </p>
+
+        <div id="solanaPayPanel" class="hidden" style="margin-top:20px; text-align:center;">
+          <img id="solanaQr" alt="Scan with a Solana wallet to pay" style="width:220px; height:220px; border-radius:8px; border:1px solid var(--border);" />
+          <p class="muted small" id="solanaStatus" style="margin-top:10px;">Waiting for payment…</p>
+        </div>
       </div>
     </section>
   </main>
