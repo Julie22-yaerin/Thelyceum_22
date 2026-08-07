@@ -17,6 +17,9 @@ import {
   listLicensePool,
   setLicenseStatus,
   validateSubLicense,
+  markCheckedIn,
+  cancelSubLicense,
+  upgradeSubLicense,
   SubLicenseError,
   SUB_LICENSE_PREFIX,
 } from "../src/sub-license.js";
@@ -129,5 +132,79 @@ describe("validateSubLicense", () => {
     setLicenseStatus(db, ADMIN, slot.id, { status: "taken" });
     setLicenseStatus(db, ADMIN, slot.id, { status: "not_taken" });
     expect(() => validateSubLicense(db, slot.license_key)).toThrow(SubLicenseError);
+  });
+});
+
+describe("markCheckedIn", () => {
+  it("sets first_checkin_at on first call and leaves it alone after", () => {
+    const [slot] = seedLicensePool(db, ADMIN);
+    setLicenseStatus(db, ADMIN, slot.id, { status: "taken" });
+
+    expect(validateSubLicense(db, slot.license_key).firstCheckinAt).toBeNull();
+    markCheckedIn(db, slot.license_key);
+    const first = validateSubLicense(db, slot.license_key).firstCheckinAt;
+    expect(first).not.toBeNull();
+
+    markCheckedIn(db, slot.license_key);
+    expect(validateSubLicense(db, slot.license_key).firstCheckinAt).toBe(first);
+  });
+
+  it("is a silent no-op for a key that doesn't exist", () => {
+    expect(() => markCheckedIn(db, "not-a-real-key")).not.toThrow();
+  });
+});
+
+describe("cancelSubLicense", () => {
+  it("returns the slot to the pool, clearing label/expiry/check-in", () => {
+    const [slot] = seedLicensePool(db, ADMIN);
+    setLicenseStatus(db, ADMIN, slot.id, { status: "taken", label: "acme" });
+    markCheckedIn(db, slot.license_key);
+
+    cancelSubLicense(db, slot.license_key);
+
+    const pool = listLicensePool(db);
+    const row = pool.find((r) => r.id === slot.id)!;
+    expect(row.status).toBe("not_taken");
+    expect(row.label).toBeNull();
+    expect(row.expires_at).toBeNull();
+    expect(row.first_checkin_at).toBeNull();
+    expect(() => validateSubLicense(db, slot.license_key)).toThrow(SubLicenseError);
+  });
+
+  it("throws for an unknown key", () => {
+    expect(() => cancelSubLicense(db, "not-a-real-key")).toThrow(SubLicenseError);
+  });
+});
+
+describe("upgradeSubLicense", () => {
+  it("extends an active license from its current expiry, not from now", () => {
+    const [slot] = seedLicensePool(db, ADMIN);
+    const taken = setLicenseStatus(db, ADMIN, slot.id, { status: "taken", durationMs: 5 * 24 * 60 * 60 * 1000 });
+
+    const result = upgradeSubLicense(db, slot.license_key, 1);
+    expect(result.expiresAt - taken.expires_at!).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
+    expect(result.expiresAt - taken.expires_at!).toBeLessThan(31 * 24 * 60 * 60 * 1000);
+  });
+
+  it("extends a lapsed license from now, not from its stale expiry", () => {
+    const [slot] = seedLicensePool(db, ADMIN);
+    setLicenseStatus(db, ADMIN, slot.id, { status: "taken" });
+    db.raw.prepare("UPDATE subscription_licenses SET expires_at = ? WHERE id = ?").run(Date.now() - 100_000_000, slot.id);
+
+    const before = Date.now();
+    const result = upgradeSubLicense(db, slot.license_key, 1);
+    expect(result.expiresAt - before).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
+  });
+
+  it("rejects a license that was never taken", () => {
+    const [slot] = seedLicensePool(db, ADMIN);
+    expect(() => upgradeSubLicense(db, slot.license_key, 1)).toThrow(SubLicenseError);
+  });
+
+  it("rejects zero or negative months", () => {
+    const [slot] = seedLicensePool(db, ADMIN);
+    setLicenseStatus(db, ADMIN, slot.id, { status: "taken" });
+    expect(() => upgradeSubLicense(db, slot.license_key, 0)).toThrow(SubLicenseError);
+    expect(() => upgradeSubLicense(db, slot.license_key, -1)).toThrow(SubLicenseError);
   });
 });

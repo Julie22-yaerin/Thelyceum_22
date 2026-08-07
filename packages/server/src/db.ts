@@ -191,6 +191,17 @@ function migrate(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_sub_licenses_status ON subscription_licenses(status);
   `);
+
+  // Added after subscription_licenses first shipped — ALTER TABLE ADD COLUMN,
+  // not a fresh CREATE, so an already-migrated DB must not error on restart.
+  // Set the first time a real CLI (not the redeem web page) validates this
+  // key; the redeem page uses this to know when to stop showing onboarding
+  // and switch to the account/status view.
+  try {
+    db.exec("ALTER TABLE subscription_licenses ADD COLUMN first_checkin_at INTEGER");
+  } catch (err) {
+    if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
+  }
 }
 
 export interface UserRow {

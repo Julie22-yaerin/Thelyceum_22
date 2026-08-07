@@ -3,47 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Enter your license — The Lyceum</title>
+  <title>Your account — The Lyceum</title>
   <meta name="robots" content="noindex, nofollow" />
-  <link rel="icon" type="image/png" href="/web/lyceum_logo.png" />
+  <link rel="icon" type="image/png" href="/web/logo.png" />
   <link rel="stylesheet" href="/web/styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <a href="/web/" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;">
-        <img src="/web/lyceum_logo.png" alt="The Lyceum" class="logo-img" />
+        <img src="/web/logo.png" alt="The Lyceum" class="logo-img" />
         <span class="name">The Lyceum</span>
       </a>
     </div>
   </header>
 
   <main>
-    <section class="waitlist-section">
-      <h2 class="section-title">Unlock your CLI</h2>
-      <p class="section-sub">
-        Paste the code you got after payment. It unlocks brake, redteam, and
-        thrift on this machine — run <code>node license-activate.mjs &lt;code&gt;</code>
-        locally, or paste it here to confirm it's valid before you do.
-      </p>
-
-      <div class="waitlist-card" id="redeemCard">
-        <h2>Enter your license code</h2>
-        <p class="sub">One code unlocks all three tools. When it expires, come back here for a new one.</p>
-
-        <form class="waitlist-form" id="redeemForm" novalidate>
-          <label>License code
-            <input type="text" name="licenseKey" required autocomplete="off" spellcheck="false" placeholder="LYCEUM-SUB-…" />
-          </label>
-          <button type="submit" id="redeemSubmit">Unlock</button>
-          <p class="field-error" id="redeemError" style="text-align:center;"></p>
-        </form>
-      </div>
+    <section class="waitlist-section" id="redeemSection">
+      <!-- All three views (entry form, quickstart wizard, dashboard) render
+           into #redeemCard below — redeem.js decides which one, based on
+           whether a key is stored locally and whether the server has ever
+           seen a real CLI check in with it. -->
+      <div class="waitlist-card" id="redeemCard"></div>
     </section>
   </main>
 
   <footer>
-    <p>Lost your code or it expired? <a href="#book-a-call">Book a call</a> on the homepage.</p>
+    <p>Lost your code or it expired? <a href="/web/#book-a-call">Book a call</a> on the homepage.</p>
   </footer>
 
   <script src="/web/redeem.js" type="module"></script>

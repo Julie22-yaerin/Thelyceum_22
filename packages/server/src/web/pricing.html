@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pricing — The Lyceum</title>
+  <meta name="description" content="$42 per 2 connections. One connection is one MCP instance on one AI host. Slide to see the price at your scale, up to 15 connections." />
+  <link rel="icon" type="image/png" href="/web/logo.png" />
+  <link rel="stylesheet" href="/web/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a href="/web/" style="display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;">
+        <img src="/web/logo.png" alt="The Lyceum" class="logo-img" />
+        <span class="name">The Lyceum</span>
+      </a>
+    </div>
+    <nav class="nav">
+      <a href="/web/">Home</a>
+      <a href="/web/redeem" class="nav-cta">Enter license key</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="pricing-section">
+      <h2 class="section-title">Pricing</h2>
+      <p class="section-sub">
+        $42 per 2 connections. A connection is one MCP instance on one AI
+        host — one Claude Code, one Claude Desktop, one CI runner. All three
+        tools (brake, redteam, thrift) are included at every scale.
+      </p>
+
+      <div class="pricing-card">
+        <div class="pricing-slider-row">
+          <label for="connSlider">Connections</label>
+          <span class="pricing-conn-value" id="connValue">2</span>
+        </div>
+        <input type="range" id="connSlider" min="2" max="15" step="1" value="2" />
+        <div class="pricing-slider-scale"><span>2</span><span>15 (max)</span></div>
+
+        <div class="pricing-total">
+          <span class="pricing-amount" id="priceValue">$42</span>
+          <span class="pricing-period">/month</span>
+        </div>
+
+        <button
+          type="button"
+          class="book-a-call-cta"
+          data-cal-link="nhu-y-pham-aliana-afiwbr/thelyceum.site"
+          data-cal-namespace="thelyceum.site"
+          data-cal-config='{"layout":"month_view","useSlotsViewOnSmallScreen":"true"}'
+        >
+          Book a call to get set up
+        </button>
+        <p class="muted small" style="margin-top:12px;">
+          No self-serve checkout yet — a call gets you a license key by
+          email, activated on your machine in a couple of minutes.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>brake stops the action, redteam attacks the argument, thrift stops the bill.</p>
+  </footer>
+
+  <script src="/web/pricing.js" type="module"></script>
+
+  <!-- Cal element-click embed code begins -->
+  <script type="text/javascript">
+    (function (C, A, L) { let p = function (a, ar) { a.q.push(ar); }; let d = C.document; C.Cal = C.Cal || function () { let cal = C.Cal; let ar = arguments; if (!cal.loaded) { cal.ns = {}; cal.q = cal.q || []; d.head.appendChild(d.createElement("script")).src = A; cal.loaded = true; } if (ar[0] === L) { const api = function () { p(api, arguments); }; const namespace = ar[1]; api.q = api.q || []; if(typeof namespace === "string"){cal.ns[namespace] = cal.ns[namespace] || api;p(cal.ns[namespace], ar);p(cal, ["initNamespace", namespace]);} else p(cal, ar); return;} p(cal, ar); }; })(window, "https://app.cal.com/embed/embed.js", "init");
+    Cal("init", "thelyceum.site", {origin:"https://app.cal.com"});
+    Cal.config = Cal.config || {};
+    Cal.config.forwardQueryParams = true;
+
+    Cal.ns["thelyceum.site"]("ui", {"hideEventTypeDetails":false,"layout":"month_view"});
+  </script>
+  <!-- Cal element-click embed code ends -->
+</body>
+</html>

@@ -38,6 +38,7 @@ export interface SubLicenseRow {
   created_at: number;
   taken_at: number | null;
   expires_at: number | null;
+  first_checkin_at: number | null;
 }
 
 // ── Seed the pool (admin, idempotent) ───────────────────────────────────
@@ -95,7 +96,9 @@ export function setLicenseStatus(
       .run(input.label ?? row.label, now, expiresAt, id);
   } else {
     db.raw
-      .prepare("UPDATE subscription_licenses SET status = 'not_taken', label = NULL, taken_at = NULL, expires_at = NULL WHERE id = ?")
+      .prepare(
+        "UPDATE subscription_licenses SET status = 'not_taken', label = NULL, taken_at = NULL, expires_at = NULL, first_checkin_at = NULL WHERE id = ?"
+      )
       .run(id);
   }
 
@@ -109,13 +112,19 @@ export interface ValidateResult {
   ok: true;
   expiresAt: number;
   daysRemaining: number;
+  firstCheckinAt: number | null;
 }
 
-export function validateSubLicense(db: DbHandle, licenseKey: string): ValidateResult {
+function loadByKey(db: DbHandle, licenseKey: string): SubLicenseRow {
   const row = db.raw
     .prepare("SELECT * FROM subscription_licenses WHERE license_key = ?")
     .get(licenseKey) as SubLicenseRow | undefined;
   if (!row) throw new SubLicenseError("invalid_key", "That license code isn't valid.");
+  return row;
+}
+
+export function validateSubLicense(db: DbHandle, licenseKey: string): ValidateResult {
+  const row = loadByKey(db, licenseKey);
   if (row.status !== "taken" || !row.expires_at) {
     throw new SubLicenseError("not_taken", "This code hasn't been activated yet. Contact us to activate it.");
   }
@@ -130,5 +139,58 @@ export function validateSubLicense(db: DbHandle, licenseKey: string): ValidateRe
     ok: true,
     expiresAt: row.expires_at,
     daysRemaining: Math.max(0, (row.expires_at - now) / (24 * 60 * 60 * 1000)),
+    firstCheckinAt: row.first_checkin_at,
+  };
+}
+
+// ── Check in (CLI only — called from the real /validate path, not /enter) ──
+// Marks the moment an actual CLI, not just the redeem web page, first
+// confirmed this key. Idempotent: only ever sets the column once.
+
+export function markCheckedIn(db: DbHandle, licenseKey: string): void {
+  db.raw
+    .prepare("UPDATE subscription_licenses SET first_checkin_at = ? WHERE license_key = ? AND first_checkin_at IS NULL")
+    .run(Date.now(), licenseKey);
+}
+
+// ── Cancel (self-service, public — the key itself is the credential) ───────
+// Returns the slot to the pool immediately. No refund logic here; that's a
+// conversation the "book a call" flow, not this endpoint, handles.
+
+export function cancelSubLicense(db: DbHandle, licenseKey: string): void {
+  const row = loadByKey(db, licenseKey);
+  db.raw
+    .prepare(
+      "UPDATE subscription_licenses SET status = 'not_taken', label = NULL, taken_at = NULL, expires_at = NULL, first_checkin_at = NULL WHERE id = ?"
+    )
+    .run(row.id);
+}
+
+// ── Upgrade / extend (self-service, public) ─────────────────────────────────
+
+export interface UpgradeResult {
+  ok: true;
+  expiresAt: number;
+  daysRemaining: number;
+}
+
+export function upgradeSubLicense(db: DbHandle, licenseKey: string, months: number): UpgradeResult {
+  if (!(months > 0) || !Number.isFinite(months)) {
+    throw new SubLicenseError("invalid_input", "months must be a positive number.");
+  }
+  const row = loadByKey(db, licenseKey);
+  if (row.status !== "taken" || !row.expires_at) {
+    throw new SubLicenseError("not_taken", "This code hasn't been activated yet.");
+  }
+  // Extend from expiry if still active (a renewal shouldn't shorten unused
+  // time), from now if it already lapsed (extending from a past date would
+  // under-credit the purchase).
+  const base = Math.max(row.expires_at, Date.now());
+  const expiresAt = base + months * 30 * 24 * 60 * 60 * 1000;
+  db.raw.prepare("UPDATE subscription_licenses SET expires_at = ? WHERE id = ?").run(expiresAt, row.id);
+  return {
+    ok: true,
+    expiresAt,
+    daysRemaining: (expiresAt - Date.now()) / (24 * 60 * 60 * 1000),
   };
 }

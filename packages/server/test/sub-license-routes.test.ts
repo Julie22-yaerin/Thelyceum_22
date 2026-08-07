@@ -107,7 +107,26 @@ describe("POST /api/license-pool/validate and /enter", () => {
     expect(e.status).not.toBe(401);
     const ej = await e.json();
     expect(ej.ok).toBe(true);
-    expect(ej.redirectTo).toBe("/web/showroom#guides");
+  });
+
+  it("/enter does NOT mark check-in — only a real CLI call to /validate does", async () => {
+    const { licenses } = await (await seed()).json();
+    await setStatus(licenses[3].id, { status: "taken" });
+
+    const afterEnter = await (await enter(licenses[3].license_key)).json();
+    expect(afterEnter.firstCheckinAt).toBeNull();
+
+    const afterValidate = await (await validate(licenses[3].license_key)).json();
+    expect(afterValidate.firstCheckinAt).not.toBeNull();
+  });
+
+  it("check-in is idempotent — a second CLI validate doesn't move the timestamp", async () => {
+    const { licenses } = await (await seed()).json();
+    await setStatus(licenses[4].id, { status: "taken" });
+
+    const first = await (await validate(licenses[4].license_key)).json();
+    const second = await (await validate(licenses[4].license_key)).json();
+    expect(second.firstCheckinAt).toBe(first.firstCheckinAt);
   });
 
   it("rejects a not-yet-taken code with 403, not a session error", async () => {
@@ -121,5 +140,73 @@ describe("POST /api/license-pool/validate and /enter", () => {
   it("rejects a garbage key with 401, not a 500", async () => {
     const res = await validate("garbage");
     expect(res.status).toBe(401);
+  });
+});
+
+async function cancel(licenseKey: string): Promise<Response> {
+  return await app.request("/api/license-pool/cancel", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ licenseKey }),
+  });
+}
+
+async function upgrade(licenseKey: string, months: number): Promise<Response> {
+  return await app.request("/api/license-pool/upgrade", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ licenseKey, months }),
+  });
+}
+
+describe("POST /api/license-pool/cancel", () => {
+  it("is reachable with no auth and returns the slot to the pool", async () => {
+    const { licenses } = await (await seed()).json();
+    await setStatus(licenses[5].id, { status: "taken", label: "someone" });
+
+    const res = await cancel(licenses[5].license_key);
+    expect(res.status).not.toBe(401);
+    expect((await res.json()).ok).toBe(true);
+
+    // The same code must no longer validate — it's back in the pool as not_taken.
+    const v = await validate(licenses[5].license_key);
+    expect(v.status).toBe(403);
+  });
+});
+
+describe("POST /api/license-pool/upgrade", () => {
+  it("extends expiry by the given number of months from the current expiry", async () => {
+    const { licenses } = await (await seed()).json();
+    const setRes = await setStatus(licenses[6].id, { status: "taken" });
+    const before = (await setRes.json()).license.expires_at;
+
+    const res = await upgrade(licenses[6].license_key, 3);
+    expect(res.status).not.toBe(401);
+    const json = await res.json();
+    expect(json.ok).toBe(true);
+    expect(json.expiresAt - before).toBeGreaterThan(89 * 24 * 60 * 60 * 1000);
+    expect(json.expiresAt - before).toBeLessThan(91 * 24 * 60 * 60 * 1000);
+  });
+
+  it("supports a 12-month (yearly) upgrade", async () => {
+    const { licenses } = await (await seed()).json();
+    const setRes = await setStatus(licenses[7].id, { status: "taken" });
+    const before = (await setRes.json()).license.expires_at;
+
+    const json = await (await upgrade(licenses[7].license_key, 12)).json();
+    expect(json.expiresAt - before).toBeGreaterThan(359 * 24 * 60 * 60 * 1000);
+  });
+
+  it("rejects upgrading a code that was never taken", async () => {
+    const { licenses } = await (await seed()).json();
+    const res = await upgrade(licenses[8].license_key, 1);
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a non-positive months value", async () => {
+    const { licenses } = await (await seed()).json();
+    await setStatus(licenses[9].id, { status: "taken" });
+    const res = await upgrade(licenses[9].license_key, 0);
+    expect(res.status).toBe(400);
   });
 });

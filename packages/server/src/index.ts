@@ -59,7 +59,16 @@ import * as waitlist from "./waitlist.js";
 import { authenticateAdmin, adminConfigured, recordAdminAction, recentAdminActions, type AdminIdentity } from "./admin.js";
 import { mintTrialToken, activateTrial, TrialError, isLyceumIssuedKey } from "./trial.js";
 import { mintBetaLicense, checkBetaUsage, BetaError } from "./beta.js";
-import { seedLicensePool, listLicensePool, setLicenseStatus, validateSubLicense, SubLicenseError } from "./sub-license.js";
+import {
+  seedLicensePool,
+  listLicensePool,
+  setLicenseStatus,
+  validateSubLicense,
+  markCheckedIn,
+  cancelSubLicense,
+  upgradeSubLicense,
+  SubLicenseError,
+} from "./sub-license.js";
 import { getTelemetry } from "./telemetry.js";
 import { recordUsage, monthlyUsage, budgetStatus, monthKey } from "./usage.js";
 
@@ -235,6 +244,8 @@ app.use("/api/*", async (c, next) => {
     // page calls these with nothing but a pasted code, no session at all.
     c.req.path === "/api/license-pool/validate" ||
     c.req.path === "/api/license-pool/enter" ||
+    c.req.path === "/api/license-pool/cancel" ||
+    c.req.path === "/api/license-pool/upgrade" ||
     PUBLIC_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))
   ) {
     return next();
@@ -906,6 +917,15 @@ app.post("/api/license-pool/validate", async (c) => {
   const body = LicensePoolKeyBody.safeParse(await c.req.json().catch(() => ({})));
   if (!body.success) return c.json({ error: "invalid_input" }, 400);
   try {
+    // Validate first — a key that doesn't pass (unknown/not-taken/expired)
+    // must not mark check-in. This is the real-CLI path (brake/redteam/
+    // thrift's gate.ts); the web redeem page confirms a code through /enter
+    // instead, which must NOT mark check-in, or the dashboard would show
+    // "activated" before anyone actually ran the CLI.
+    validateSubLicense(db, body.data.licenseKey);
+    markCheckedIn(db, body.data.licenseKey);
+    // Re-read so the response reflects the check-in write just made, not a
+    // stale snapshot from before it.
     return c.json(validateSubLicense(db, body.data.licenseKey));
   } catch (err) {
     if (err instanceof SubLicenseError) {
@@ -920,11 +940,38 @@ app.post("/api/license-pool/enter", async (c) => {
   const body = LicensePoolKeyBody.safeParse(await c.req.json().catch(() => ({})));
   if (!body.success) return c.json({ error: "invalid_input" }, 400);
   try {
-    const result = validateSubLicense(db, body.data.licenseKey);
-    return c.json({ ...result, redirectTo: "/web/showroom#guides" });
+    return c.json(validateSubLicense(db, body.data.licenseKey));
   } catch (err) {
     if (err instanceof SubLicenseError) {
       const status = err.code === "expired" ? 403 : err.code === "not_taken" ? 403 : 401;
+      return c.json({ ok: false, error: err.code, message: err.message }, status);
+    }
+    throw err;
+  }
+});
+
+app.post("/api/license-pool/cancel", async (c) => {
+  const body = LicensePoolKeyBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    cancelSubLicense(db, body.data.licenseKey);
+    return c.json({ ok: true });
+  } catch (err) {
+    if (err instanceof SubLicenseError) return c.json({ ok: false, error: err.code, message: err.message }, 401);
+    throw err;
+  }
+});
+
+const LicensePoolUpgradeBody = z.object({ licenseKey: z.string().min(1), months: z.number().int().positive() });
+
+app.post("/api/license-pool/upgrade", async (c) => {
+  const body = LicensePoolUpgradeBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
+  try {
+    return c.json(upgradeSubLicense(db, body.data.licenseKey, body.data.months));
+  } catch (err) {
+    if (err instanceof SubLicenseError) {
+      const status = err.code === "not_taken" ? 403 : err.code === "invalid_input" ? 400 : 401;
       return c.json({ ok: false, error: err.code, message: err.message }, status);
     }
     throw err;
