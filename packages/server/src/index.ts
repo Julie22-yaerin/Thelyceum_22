@@ -1106,7 +1106,14 @@ app.get("/download/cli", async (c) => {
 // ── Static web ──────────────────────────────────────────────────────────────
 
 app.use("/web/*", serveStatic({ root: "./", rewriteRequestPath: (p) => p.replace(/^\/web/, "/web") }));
-app.get("/", (c) => c.redirect("/web/"));
+
+// Serve the landing page directly at the root — not a redirect to /web/, so
+// the address bar (and the logo link on every page) stays at the bare
+// domain instead of bouncing through a /web/ suffix.
+app.get("/", (c) => {
+  const data = readFileSync(join(WEB_DIR, "index.html"));
+  return c.body(data, 200, { "Content-Type": "text/html; charset=utf-8" });
+});
 
 // Fallback: serve the SPA shell for any /web/* path that doesn't match a file
 app.get("/web/*", async (c) => {
