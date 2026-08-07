@@ -61,6 +61,7 @@ code, pre { font-family: var(--mono); font-size: 13px; }
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .logo { color: var(--accent); font-size: 20px; line-height: 1; }
+.logo-img { height: 32px; width: auto; display: block; border-radius: 6px; }
 .name { font-weight: 650; font-size: 17px; letter-spacing: -0.02em; }
 .tag {
   font-size: 11px; color: var(--text-dim);
@@ -487,13 +488,29 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
 
 /* ── Book a call ──────────────────────────────────────────────────────────── */
 
-.book-a-call-section { padding: 24px 0; text-align: center; }
+.book-a-call-section {
+  padding: 24px 0 48px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
 .book-a-call-cta {
   background: var(--accent); color: #fff; border: 0; padding: 15px 28px;
   border-radius: 999px; font-size: 15px; font-weight: 650; cursor: pointer;
   font-family: inherit; box-shadow: var(--shadow-md);
 }
 .book-a-call-cta:hover { filter: brightness(1.08); }
+.license-cta {
+  color: var(--text-dim); font-size: 14px; font-weight: 500;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.license-cta:hover { color: var(--text); }
+
+/* ── Benchmark ────────────────────────────────────────────────────────────── */
+
+.benchmark-section { padding: 24px 0 64px; text-align: center; }
+.benchmark-chart {
+  max-width: 100%; width: 760px; height: auto; margin: 24px auto 0;
+  border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+}
 
 /* ── Waitlist ─────────────────────────────────────────────────────────────── */
 
