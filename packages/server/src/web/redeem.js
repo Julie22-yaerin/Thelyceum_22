@@ -21,7 +21,14 @@ function esc(s) {
 
 // ── View 1: entry form ──────────────────────────────────────────────────
 
+const CODE_LENGTH = 8;
+
 function renderEntryForm(errorMessage) {
+  const cells = Array.from({ length: CODE_LENGTH }, (_, i) => `
+    <input class="otp-cell" type="text" inputmode="text" maxlength="1"
+      autocomplete="off" spellcheck="false" data-index="${i}" aria-label="Character ${i + 1}" />`
+  ).join("");
+
   card.innerHTML = `
     <h2>Enter your license code</h2>
     <p class="sub">
@@ -30,16 +37,56 @@ function renderEntryForm(errorMessage) {
       and thrift.
     </p>
     <form class="waitlist-form" id="redeemForm" novalidate>
-      <label>License code
-        <input type="text" name="licenseKey" required autocomplete="off" spellcheck="false" placeholder="ABCD2345" maxlength="8" style="text-transform:uppercase; letter-spacing:2px;" />
-      </label>
+      <div class="otp-input" id="otpInput">${cells}</div>
       <button type="submit" id="redeemSubmit">Unlock</button>
       <p class="field-error" id="redeemError" style="text-align:center;">${esc(errorMessage ?? "")}</p>
     </form>`;
 
+  const otpWrap = $("#otpInput");
+  const otpCells = Array.from(otpWrap.querySelectorAll(".otp-cell"));
+
+  function currentCode() {
+    return otpCells.map((c) => c.value).join("");
+  }
+
+  function focusCell(i) {
+    otpCells[Math.max(0, Math.min(CODE_LENGTH - 1, i))]?.focus();
+  }
+
+  otpCells.forEach((cell, i) => {
+    cell.addEventListener("input", () => {
+      cell.value = cell.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-1);
+      otpWrap.classList.remove("error");
+      if (cell.value && i < CODE_LENGTH - 1) focusCell(i + 1);
+    });
+    cell.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace" && !cell.value && i > 0) focusCell(i - 1);
+      else if (e.key === "ArrowLeft") focusCell(i - 1);
+      else if (e.key === "ArrowRight") focusCell(i + 1);
+    });
+    cell.addEventListener("paste", (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData?.getData("text") ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (!text) return;
+      text.split("").slice(0, CODE_LENGTH - i).forEach((ch, j) => {
+        if (otpCells[i + j]) otpCells[i + j].value = ch;
+      });
+      focusCell(Math.min(i + text.length, CODE_LENGTH - 1));
+    });
+  });
+
+  if (errorMessage) otpWrap.classList.add("error");
+  focusCell(0);
+
   $("#redeemForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const licenseKey = new FormData(e.target).get("licenseKey").trim();
+    const licenseKey = currentCode();
+    if (licenseKey.length < CODE_LENGTH) {
+      otpWrap.classList.add("error");
+      $("#redeemError").textContent = "Enter all 8 characters.";
+      focusCell(otpCells.findIndex((c) => !c.value));
+      return;
+    }
     const btn = $("#redeemSubmit");
     btn.disabled = true;
     btn.textContent = "Checking…";
@@ -51,6 +98,8 @@ function renderEntryForm(errorMessage) {
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.ok) {
+        otpWrap.classList.remove("error");
+        otpWrap.classList.add("success");
         localStorage.setItem(KEY_STORE, licenseKey);
         await boot();
         return;
