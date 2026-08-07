@@ -10,6 +10,16 @@
     "redteam": "./packages/redteam/dist/cli.js",
     "thrift": "./packages/thrift/dist/cli.js"
   },
+  "files": [
+    "scripts",
+    "packages/brake/dist",
+    "packages/redteam/dist",
+    "packages/thrift/dist"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
   "workspaces": [
     "packages/brake",
     "packages/redteam",
