@@ -22,7 +22,6 @@ import {
   cancelSubLicense,
   upgradeSubLicense,
   SubLicenseError,
-  SUB_LICENSE_PREFIX,
 } from "../src/sub-license.js";
 
 const ADMIN = { fingerprint: "fp_sub_license_admin" };
@@ -40,7 +39,8 @@ describe("seedLicensePool", () => {
     const pool = seedLicensePool(db, ADMIN);
     expect(pool).toHaveLength(50);
     expect(pool.every((r) => r.status === "not_taken")).toBe(true);
-    expect(pool.every((r) => r.license_key.startsWith(SUB_LICENSE_PREFIX))).toBe(true);
+    expect(pool.every((r) => r.license_key.length === 8)).toBe(true);
+    expect(pool.every((r) => /^[A-Z0-9]{8}$/.test(r.license_key))).toBe(true);
     expect(new Set(pool.map((r) => r.license_key)).size).toBe(50);
   });
 

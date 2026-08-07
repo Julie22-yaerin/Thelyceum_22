@@ -54,7 +54,7 @@ describe("completeSignup", () => {
   it("issues a license immediately for an already-verified (Google) token", async () => {
     const result = await completeSignup(db, { idToken: "x", name: "Dev Person" }, fakeVerifier(GOOGLE_USER));
     expect(result.verified).toBe(true);
-    expect(result.licenseKey).toMatch(/^LYCEUM-SUB-/);
+    expect(result.licenseKey).toMatch(/^[A-Z0-9]{8}$/);
     expect(result.expiresAt).toBeGreaterThan(Date.now());
   });
 

@@ -13,12 +13,28 @@
  * spare slot in the pool.
  */
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomInt } from "node:crypto";
 import type { DbHandle } from "./db.js";
 import { recordAdminAction, type AdminIdentity } from "./admin.js";
 
-export const SUB_LICENSE_PREFIX = "LYCEUM-SUB-";
 const DEFAULT_SUBSCRIPTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Short, human-typeable codes: 8 characters, no ambiguous glyphs (0/O, 1/I/L
+// all excluded) so a code read off a screen or dictated over a call doesn't
+// get miskeyed. 32^8 ≈ 1.1 trillion combinations — a birthday-bound
+// collision across even thousands of codes is effectively impossible, so
+// this generates blind rather than checking uniqueness first; the UNIQUE
+// constraint on license_key is the actual backstop.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const CODE_LENGTH = 8;
+
+function generateLicenseKey(): string {
+  let code = "";
+  for (let i = 0; i < CODE_LENGTH; i++) {
+    code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+  }
+  return code;
+}
 
 export class SubLicenseError extends Error {
   constructor(
@@ -55,7 +71,7 @@ export function seedLicensePool(db: DbHandle, identity: AdminIdentity, count = 5
   db.tx(() => {
     for (let i = 0; i < count; i++) {
       const id = randomUUID();
-      insert.run(id, `${SUB_LICENSE_PREFIX}${randomUUID()}`, now);
+      insert.run(id, generateLicenseKey(), now);
     }
   });
   recordAdminAction(db, identity, "sub_license.seed", { count });
@@ -79,7 +95,7 @@ export function addLicenses(db: DbHandle, identity: AdminIdentity, count: number
   db.tx(() => {
     for (let i = 0; i < count; i++) {
       const id = randomUUID();
-      insert.run(id, `${SUB_LICENSE_PREFIX}${randomUUID()}`, now);
+      insert.run(id, generateLicenseKey(), now);
     }
   });
   recordAdminAction(db, identity, "sub_license.add", { count });

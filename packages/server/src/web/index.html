@@ -7,6 +7,7 @@
   <meta name="description" content="A runaway agent burns your cloud budget in an hour. A confident mistake ships at 2am. A credential leaks to a log you don't control. The Lyceum stops all three before they hit the bill, the system, or your name." />
   <link rel="icon" type="image/png" href="/web/logo.png" />
   <link rel="stylesheet" href="/web/styles.css" />
+  <link rel="stylesheet" href="/web/landing.css" />
 </head>
 <body>
   <header class="topbar">
@@ -78,18 +79,12 @@
       </div>
     </section>
 
-    <!-- ── Book a call / unlock ─────────────────────────────────────── -->
-    <section id="book-a-call" class="book-a-call-section">
-      <button
-        type="button"
-        class="book-a-call-cta"
-        data-cal-link="nhu-y-pham-aliana-afiwbr/thelyceum.site"
-        data-cal-namespace="thelyceum.site"
-        data-cal-config='{"layout":"month_view","useSlotsViewOnSmallScreen":"true"}'
-      >
-        Book a call and get 1 month off for the savier
-      </button>
-      <a href="/web/redeem" class="license-cta">Already paid? Enter your license key</a>
+    <!-- ── Create account ──────────────────────────────────────────── -->
+    <section id="get-started" class="book-a-call-section">
+      <a href="/web/signup" class="book-a-call-cta" style="display:inline-block; text-decoration:none;">
+        Create your account
+      </a>
+      <a href="/web/redeem" class="license-cta">Already have a key? Enter it here</a>
     </section>
 
     <!-- ── Benchmark ────────────────────────────────────────────────── -->
@@ -100,25 +95,10 @@
       </p>
       <img src="/web/benchmark-chart.svg" alt="The Lyceum benchmark: brake 1.45M calls/sec, redteam 295.3k calls/sec, thrift 47.5k calls/sec, all well above their CI floors; 274/274 tests passing." class="benchmark-chart" />
     </section>
-
-    <section class="view-pricing-section">
-      <a href="/web/pricing" class="view-pricing-cta">View pricing</a>
-    </section>
   </main>
 
   <footer>
     <p>brake stops the action, redteam attacks the argument, thrift stops the bill.</p>
   </footer>
-
-  <!-- Cal element-click embed code begins -->
-  <script type="text/javascript">
-    (function (C, A, L) { let p = function (a, ar) { a.q.push(ar); }; let d = C.document; C.Cal = C.Cal || function () { let cal = C.Cal; let ar = arguments; if (!cal.loaded) { cal.ns = {}; cal.q = cal.q || []; d.head.appendChild(d.createElement("script")).src = A; cal.loaded = true; } if (ar[0] === L) { const api = function () { p(api, arguments); }; const namespace = ar[1]; api.q = api.q || []; if(typeof namespace === "string"){cal.ns[namespace] = cal.ns[namespace] || api;p(cal.ns[namespace], ar);p(cal, ["initNamespace", namespace]);} else p(cal, ar); return;} p(cal, ar); }; })(window, "https://app.cal.com/embed/embed.js", "init");
-    Cal("init", "thelyceum.site", {origin:"https://app.cal.com"});
-    Cal.config = Cal.config || {};
-    Cal.config.forwardQueryParams = true;
-
-    Cal.ns["thelyceum.site"]("ui", {"hideEventTypeDetails":false,"layout":"month_view"});
-  </script>
-  <!-- Cal element-click embed code ends -->
 </body>
 </html>

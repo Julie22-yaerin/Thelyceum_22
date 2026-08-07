@@ -31,7 +31,7 @@ function renderEntryForm(errorMessage) {
     </p>
     <form class="waitlist-form" id="redeemForm" novalidate>
       <label>License code
-        <input type="text" name="licenseKey" required autocomplete="off" spellcheck="false" placeholder="LYCEUM-SUB-…" />
+        <input type="text" name="licenseKey" required autocomplete="off" spellcheck="false" placeholder="ABCD2345" maxlength="8" style="text-transform:uppercase; letter-spacing:2px;" />
       </label>
       <button type="submit" id="redeemSubmit">Unlock</button>
       <p class="field-error" id="redeemError" style="text-align:center;">${esc(errorMessage ?? "")}</p>
@@ -103,7 +103,7 @@ redteam install all</code></pre>
 let quickstartPage = 0;
 
 function renderQuickstart() {
-  const licenseKey = localStorage.getItem(KEY_STORE) ?? "LYCEUM-SUB-…";
+  const licenseKey = localStorage.getItem(KEY_STORE) ?? "ABCD2345";
   const pages = quickstartPages(licenseKey);
   const page = pages[quickstartPage];
   const isLast = quickstartPage === pages.length - 1;
@@ -246,13 +246,37 @@ async function fetchStatus() {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json.ok) {
-      localStorage.removeItem(KEY_STORE);
-      return { invalid: true, message: json.message };
+      const wasExpired = json.error === "expired";
+      // An expired code stops working, but the pool row (and its history)
+      // survives until an admin/cancel clears it — losing the local key
+      // here would strand a returning user with no way to say "yes, this
+      // one, I want to upgrade it" without re-pasting the code by hand.
+      if (!wasExpired) localStorage.removeItem(KEY_STORE);
+      return { invalid: true, expired: wasExpired, message: json.message };
     }
     return json;
   } catch {
     return { networkError: true };
   }
+}
+
+// ── View: expired ─────────────────────────────────────────────────────────
+
+function renderExpired(message) {
+  card.innerHTML = `
+    <h2>Your license expired</h2>
+    <p class="sub">${esc(message ?? "This code is no longer active.")}</p>
+    <a href="/web/pricing" style="display:block;">
+      <button type="button" style="width:100%;">View pricing &amp; upgrade</button>
+    </a>
+    <button type="button" id="expiredNewCode" class="mini" style="width:100%; margin-top:10px;">
+      Use a different code instead
+    </button>`;
+
+  $("#expiredNewCode").addEventListener("click", () => {
+    localStorage.removeItem(KEY_STORE);
+    renderEntryForm();
+  });
 }
 
 async function boot() {
@@ -261,6 +285,8 @@ async function boot() {
     renderEntryForm();
   } else if (status.networkError) {
     card.innerHTML = `<p class="field-error" style="text-align:center;">Couldn't reach the server. Refresh to try again.</p>`;
+  } else if (status.invalid && status.expired) {
+    renderExpired(status.message);
   } else if (status.invalid) {
     renderEntryForm(status.message || "Your code is no longer valid. Enter a new one.");
   } else if (status.firstCheckinAt) {

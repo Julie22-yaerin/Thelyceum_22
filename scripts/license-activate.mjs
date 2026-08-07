@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 
 const key = process.argv[2];
 if (!key) {
-  console.error("Usage: node scripts/license-activate.mjs <LYCEUM-SUB-...>");
+  console.error("Usage: node scripts/license-activate.mjs <CODE>");
   process.exit(1);
 }
 
