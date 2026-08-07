@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { openDb, type DbHandle } from "../src/db.js";
 import {
   seedLicensePool,
+  addLicenses,
   listLicensePool,
   setLicenseStatus,
   validateSubLicense,
@@ -35,24 +36,45 @@ beforeEach(() => {
 });
 
 describe("seedLicensePool", () => {
-  it("creates 10 not_taken slots by default", () => {
+  it("creates 50 not_taken slots by default", () => {
     const pool = seedLicensePool(db, ADMIN);
-    expect(pool).toHaveLength(10);
+    expect(pool).toHaveLength(50);
     expect(pool.every((r) => r.status === "not_taken")).toBe(true);
     expect(pool.every((r) => r.license_key.startsWith(SUB_LICENSE_PREFIX))).toBe(true);
-    expect(new Set(pool.map((r) => r.license_key)).size).toBe(10);
+    expect(new Set(pool.map((r) => r.license_key)).size).toBe(50);
   });
 
   it("is idempotent — a second seed call doesn't add more", () => {
     seedLicensePool(db, ADMIN);
     const again = seedLicensePool(db, ADMIN);
-    expect(again).toHaveLength(10);
-    expect(listLicensePool(db)).toHaveLength(10);
+    expect(again).toHaveLength(50);
+    expect(listLicensePool(db)).toHaveLength(50);
   });
 
   it("honors an explicit count on first seed only", () => {
     const pool = seedLicensePool(db, ADMIN, 3);
     expect(pool).toHaveLength(3);
+  });
+
+  it("defaults to 50", () => {
+    expect(seedLicensePool(db, ADMIN)).toHaveLength(50);
+  });
+});
+
+describe("addLicenses", () => {
+  it("adds N more codes even when the pool is already non-empty", () => {
+    seedLicensePool(db, ADMIN, 3);
+    const pool = addLicenses(db, ADMIN, 5);
+    expect(pool).toHaveLength(8);
+  });
+
+  it("works on an empty pool too", () => {
+    expect(addLicenses(db, ADMIN, 4)).toHaveLength(4);
+  });
+
+  it("rejects zero or negative counts", () => {
+    expect(() => addLicenses(db, ADMIN, 0)).toThrow(SubLicenseError);
+    expect(() => addLicenses(db, ADMIN, -1)).toThrow(SubLicenseError);
   });
 });
 

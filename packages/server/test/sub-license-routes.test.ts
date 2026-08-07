@@ -75,11 +75,11 @@ describe("POST /api/admin/sub-licenses/seed", () => {
     expect(res.status).toBe(401);
   });
 
-  it("seeds 10 licenses for a valid admin", async () => {
+  it("seeds 50 licenses for a valid admin", async () => {
     const res = await seed();
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.licenses).toHaveLength(10);
+    expect(json.licenses).toHaveLength(50);
   });
 });
 

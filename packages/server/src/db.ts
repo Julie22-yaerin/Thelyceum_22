@@ -191,24 +191,23 @@ function migrate(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_sub_licenses_status ON subscription_licenses(status);
 
-    -- ── Solana Pay checkouts ─────────────────────────────────────────────
-    -- One row per QR code shown. 'reference' is the Solana Pay convention
-    -- for tying an on-chain transfer back to a specific checkout — a random
-    -- pubkey nobody signs with, only used as a memo-free order id findable
-    -- via findReference(). A row moves pending -> confirmed exactly once;
-    -- confirmed_at gates that so a slow client re-polling after confirmation
-    -- can never trigger a second license assignment for one payment.
-    CREATE TABLE IF NOT EXISTS solana_checkouts (
-      reference     TEXT PRIMARY KEY,
-      amount_usdc   TEXT NOT NULL,
-      connections   INTEGER NOT NULL,
-      status        TEXT NOT NULL DEFAULT 'pending',
-      license_id    TEXT,
-      created_at    INTEGER NOT NULL,
-      confirmed_at  INTEGER
+    -- ── Firebase signups ─────────────────────────────────────────────────
+    -- One row per verified Firebase account (email/password or Google) that
+    -- has completed signup. uid is Firebase's own account id — unique by
+    -- construction, so re-completing signup for an already-issued account
+    -- returns the existing license instead of draining another pool slot.
+    -- This table is also what makes a signup visible to an admin, since
+    -- nothing here goes through a human hand until this point.
+    CREATE TABLE IF NOT EXISTS firebase_signups (
+      uid          TEXT PRIMARY KEY,
+      email        TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      provider     TEXT NOT NULL,
+      license_id   TEXT,
+      created_at   INTEGER NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_solana_checkouts_status ON solana_checkouts(status);
+    CREATE INDEX IF NOT EXISTS idx_firebase_signups_created ON firebase_signups(created_at DESC);
   `);
 
   // Added after subscription_licenses first shipped — ALTER TABLE ADD COLUMN,

@@ -43,7 +43,7 @@ export interface SubLicenseRow {
 
 // ── Seed the pool (admin, idempotent) ───────────────────────────────────
 
-export function seedLicensePool(db: DbHandle, identity: AdminIdentity, count = 10): SubLicenseRow[] {
+export function seedLicensePool(db: DbHandle, identity: AdminIdentity, count = 50): SubLicenseRow[] {
   const { n } = db.raw.prepare("SELECT COUNT(*) AS n FROM subscription_licenses").get() as { n: number };
   if (n > 0) return listLicensePool(db);
 
@@ -59,6 +59,30 @@ export function seedLicensePool(db: DbHandle, identity: AdminIdentity, count = 1
     }
   });
   recordAdminAction(db, identity, "sub_license.seed", { count });
+  return listLicensePool(db);
+}
+
+// ── Top up the pool (admin, always adds — not idempotent like seed) ────────
+// seedLicensePool is a no-op once the pool is non-empty on purpose (a
+// redeploy must never silently double the pool). This is the explicit
+// "no really, add more" action for growing an already-seeded pool.
+
+export function addLicenses(db: DbHandle, identity: AdminIdentity, count: number): SubLicenseRow[] {
+  if (!Number.isInteger(count) || count <= 0) {
+    throw new SubLicenseError("invalid_input", "count must be a positive integer.");
+  }
+  const now = Date.now();
+  const insert = db.raw.prepare(
+    `INSERT INTO subscription_licenses (id, license_key, status, label, created_at, taken_at, expires_at)
+     VALUES (?, ?, 'not_taken', NULL, ?, NULL, NULL)`
+  );
+  db.tx(() => {
+    for (let i = 0; i < count; i++) {
+      const id = randomUUID();
+      insert.run(id, `${SUB_LICENSE_PREFIX}${randomUUID()}`, now);
+    }
+  });
+  recordAdminAction(db, identity, "sub_license.add", { count });
   return listLicensePool(db);
 }
 
@@ -195,14 +219,20 @@ export function upgradeSubLicense(db: DbHandle, licenseKey: string, months: numb
   };
 }
 
-// ── Auto-assign (system actor — a confirmed on-chain payment, not an admin) ─
+// ── Auto-assign (system actor — no human admin clicked anything) ───────────
 // Same effect as setLicenseStatus(taken), but for a caller that isn't a
 // human admin: no AdminIdentity to attribute the action to, so it logs to
-// the same audit_events table under a "system:" actor instead of
+// the same audit_events table under a "system:<actor>" user_id instead of
 // "admin:<fingerprint>" — visible in the same admin console audit list,
-// clearly distinguishable from a hand action.
+// clearly distinguishable from a hand action. `actor` names what triggered
+// it (e.g. "signup", "solana-pay") for that same audit trail.
 
-export function autoAssignLicense(db: DbHandle, label: string, durationMs = DEFAULT_SUBSCRIPTION_MS): SubLicenseRow {
+export function autoAssignLicense(
+  db: DbHandle,
+  label: string,
+  durationMs = DEFAULT_SUBSCRIPTION_MS,
+  actor = "auto"
+): SubLicenseRow {
   const slot = db.raw
     .prepare("SELECT * FROM subscription_licenses WHERE status = 'not_taken' ORDER BY created_at ASC LIMIT 1")
     .get() as SubLicenseRow | undefined;
@@ -218,7 +248,7 @@ export function autoAssignLicense(db: DbHandle, label: string, durationMs = DEFA
 
   db.raw
     .prepare("INSERT INTO audit_events (user_id, event, data, created_at) VALUES (?, ?, ?, ?)")
-    .run("system:solana-pay", "sub_license.auto_assign", JSON.stringify({ id: slot.id, label }), now);
+    .run(`system:${actor}`, "sub_license.auto_assign", JSON.stringify({ id: slot.id, label }), now);
 
   return db.raw.prepare("SELECT * FROM subscription_licenses WHERE id = ?").get(slot.id) as unknown as SubLicenseRow;
 }

@@ -79,6 +79,40 @@ async function refresh() {
   renderTable(list.entries);
   renderAudit(audit.entries);
   void refreshSubLicenses();
+  void refreshFirebaseSignups();
+}
+
+// ── Firebase signups ─────────────────────────────────────────────────────
+
+async function refreshFirebaseSignups() {
+  const { signups } = await api("/api/admin/firebase-signups");
+  renderFirebaseSignups(signups);
+}
+
+function renderFirebaseSignups(signups) {
+  const wrap = $("#firebaseSignupsWrap");
+  if (signups.length === 0) {
+    wrap.innerHTML = `<p class="muted" style="padding:24px 0;">No signups yet.</p>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="admin-table">
+      <thead><tr><th>Signed up</th><th>Name</th><th>Email</th><th>Provider</th><th>License</th></tr></thead>
+      <tbody>
+        ${signups
+          .map(
+            (s) => `
+          <tr>
+            <td class="dim">${new Date(s.created_at).toLocaleDateString()}</td>
+            <td>${esc(s.name)}</td>
+            <td><a href="mailto:${esc(s.email)}">${esc(s.email)}</a></td>
+            <td class="dim">${esc(s.provider)}</td>
+            <td class="mono dim">${s.license_id ? "issued" : "—"}</td>
+          </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>`;
 }
 
 // ── Subscription license pool ───────────────────────────────────────────────
@@ -90,6 +124,17 @@ async function refreshSubLicenses() {
   }
   renderSubLicenses(licenses);
 }
+
+$("#addLicensesBtn").addEventListener("click", async () => {
+  const count = parseInt(prompt("How many codes to add?", "10") ?? "", 10);
+  if (!count || count <= 0) return;
+  try {
+    await api("/api/admin/sub-licenses/add", { method: "POST", body: JSON.stringify({ count }) });
+    await refreshSubLicenses();
+  } catch (err) {
+    alert(err.message || "Could not add codes.");
+  }
+});
 
 function daysLeft(expiresAt) {
   if (!expiresAt) return "—";

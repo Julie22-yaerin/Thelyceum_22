@@ -61,20 +61,17 @@ import { mintTrialToken, activateTrial, TrialError, isLyceumIssuedKey } from "./
 import { mintBetaLicense, checkBetaUsage, BetaError } from "./beta.js";
 import {
   seedLicensePool,
+  addLicenses,
   listLicensePool,
   setLicenseStatus,
   validateSubLicense,
   markCheckedIn,
   cancelSubLicense,
   upgradeSubLicense,
+  autoAssignLicense,
   SubLicenseError,
 } from "./sub-license.js";
-import {
-  createCheckout as createSolanaCheckout,
-  checkoutStatus as solanaCheckoutStatus,
-  checkoutQrPng,
-  SolanaPayError,
-} from "./solana-pay.js";
+import { getPublicWebConfig, completeSignup, listFirebaseSignups, FirebaseAuthError } from "./firebase-auth.js";
 import { getTelemetry } from "./telemetry.js";
 import { recordUsage, monthlyUsage, budgetStatus, monthKey } from "./usage.js";
 
@@ -231,9 +228,6 @@ app.use("/api/*", async (c, next) => {
     "/api/admin/",
     "/dev/",
     "/api/telemetry",
-    // No session exists to check here either: a checkout is looked up by its
-    // reference id (or verified on-chain), same shape as license-pool above.
-    "/api/checkout/solana/",
   ];
   if (
     c.req.path === "/api/auth/signup" ||
@@ -255,6 +249,10 @@ app.use("/api/*", async (c, next) => {
     c.req.path === "/api/license-pool/enter" ||
     c.req.path === "/api/license-pool/cancel" ||
     c.req.path === "/api/license-pool/upgrade" ||
+    // No Lyceum session exists yet at signup — the client has a Firebase ID
+    // token instead, verified server-side inside the handler itself.
+    c.req.path === "/api/firebase-config" ||
+    c.req.path === "/api/auth/firebase/complete" ||
     PUBLIC_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))
   ) {
     return next();
@@ -895,8 +893,19 @@ app.post("/api/beta/check", async (c) => {
 
 app.post("/api/admin/sub-licenses/seed", async (c) => {
   const admin = c.get("admin" as never) as AdminIdentity;
-  const count = Number((await c.req.json().catch(() => ({}))).count) || 10;
+  const count = Number((await c.req.json().catch(() => ({}))).count) || 50;
   return c.json({ ok: true, licenses: seedLicensePool(db, admin, count) });
+});
+
+app.post("/api/admin/sub-licenses/add", async (c) => {
+  const admin = c.get("admin" as never) as AdminIdentity;
+  const count = Number((await c.req.json().catch(() => ({}))).count) || 0;
+  try {
+    return c.json({ ok: true, licenses: addLicenses(db, admin, count) });
+  } catch (err) {
+    if (err instanceof SubLicenseError) return c.json({ error: err.code, message: err.message }, 400);
+    throw err;
+  }
 });
 
 app.get("/api/admin/sub-licenses", (c) => {
@@ -987,34 +996,31 @@ app.post("/api/license-pool/upgrade", async (c) => {
   }
 });
 
-// ── Solana Pay checkout (USDC) ───────────────────────────────────────────
-// Public on purpose, same reasoning as the license-pool routes above: a
-// checkout has no session, only a reference id. Verification is on-chain —
-// nothing here trusts the client's say-so about payment.
+// ── Firebase signup (email/password or Google, verified email required) ────
+// Public: the client hasn't got a session with this server yet — it has a
+// Firebase ID token instead, which /complete verifies server-side before
+// trusting anything in it.
 
-const SolanaCreateBody = z.object({ connections: z.number().int().min(2).max(15) });
-
-app.post("/api/checkout/solana/create", async (c) => {
-  const body = SolanaCreateBody.safeParse(await c.req.json().catch(() => ({})));
-  if (!body.success) return c.json({ error: "invalid_input" }, 400);
-  try {
-    return c.json(createSolanaCheckout(db, body.data.connections));
-  } catch (err) {
-    if (err instanceof SolanaPayError) return c.json({ error: err.code, message: err.message }, 400);
-    throw err;
-  }
+app.get("/api/firebase-config", (c) => {
+  const config = getPublicWebConfig();
+  if (!config) return c.json({ error: "not_configured" }, 503);
+  return c.json(config);
 });
 
-app.get("/api/checkout/solana/status/:reference", async (c) => {
+const FirebaseCompleteBody = z.object({ idToken: z.string().min(1), name: z.string() });
+
+app.post("/api/auth/firebase/complete", async (c) => {
+  const body = FirebaseCompleteBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ error: "invalid_input" }, 400);
   try {
-    return c.json(await solanaCheckoutStatus(db, c.req.param("reference")));
+    return c.json(await completeSignup(db, body.data));
   } catch (err) {
-    if (err instanceof SolanaPayError) {
+    if (err instanceof FirebaseAuthError) {
       const status =
-        err.code === "not_found"
-          ? 404
-          : err.code === "not_configured"
-            ? 503
+        err.code === "not_configured"
+          ? 503
+          : err.code === "invalid_token"
+            ? 401
             : err.code === "pool_exhausted"
               ? 409
               : 400;
@@ -1024,11 +1030,8 @@ app.get("/api/checkout/solana/status/:reference", async (c) => {
   }
 });
 
-app.get("/api/checkout/solana/qr", async (c) => {
-  const url = c.req.query("url");
-  if (!url) return c.json({ error: "invalid_input" }, 400);
-  const png = await checkoutQrPng(url);
-  return c.body(new Uint8Array(png), 200, { "Content-Type": "image/png", "Cache-Control": "no-store" });
+app.get("/api/admin/firebase-signups", (c) => {
+  return c.json({ signups: listFirebaseSignups(db) });
 });
 
 // ── Dev activation (BRAKE_DEV_MODE only) ────────────────────────────────────
