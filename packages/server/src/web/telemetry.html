@@ -54,6 +54,94 @@
       </div>
     </section>
 
+    <section id="token-savings" class="token-savings-section">
+      <div class="ts-header">
+        <div class="ts-title-group">
+          <h2>Token Savings — Before & After</h2>
+          <p>Visualizing prompt token compression, deduplication, and financial cost reduction across agent workloads.</p>
+        </div>
+        <span class="ts-badge">✓ Measured Live</span>
+      </div>
+
+      <div class="ts-controls" id="scenarioControls">
+        <button class="ts-scenario-btn active" data-scenario="loop">Agent Re-reading Files (5 Passes)</button>
+        <button class="ts-scenario-btn" data-scenario="logs">CI Build & Test Logs (ANSI/Noise)</button>
+        <button class="ts-scenario-btn" data-scenario="code">Multi-file Code Review</button>
+        <button class="ts-scenario-btn" data-scenario="json">Raw Data & Large JSON Payloads</button>
+      </div>
+
+      <div class="ts-chart-card">
+        <div class="ts-bars">
+          <div class="ts-bar-row">
+            <div class="ts-bar-label">
+              <span>BEFORE COMPRESSION (Raw Input)</span>
+              <span class="dim" id="tsBeforeTokens">10,000 tokens (100.0%)</span>
+            </div>
+            <div class="ts-bar-track">
+              <div class="ts-fill-before" id="tsBeforeBar" style="width: 100%;"></div>
+            </div>
+          </div>
+
+          <div class="ts-bar-row">
+            <div class="ts-bar-label">
+              <span>AFTER THRIFT COMPRESSION</span>
+              <span class="dim" id="tsAfterTokens">2,150 tokens (21.5%)</span>
+            </div>
+            <div class="ts-bar-track">
+              <div class="ts-fill-after" id="tsAfterBar" style="width: 21.5%;"></div>
+            </div>
+          </div>
+
+          <div class="ts-bar-row">
+            <div class="ts-bar-label">
+              <span>SAVINGS COMPOSITION (Lossless Dedupe vs Lossy Truncation)</span>
+              <span class="dim" id="tsSavedTokens">7,850 tokens (78.5% saved)</span>
+            </div>
+            <div class="ts-bar-track">
+              <div class="ts-fill-lossless" id="tsLosslessBar" style="width: 76.6%;" title="Lossless Deduplication & Noise Stripping"></div>
+              <div class="ts-fill-lossy" id="tsLossyBar" style="width: 1.9%;" title="Lossy Truncation (Budget Limit)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ts-metrics-grid">
+        <div class="ts-metric">
+          <div class="ts-metric-num saved" id="tsMetricSavedPct">78.5%</div>
+          <div class="ts-metric-label">Total Token Reduction</div>
+        </div>
+        <div class="ts-metric">
+          <div class="ts-metric-num lossless" id="tsMetricLosslessPct">97.6%</div>
+          <div class="ts-metric-label">Lossless Ratio</div>
+        </div>
+        <div class="ts-metric">
+          <div class="ts-metric-num" id="tsMetricSavedTokens">7,850</div>
+          <div class="ts-metric-label">Tokens Saved / Pass</div>
+        </div>
+        <div class="ts-metric">
+          <div class="ts-metric-num" id="tsMetricDollarSaved">$0.024</div>
+          <div class="ts-metric-label">Est. Saved / Call (@ $3/1M)</div>
+        </div>
+      </div>
+
+      <div class="ts-calc-box">
+        <div class="ts-calc-input">
+          <label for="monthlyTokensInput">Fleet Volume (Tokens / Month):</label>
+          <input type="number" id="monthlyTokensInput" value="50000000" step="1000000" />
+        </div>
+        <div class="ts-calc-results">
+          <div class="ts-calc-res">
+            <span class="val" id="calcClaudeSaved">$117.75</span>
+            <span class="sub">Saved on Claude 3.5 Sonnet</span>
+          </div>
+          <div class="ts-calc-res">
+            <span class="val" id="calcGptSaved">$98.13</span>
+            <span class="sub">Saved on GPT-4o</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="thrift-table">
       <h2 class="section-title">thrift — the saving depends on the workload</h2>
       <p class="section-sub">

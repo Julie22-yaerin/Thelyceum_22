@@ -52,6 +52,21 @@ function parseBlockOn(raw: unknown): ReadonlySet<FlawClass> | null {
   return new Set(valid as FlawClass[]);
 }
 
+export function getClaudeDesktopConfigPath(): string {
+  const home = homedir();
+  switch (process.platform) {
+    case "darwin":
+      return join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json");
+    case "win32": {
+      const appData = process.env.APPDATA || join(home, "AppData", "Roaming");
+      return join(appData, "Claude", "claude_desktop_config.json");
+    }
+    case "linux":
+    default:
+      return join(home, ".config", "Claude", "claude_desktop_config.json");
+  }
+}
+
 export async function loadConfig(path: string = DEFAULT_CONFIG_PATH): Promise<ResolvedConfig> {
   let file: RedteamConfigFile = {};
   if (existsSync(path)) {
@@ -74,7 +89,7 @@ export async function loadConfig(path: string = DEFAULT_CONFIG_PATH): Promise<Re
     claudeDesktopPath: resolve(
       process.env.REDTEAM_CLAUDE_DESKTOP_PATH ??
         file.claude_desktop_path ??
-        join(homedir(), "Library", "Application Support", "Claude", "claude_desktop_config.json")
+        getClaudeDesktopConfigPath()
     ),
     claudeCodeSettingsPath: resolve(
       process.env.REDTEAM_CLAUDE_CODE_SETTINGS_PATH ??

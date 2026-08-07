@@ -54,8 +54,8 @@ const DANGER_RULES: DangerRule[] = [
   },
   {
     danger: "remote_code_execution",
-    pattern: /\b(?:nc\s+-e|bash\s+-i\s*>&|mkfifo\s+\/tmp|pipe\s+to\s+sh|curl[^\n|]*\|\s*(?:bash|sh)|wget[^\n|]*\|\s*(?:bash|sh))\b/i,
-    explanation: "The agent is preparing a remote shell execution or pipe-to-shell operation.",
+    pattern: /\b(?:nc\s+-e|bash\s+-i\s*>&|mkfifo\s+\/tmp|pipe\s+to\s+sh|curl[^\n|]*\|\s*(?:bash|sh)|wget[^\n|]*\|\s*(?:bash|sh)|invoke-expression|iex\s*\(|powershell[^\n]*downloadstring|cmd\.exe\s+\/[ck])\b/i,
+    explanation: "The agent is preparing a remote shell execution, PowerShell download-string, or pipe-to-shell operation.",
     baseTokensSaved: 200000,
   },
   {
@@ -96,14 +96,14 @@ const DANGER_RULES: DangerRule[] = [
   },
   {
     danger: "credential_access",
-    pattern: /\b(?:read|print|dump|reveal|show|exfiltrate)\b[^.\n]{0,40}\b(?:api[_\s-]?key|secret|credential|password|token|\.env|private[_\s-]?key)s?\b/i,
+    pattern: /\b(?:read|print|dump|reveal|show|exfiltrate|cmdkey|get-credential)\b[^.\n]{0,40}\b(?:api[_\s-]?key|secret|credential|password|token|\.env|private[_\s-]?key)s?\b/i,
     explanation: "The agent is preparing to read or reveal secret credentials.",
     baseTokensSaved: 40000,
   },
   {
     danger: "destructive_operation",
-    pattern: /\b(?:rm\s+-rf|drop\s+database|truncate\s+table|delete\s+from\s+\w+\s*(?:;|$))/i,
-    explanation: "The agent is preparing an operation that destroys data irreversibly.",
+    pattern: /\b(?:rm\s+-rf|drop\s+database|truncate\s+table|delete\s+from\s+\w+\s*(?:;|$)|del\s+\/[sfq]|rmdir\s+\/[sq]|remove-item\s+.*-force|format-volume|vssadmin\s+delete|reg\s+delete)\b/i,
+    explanation: "The agent is preparing an operation that destroys data or system state irreversibly.",
     baseTokensSaved: 250000,
   },
   {
@@ -150,8 +150,9 @@ export function estimateTokens(text: string): number {
 
 export function scanForDanger(intent: string): DangerSignal | null {
   if (!intent || intent.trim() === "") return null;
+  const normalized = intent.replace(/\r\n/g, "\n");
   for (const rule of DANGER_RULES) {
-    const match = intent.match(rule.pattern);
+    const match = normalized.match(rule.pattern);
     if (match) {
       const inputTokens = estimateTokens(intent);
       const tokensSaved = rule.baseTokensSaved + inputTokens * 10;

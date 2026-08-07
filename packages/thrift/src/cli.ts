@@ -97,10 +97,46 @@ async function main(): Promise<void> {
         }
       }
 
+function renderVisualChart(before: number, after: number, lossless: number, lossy: number): string {
+  if (before <= 0) return "";
+  const width = 30;
+  const saved = Math.max(0, before - after);
+  const savedPctVal = (100 * saved) / before;
+  const afterFill = Math.min(width, Math.max(0, Math.round((after / before) * width)));
+  const savedFill = width - afterFill;
+  
+  const totalSaved = lossless + lossy;
+  const losslessRatio = totalSaved > 0 ? lossless / totalSaved : 1;
+  const losslessFill = Math.min(savedFill, Math.max(0, Math.round(savedFill * losslessRatio)));
+  const lossyFill = Math.max(0, savedFill - losslessFill);
+
+  const barAfter = "█".repeat(afterFill);
+  const barLossless = "░".repeat(losslessFill);
+  const barLossy = "▒".repeat(lossyFill);
+  const barEmpty = " ".repeat(Math.max(0, width - afterFill - losslessFill - lossyFill));
+
+  const estDollars = ((saved / 1_000_000) * 3.00).toFixed(4);
+
+  return `
+┌───────────────────────────────────────────────────────────┐
+│              TOKEN SAVINGS (BEFORE vs AFTER)               │
+├───────────────────────────────────────────────────────────┤
+│ BEFORE : [${"█".repeat(width)}] ${before.toLocaleString().padStart(8)} tokens (100.0%) │
+│ AFTER  : [${barAfter}${" ".repeat(width - afterFill)}] ${after.toLocaleString().padStart(8)} tokens (${(100 - savedPctVal).toFixed(1).padStart(5)}%) │
+│ SAVED  : [${barLossless}${barLossy}${barEmpty}] ${saved.toLocaleString().padStart(8)} tokens ( ${savedPctVal.toFixed(1).padStart(5)}%) │
+├───────────────────────────────────────────────────────────┤
+│ BREAKDOWN OF SAVINGS:                                     │
+│  ░ Lossless (Dedupe & Noise): ${lossless.toLocaleString().padStart(8)} tokens (${(totalSaved > 0 ? (lossless * 100 / totalSaved) : 0).toFixed(1)}%)  │
+│  ▒ Lossy (Budget Truncation): ${lossy.toLocaleString().padStart(8)} tokens (${(totalSaved > 0 ? (lossy * 100 / totalSaved) : 0).toFixed(1)}%)  │
+│ ESTIMATED SAVINGS           : ~$${estDollars} / pass (@ $3/1M)   │
+└───────────────────────────────────────────────────────────┘`;
+}
+
       const hardPct =
         hardT + softT > 0 ? Math.round((100 * hardT) / (hardT + softT)) : 0;
 
       console.log(`Measured ${files.length} file(s)${passes > 1 ? ` over ${passes} passes` : ""}, budget ${budget} tokens\n`);
+      console.log(renderVisualChart(before, after, lossless, lossy));
       console.log(`  before        ${before.toLocaleString()} tokens`);
       console.log(`  after         ${after.toLocaleString()} tokens`);
       console.log(`  saved         ${(before - after).toLocaleString()} (${pct(before, after)})\n`);

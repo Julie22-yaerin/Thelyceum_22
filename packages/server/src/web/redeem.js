@@ -116,33 +116,37 @@ function renderEntryForm(errorMessage) {
 function quickstartPages(licenseKey) {
   return [
     {
-      title: "1. Install",
+      title: "1. Install & Activate",
       steps: [
         {
-          heading: "Install the three CLIs",
-          body: `<pre><code>npm install -g @lyceum/thrift @lyceum/brake @lyceum/redteam</code></pre>
-                 <p>Check they landed: <code>brake --version</code>, <code>redteam --version</code>.</p>`,
+          heading: "Step 1: Install the three CLIs",
+          body: `<p style="margin-bottom:6px;">Run from repository workspace:</p>
+                 <pre><code>npm run build && npm link --workspaces</code></pre>
+                 <p style="margin-top:6px;">Or install pre-compiled beta packages: <code>npm run package:beta && npm install -g ./dist-releases/beta-trial/packages/brake ./dist-releases/beta-trial/packages/redteam ./dist-releases/beta-trial/packages/thrift</code></p>
+                 <p style="margin-top:6px;">Verify installation: <code>brake --version</code>, <code>redteam --version</code>, <code>thrift --version</code>.</p>`,
         },
         {
-          heading: "Activate your license",
-          body: `<pre><code>node license-activate.mjs ${esc(licenseKey)}</code></pre>
-                 <p>Writes <code>~/.lyceum/license.json</code>. All three tools read the same file.</p>`,
+          heading: "Step 2: Activate your license key",
+          body: `<pre><code>brake login --key ${esc(licenseKey)}</code></pre>
+                 <p style="margin-top:6px;">Your license key: <code style="color:var(--green); font-weight:600;">${esc(licenseKey)}</code>. One license unlocks <strong>brake</strong>, <strong>redteam</strong>, and <strong>thrift</strong>.</p>`,
         },
       ],
     },
     {
-      title: "2. Wire it in",
+      title: "2. Wire Hosts & Verify",
       steps: [
         {
-          heading: "Install into your AI host",
+          heading: "Step 3: Wire into your AI Hosts",
           body: `<pre><code>brake install all
-redteam install all</code></pre>
-                 <p>Works with Claude Desktop, Claude Code, and ChatGPT — the model calls the tools itself from here, no manual invocation needed.</p>`,
+redteam install all
+thrift install all</code></pre>
+                 <p style="margin-top:6px;">Configures Claude Desktop, Claude Code, and ChatGPT. The models execute the guards on the hot path automatically.</p>`,
         },
         {
-          heading: "Verify it's live",
-          body: `<pre><code>brake scan "rm -rf /var/db/production"</code></pre>
-                 <p>Should block immediately with a danger class in the output. Then just use your agent normally — the tools run on the hot path from now on.</p>`,
+          heading: "Step 4: Verify protection & measure token savings",
+          body: `<pre><code>brake scan "rm -rf /var/db/production"
+thrift measure . --passes 5</code></pre>
+                 <p style="margin-top:6px;"><code>brake scan</code> blocks dangerous actions. <code>thrift measure</code> reports token savings and renders the Before & After visual chart.</p>`,
         },
       ],
     },

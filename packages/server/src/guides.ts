@@ -46,10 +46,10 @@ export const BRAKE_GUIDE: Guide = {
   steps: [
     {
       title: "1. Install the CLI",
-      command: "npm install -g .",
+      command: "npm run build && npm link --workspaces",
       expect: "brake --version prints 1.0.0",
       detail:
-        "From the package you downloaded, or from source with `npm install && npm run build && npm link`. If `brake` is not found after this, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
+        "From the source workspace with `npm run build && npm link --workspaces`, or from pre-compiled package with `npm run package:beta`. If `brake` is not found after this, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
     },
     {
       title: "2. Prove it works before wiring anything up",

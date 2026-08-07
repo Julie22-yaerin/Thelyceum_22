@@ -223,7 +223,7 @@ const REASONING_RULES: ReasoningFlawRule[] = [
 
 export function challenge(text: string, opts: ChallengeOptions = {}): ChallengeResult {
   const autoCompact = opts.autoCompact ?? true;
-  let targetText = text;
+  let targetText = text ? text.replace(/\r\n/g, "\n") : "";
   let compactedText: string | undefined;
 
   if (autoCompact && text && text.trim().length > 0) {

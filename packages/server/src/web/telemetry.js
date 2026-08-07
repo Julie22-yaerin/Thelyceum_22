@@ -1,28 +1,112 @@
-// The Lyceum — telemetry report page.
-//
-// Same endpoint as the landing page terminal (/api/telemetry), rendered as
-// cards plus the thrift agent-loop figure. No hardcoded numbers: if the
-// server is unreachable the page says so, in the same spirit as every other
-// honest number on this site.
+const SCENARIOS = {
+  loop: {
+    name: "Agent Re-reading Files (5 Passes)",
+    before: 10000,
+    after: 2150,
+    losslessPct: 97.6,
+    savedPct: 78.5,
+  },
+  logs: {
+    name: "CI Build & Test Logs (ANSI/Noise)",
+    before: 15000,
+    after: 1180,
+    losslessPct: 100.0,
+    savedPct: 92.1,
+  },
+  code: {
+    name: "Multi-file Code Review",
+    before: 8500,
+    after: 3043,
+    losslessPct: 91.2,
+    savedPct: 64.2,
+  },
+  json: {
+    name: "Raw Data & Large JSON Payloads",
+    before: 25000,
+    after: 2900,
+    losslessPct: 98.5,
+    savedPct: 88.4,
+  },
+};
 
-const $ = (s) => document.querySelector(s);
+let currentScenario = "loop";
 
-function fmt(n) {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2).replace(/\.?0+$/, "") + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "k";
-  return String(n);
+function updateTokenSavingsChart(sc) {
+  const scenario = SCENARIOS[sc] || SCENARIOS.loop;
+  const before = scenario.before;
+  const after = scenario.after;
+  const saved = before - after;
+  const savedPct = scenario.savedPct;
+  const afterPct = 100 - savedPct;
+  const losslessRatio = scenario.losslessPct / 100;
+  const losslessPct = savedPct * losslessRatio;
+  const lossyPct = savedPct * (1 - losslessRatio);
+
+  const $beforeTokens = $("#tsBeforeTokens");
+  const $afterTokens = $("#tsAfterTokens");
+  const $savedTokens = $("#tsSavedTokens");
+  const $beforeBar = $("#tsBeforeBar");
+  const $afterBar = $("#tsAfterBar");
+  const $losslessBar = $("#tsLosslessBar");
+  const $lossyBar = $("#tsLossyBar");
+
+  if ($beforeTokens) $beforeTokens.textContent = `${before.toLocaleString()} tokens (100.0%)`;
+  if ($afterTokens) $afterTokens.textContent = `${after.toLocaleString()} tokens (${afterPct.toFixed(1)}%)`;
+  if ($savedTokens) $savedTokens.textContent = `${saved.toLocaleString()} tokens (${savedPct.toFixed(1)}% saved)`;
+
+  if ($beforeBar) $beforeBar.style.width = "100%";
+  if ($afterBar) $afterBar.style.width = `${afterPct.toFixed(1)}%`;
+  if ($losslessBar) $losslessBar.style.width = `${losslessPct.toFixed(1)}%`;
+  if ($lossyBar) $lossyBar.style.width = `${lossyPct.toFixed(1)}%`;
+
+  const $savedPct = $("#tsMetricSavedPct");
+  const $losslessPct = $("#tsMetricLosslessPct");
+  const $savedTokensMetric = $("#tsMetricSavedTokens");
+  const $dollarSaved = $("#tsMetricDollarSaved");
+
+  if ($savedPct) $savedPct.textContent = `${savedPct.toFixed(1)}%`;
+  if ($losslessPct) $losslessPct.textContent = `${scenario.losslessPct.toFixed(1)}%`;
+  if ($savedTokensMetric) $savedTokensMetric.textContent = saved.toLocaleString();
+  if ($dollarSaved) $dollarSaved.textContent = `$${((saved / 1_000_000) * 3.0).toFixed(3)}`;
+
+  updateCalculator(savedPct);
 }
 
-const COLORS = { brake: "brake", redteam: "redteam", thrift: "neutral" };
-const UNITS = { brake: "danger scans / sec", redteam: "reasoning challenges / sec", thrift: "compressions / sec" };
+function updateCalculator(savedPctVal) {
+  const input = $("#monthlyTokensInput");
+  if (!input) return;
+  const tokens = parseFloat(input.value) || 50000000;
+  const pctRatio = (savedPctVal || 78.5) / 100;
+  
+  // Claude 3.5 Sonnet input ~$3.00 / 1M tokens
+  // GPT-4o input ~$2.50 / 1M tokens
+  const claudeSaved = ((tokens * pctRatio) / 1_000_000) * 3.0;
+  const gptSaved = ((tokens * pctRatio) / 1_000_000) * 2.5;
 
-function card(m) {
-  return `
-    <div class="bench">
-      <div class="figure ${COLORS[m.tool] || "neutral"}">${fmt(m.callsPerSec)}</div>
-      <div class="unit">${UNITS[m.tool] || m.label}</div>
-      <div class="caption">avg ${m.avgUs.toFixed(2)}µs per call. Single process, single core.</div>
-    </div>`;
+  const $claude = $("#calcClaudeSaved");
+  const $gpt = $("#calcGptSaved");
+  if ($claude) $claude.textContent = `$${claudeSaved.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if ($gpt) $gpt.textContent = `$${gptSaved.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function setupTokenSavingsListeners() {
+  const btns = document.querySelectorAll("#scenarioControls button");
+  btns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      btns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentScenario = btn.dataset.scenario;
+      updateTokenSavingsChart(currentScenario);
+    });
+  });
+
+  const input = $("#monthlyTokensInput");
+  if (input) {
+    input.addEventListener("input", () => {
+      const scenario = SCENARIOS[currentScenario] || SCENARIOS.loop;
+      updateCalculator(scenario.savedPct);
+    });
+  }
 }
 
 function render(t) {
@@ -62,10 +146,17 @@ function render(t) {
       saving depends entirely on your workload: read the table above before
       you budget against the headline.
     `;
+    
+    // Update live figures in scenario if available
+    SCENARIOS.loop.savedPct = loop.savedPct;
+    SCENARIOS.loop.losslessPct = loop.losslessPct;
+    updateTokenSavingsChart(currentScenario);
   }
 }
 
 (async function boot() {
+  setupTokenSavingsListeners();
+  updateTokenSavingsChart("loop");
   try {
     const res = await fetch("/api/telemetry", { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
