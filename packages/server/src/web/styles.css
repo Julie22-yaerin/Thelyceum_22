@@ -1,49 +1,37 @@
 /* ══════════════════════════════════════════════════════════════════════════
-   The Lyceum — dark theme, shared across every page.
-   One visual system, not a per-page override: a developer paying real
-   infrastructure bills reads "dark, sharp, few colours, no filler" as
-   competence — the same instinct as a terminal or a monitoring dashboard,
-   not a marketing site. Every page (landing, signup, redeem, showroom,
-   admin, download, telemetry) pulls from this one palette.
+   The Lyceum — light theme.
+   Two pages share this sheet:
+     /web/          landing — proves the tools hold up under load
+     /web/showroom  showroom — the plans, and what unlocks after payment
    ══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg: #08090c;
-  --bg-elev: #0e1015;
-  --bg-card: #121620;
-  --border: #1e222c;
-  --border-strong: #333949;
-  --text: #f2f3f7;
-  --text-dim: #888ea3;
-  --accent: #ff4438;        /* brake — the stop colour */
-  --accent-dim: #d6362c;
-  --accent-wash: rgba(255, 68, 56, 0.14);
-  --violet: #a78bfa;        /* redteam — the reasoning colour */
-  --violet-wash: rgba(167, 139, 250, 0.14);
-  --green: #34d399;
-  --green-wash: rgba(52, 211, 153, 0.14);
-  --amber: #fbbf24;         /* thrift — the cost colour */
-  --amber-wash: rgba(251, 191, 36, 0.14);
-  --radius: 8px;
+  --bg: #fbfbfd;
+  --bg-elev: #f4f4f7;
+  --bg-card: #ffffff;
+  --border: #e4e4ea;
+  --border-strong: #d2d2db;
+  --text: #16161d;
+  --text-dim: #6a6a78;
+  --accent: #e0342c;      /* brake — the stop colour */
+  --accent-dim: #b8241d;
+  --accent-wash: #fdf0ef;
+  --violet: #6d4aff;      /* redteam — the reasoning colour */
+  --violet-wash: #f2efff;
+  --green: #12855b;
+  --green-wash: #eaf7f1;
+  --amber: #9a6600;
+  --radius: 12px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
-  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  --shadow-sm: 0 1px 2px rgba(20, 20, 40, 0.04), 0 1px 3px rgba(20, 20, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(20, 20, 40, 0.06), 0 1px 3px rgba(20, 20, 40, 0.04);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background-color: var(--bg);
-  /* A faint red beacon above the fold and a fine technical grid underneath
-     — visible enough to register as "engineered," not decoration you'd
-     actually notice looking for it. */
-  background-image:
-    radial-gradient(ellipse 900px 520px at 50% -8%, rgba(255, 68, 56, 0.07), transparent 62%),
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: auto, 48px 48px, 48px 48px;
-  background-attachment: fixed;
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   line-height: 1.55;
@@ -68,7 +56,7 @@ code, pre { font-family: var(--mono); font-size: 13px; }
      link. The gap holds them apart at every width. */
   gap: 24px; flex-wrap: wrap;
   padding: 16px 32px; border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; background: rgba(8, 9, 12, 0.82);
+  position: sticky; top: 0; background: rgba(251, 251, 253, 0.88);
   backdrop-filter: blur(12px); z-index: 100;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
@@ -424,8 +412,8 @@ footer {
   margin-bottom: 10px;
 }
 .budget-head h3 { font-size: 14px; margin-bottom: 0; font-weight: 600; }
-.budget .badge.warn { background: var(--amber-wash); color: var(--amber); }
-.budget .badge.over { background: var(--accent-wash); color: var(--accent); }
+.budget .badge.warn { background: #fff4e0; color: var(--amber); }
+.budget .badge.over { background: var(--accent-wash); color: var(--accent-dim); }
 .budget-bar {
   height: 10px; background: var(--bg-elev); border: 1px solid var(--border);
   border-radius: 999px; overflow: hidden;
@@ -440,9 +428,9 @@ footer {
 .budget-warning {
   margin-top: 12px; padding: 12px 14px; border-radius: 8px;
   background: var(--accent-wash); border: 1px solid var(--accent);
-  color: var(--accent); font-size: 13px; line-height: 1.6;
+  color: var(--accent-dim); font-size: 13px; line-height: 1.6;
 }
-.budget-warning.warn { background: var(--amber-wash); border-color: var(--amber); color: var(--amber); }
+.budget-warning.warn { background: #fff4e0; border-color: var(--amber); color: var(--amber); }
 .budget-tools { margin-top: 14px; display: grid; gap: 6px; }
 .budget-tool {
   display: flex; justify-content: space-between; align-items: center;
@@ -493,9 +481,9 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
 
 .launch-banner {
   background: var(--accent-wash); border-bottom: 1px solid var(--accent);
-  padding: 10px 32px; text-align: center; font-size: 13.5px; color: var(--accent);
+  padding: 10px 32px; text-align: center; font-size: 13.5px; color: var(--accent-dim);
 }
-.launch-banner strong { color: var(--accent); }
+.launch-banner strong { color: var(--accent-dim); }
 .launch-banner a { text-decoration: underline; font-weight: 600; }
 
 /* ── Book a call ──────────────────────────────────────────────────────────── */
@@ -586,11 +574,11 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
 
 .google-btn {
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
-  background: #131314; color: #e3e3e3; border: 1px solid #5f6368;
+  background: #fff; color: #3c4043; border: 1px solid var(--border-strong);
   border-radius: 8px; padding: 11px; font-size: 14.5px; font-weight: 600;
   font-family: inherit; cursor: pointer; transition: background 120ms ease, box-shadow 120ms ease;
 }
-.google-btn:hover { background: #1f1f20; box-shadow: var(--shadow-sm); }
+.google-btn:hover { background: #f8f8f8; box-shadow: var(--shadow-sm); }
 .google-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ── OTP-style license code entry (8 cells, one char each) ────────────── */
@@ -604,7 +592,7 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
 }
 .otp-cell:focus {
   outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-wash);
+  box-shadow: 0 0 0 3px rgba(224, 52, 44, 0.15);
 }
 .otp-input.error .otp-cell {
   border-color: var(--accent);
@@ -612,7 +600,7 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
 }
 .otp-input.success .otp-cell {
   border-color: var(--green);
-  box-shadow: 0 0 0 3px var(--green-wash);
+  box-shadow: 0 0 0 3px rgba(43, 168, 74, 0.15);
 }
 @keyframes otp-shake {
   10%, 90% { transform: translateX(-1px); }
@@ -678,9 +666,9 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
   font-size: 11px; font-weight: 650; white-space: nowrap;
 }
 .pill.pending { background: var(--bg-elev); color: var(--text-dim); }
-.pill.paid { background: var(--amber-wash); color: var(--amber); }
+.pill.paid { background: #fff4e0; color: var(--amber); }
 .pill.approved { background: var(--green-wash); color: var(--green); }
-.pill.rejected { background: var(--accent-wash); color: var(--accent); }
+.pill.rejected { background: var(--accent-wash); color: var(--accent-dim); }
 
 button.mini {
   background: var(--bg-elev); border: 1px solid var(--border-strong); color: var(--text);
@@ -688,7 +676,7 @@ button.mini {
   font-family: inherit; font-weight: 550; margin-left: 6px;
 }
 button.mini.approve:hover { background: var(--green-wash); color: var(--green); border-color: var(--green); }
-button.mini.reject:hover { background: var(--accent-wash); color: var(--accent); border-color: var(--accent); }
+button.mini.reject:hover { background: var(--accent-wash); color: var(--accent-dim); border-color: var(--accent); }
 button.mini:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 860px) {
@@ -844,7 +832,7 @@ button.mini:disabled { opacity: 0.5; cursor: not-allowed; }
 .thankyou-check {
   display: inline-flex; align-items: center; justify-content: center;
   width: 48px; height: 48px; border-radius: 50%;
-  background: var(--green-wash); color: var(--green);
+  background: var(--green-wash, #e6f7ec); color: var(--green, #1a9850);
   font-size: 24px; font-weight: 700; margin-bottom: 20px;
 }
 .thankyou-card h1 { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 12px; }

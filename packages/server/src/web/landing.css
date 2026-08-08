@@ -1,0 +1,87 @@
+/* ── Oceanic Shimmer (21st.dev "Layered Tide") — landing page only ────────
+   Loaded after styles.css, scoped to this page only (its own file, its own
+   <link>) so the rest of the site (admin, pricing, redeem, signup, showroom)
+   keeps the existing light theme unchanged. Gradient CSS is verbatim from
+   the spec — colour stops are meaningful data, not something to
+   approximate by hand. */
+
+body {
+  background-color: #123A6B;
+  background-image:
+    url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.215'/></svg>"),
+    radial-gradient(150% 48.4% at 41.58% 6%, rgba(234, 247, 251, 0.92) 0%, rgba(234, 247, 251, 0.7764800000000001) 13.25%, rgba(234, 247, 251, 0.46) 26.5%, rgba(234, 247, 251, 0.14352) 39.75%, rgba(234, 247, 251, 0) 53%),
+    radial-gradient(150% 48.4% at 42.42% 33%, rgba(127, 198, 230, 0.92) 0%, rgba(127, 198, 230, 0.7764800000000001) 13.25%, rgba(127, 198, 230, 0.46) 26.5%, rgba(127, 198, 230, 0.14352) 39.75%, rgba(127, 198, 230, 0) 53%),
+    radial-gradient(150% 48.4% at 51.19% 67%, rgba(46, 124, 192, 0.92) 0%, rgba(46, 124, 192, 0.7764800000000001) 13.25%, rgba(46, 124, 192, 0.46) 26.5%, rgba(46, 124, 192, 0.14352) 39.75%, rgba(46, 124, 192, 0) 53%),
+    radial-gradient(150% 48.4% at 53.67% 94%, rgba(18, 58, 107, 0.92) 0%, rgba(18, 58, 107, 0.7764800000000001) 13.25%, rgba(18, 58, 107, 0.46) 26.5%, rgba(18, 58, 107, 0.14352) 39.75%, rgba(18, 58, 107, 0) 53%);
+  background-size: 120px 120px, auto, auto, auto, auto;
+  background-blend-mode: overlay, normal, normal, normal, normal;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* ── Contrast: yellow/gold accent against the blue-navy field, white text
+   on the gradient itself, frosted glass panels for anything that needs to
+   stay legible regardless of which part of the gradient sits behind it. ── */
+
+:root {
+  --gold: #F5C24D;
+  --gold-dim: #D9A62E;
+  --glass-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.22);
+}
+
+.topbar {
+  background: rgba(18, 58, 107, 0.35);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--glass-border);
+}
+.topbar .name { color: #fff; }
+.topbar .nav a { color: rgba(255, 255, 255, 0.85); }
+.topbar .nav a:hover { color: #fff; }
+.nav a.nav-cta {
+  background: var(--gold);
+  color: #123A6B;
+  font-weight: 700;
+}
+.nav a.nav-cta:hover { background: var(--gold-dim); color: #123A6B; }
+
+.hero .eyebrow { color: var(--gold); }
+.hero h1 { color: #fff; }
+.hero .lede { color: rgba(255, 255, 255, 0.88); }
+.hero .lede strong { color: #fff; }
+.hero .lede-sub { color: rgba(255, 255, 255, 0.7); }
+
+.stake-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(10px);
+}
+.stake-card .stake-tag { color: var(--gold); }
+.stake-card h3 { color: #fff; }
+.stake-card .stake-line { color: rgba(255, 255, 255, 0.75); }
+
+.product-mini {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+.product-mini-name { color: #fff; }
+.product-mini-role { color: rgba(255, 255, 255, 0.7); }
+.dot.red, .dot.violet, .dot.amber { background: var(--gold); }
+
+.book-a-call-cta {
+  background: var(--gold);
+  color: #123A6B;
+  font-weight: 700;
+}
+.book-a-call-cta:hover { background: var(--gold-dim); filter: none; }
+.license-cta { color: rgba(255, 255, 255, 0.75); }
+.license-cta:hover { color: #fff; }
+
+.benchmark-section .section-title { color: #fff; }
+.benchmark-section .section-sub { color: rgba(255, 255, 255, 0.75); }
+.benchmark-chart {
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+footer { color: rgba(255, 255, 255, 0.6); border-top: 1px solid var(--glass-border); }
