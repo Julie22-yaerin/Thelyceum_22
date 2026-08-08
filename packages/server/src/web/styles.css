@@ -572,6 +572,15 @@ label.switch input:checked + .slider::before { transform: translateX(17px); }
 }
 .waitlist-form button[type="submit"]:disabled { background: var(--border-strong); cursor: not-allowed; }
 
+.google-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: #fff; color: #3c4043; border: 1px solid var(--border-strong);
+  border-radius: 8px; padding: 11px; font-size: 14.5px; font-weight: 600;
+  font-family: inherit; cursor: pointer; transition: background 120ms ease, box-shadow 120ms ease;
+}
+.google-btn:hover { background: #f8f8f8; box-shadow: var(--shadow-sm); }
+.google-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* ── OTP-style license code entry (8 cells, one char each) ────────────── */
 .otp-input { display: flex; gap: 8px; justify-content: center; }
 .otp-cell {

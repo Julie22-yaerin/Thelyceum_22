@@ -3,9 +3,20 @@
  *
  * The client does the actual auth (Firebase's web SDK, config served from
  * /api/firebase-config below) and hands this server an ID token. This
- * module's only job is verifying that token server-side with the Admin SDK
- * — never trust an unverified token, since anyone can fabricate a JSON blob
- * that merely *looks* like a decoded Firebase user.
+ * module's only job is verifying that token server-side — never trust an
+ * unverified token, since anyone can fabricate a JSON blob that merely
+ * *looks* like a decoded Firebase user.
+ *
+ * Verification is a plain JWT signature check against Google's public keys
+ * (jose's createRemoteJWKSet, cached and auto-rotated), not the Admin SDK.
+ * A Firebase ID token is a standard RS256 JWT — Google documents this exact
+ * approach as the supported alternative to the Admin SDK for backends that
+ * only need to verify tokens (https://firebase.google.com/docs/auth/admin/verify-id-tokens#verify_id_tokens_using_a_third-party_jwt_library).
+ * The Admin SDK needs a service-account private key because it can also
+ * *mint* tokens and manage users server-side; we only ever check a
+ * signature someone else already produced, which needs no secret at all —
+ * FIREBASE_PROJECT_ID (already public — it's in the client config) is
+ * enough to pin the expected issuer/audience.
  *
  * A Google sign-in arrives already email_verified. An email/password signup
  * does not — Firebase sends the verification email itself; the client is
@@ -14,10 +25,11 @@
  * results in a license.
  *
  * Same reasoning as sub-license's "manual pool, no payment webhook": no
- * license is issued from anything this server can't independently verify —
- * here that's Firebase's own signature, not a client's say-so.
+ * license is issued from anything this server can't independently verify
+ * — here that's Firebase's own signature, not a client's say-so.
  */
 
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import type { DbHandle } from "./db.js";
 import { autoAssignLicense, SubLicenseError } from "./sub-license.js";
 import { resendEmailSender, type EmailSender } from "./email.js";
@@ -47,28 +59,35 @@ export interface TokenVerifier {
   verifyIdToken(idToken: string): Promise<DecodedToken>;
 }
 
-// ── Admin SDK wiring (lazy — only touched if a request actually needs it) ──
+// ── JWT wiring (lazy — only touched if a request actually needs it) ────────
 
-let cachedApp: import("firebase-admin/app").App | null = null;
+const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+let cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
-async function getAdminAuth(): Promise<TokenVerifier> {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new FirebaseAuthError("not_configured", "FIREBASE_SERVICE_ACCOUNT_JSON is not set.");
+async function getJwtVerifier(): Promise<TokenVerifier> {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  if (!projectId) throw new FirebaseAuthError("not_configured", "FIREBASE_PROJECT_ID is not set.");
 
-  const { initializeApp, cert, getApps } = await import("firebase-admin/app");
-  const { getAuth } = await import("firebase-admin/auth");
+  if (!cachedJwks) cachedJwks = createRemoteJWKSet(new URL(JWKS_URL));
 
-  if (!cachedApp) {
-    let serviceAccount: Record<string, unknown>;
-    try {
-      serviceAccount = JSON.parse(raw);
-    } catch {
-      throw new FirebaseAuthError("not_configured", "FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON.");
-    }
-    cachedApp = getApps()[0] ?? initializeApp({ credential: cert(serviceAccount as never) });
-  }
-  const auth = getAuth(cachedApp);
-  return { verifyIdToken: (idToken: string) => auth.verifyIdToken(idToken) as Promise<DecodedToken> };
+  return {
+    async verifyIdToken(idToken: string) {
+      const { payload } = await jwtVerify(idToken, cachedJwks!, {
+        issuer: `https://securetoken.google.com/${projectId}`,
+        audience: projectId,
+        algorithms: ["RS256"],
+      });
+      if (!payload.sub) throw new Error("token has no subject");
+      const firebaseClaim = payload.firebase as { sign_in_provider?: string } | undefined;
+      return {
+        uid: payload.sub,
+        email: typeof payload.email === "string" ? payload.email : undefined,
+        email_verified: typeof payload.email_verified === "boolean" ? payload.email_verified : undefined,
+        name: typeof payload.name === "string" ? payload.name : undefined,
+        firebase: firebaseClaim ? { sign_in_provider: firebaseClaim.sign_in_provider } : undefined,
+      };
+    },
+  };
 }
 
 // ── Public web config (safe to expose — Firebase's own docs: this is not a secret) ──
@@ -122,7 +141,7 @@ export async function completeSignup(
 ): Promise<CompleteSignupResult> {
   if (!input.idToken) throw new FirebaseAuthError("invalid_input", "idToken is required.");
 
-  const auth = verifier ?? (await getAdminAuth());
+  const auth = verifier ?? (await getJwtVerifier());
   let decoded: DecodedToken;
   try {
     decoded = await auth.verifyIdToken(input.idToken);
