@@ -46,10 +46,10 @@ export const BRAKE_GUIDE: Guide = {
   steps: [
     {
       title: "1. Install the CLI",
-      command: "npm install -g github:Julie22-yaerin/Thelyceum_22",
+      command: "npm install -g the-lyceum",
       expect: "brake --version prints 1.0.0",
       detail:
-        "From any blank terminal without cloning the repo: `npm install -g github:Julie22-yaerin/Thelyceum_22`. If `brake` is not found after this, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
+        "From any blank terminal without cloning the repo: `npm install -g the-lyceum`. If `brake` is not found after this, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
     },
     {
       title: "2. Prove it works before wiring anything up",
@@ -112,7 +112,7 @@ export const REDTEAM_GUIDE: Guide = {
   steps: [
     {
       title: "1. Install",
-      command: "npm install -g github:Julie22-yaerin/Thelyceum_22",
+      command: "npm install -g the-lyceum",
       expect: "redteam --version prints 1.0.0",
       detail:
         "From any blank terminal without cloning the repo. If `redteam` is not found after this, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",
@@ -155,7 +155,7 @@ export const THRIFT_GUIDE: Guide = {
   steps: [
     {
       title: "1. Install the CLI",
-      command: "npm install -g github:Julie22-yaerin/Thelyceum_22",
+      command: "npm install -g the-lyceum",
       expect: "thrift with no arguments prints the command list.",
       detail:
         "From any blank terminal without cloning the repo — note this is NOT `npm install -g thrift`, which is an unrelated package on the public registry. If `thrift` is not found after install, your global npm bin is not on PATH — run `npm config get prefix` and add `<prefix>/bin` to your shell profile.",

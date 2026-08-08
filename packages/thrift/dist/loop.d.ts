@@ -1,5 +1,5 @@
 /**
- * Thrift (Saver) — Runaway Loop Interceptor.
+ * Thrift — Runaway Loop Interceptor.
  *
  * Manages token-expensive operations and detects runaway tool loops.
  * Strictly enforces MAX_ALLOWED_REPETITIONS = 2. If an action or intent

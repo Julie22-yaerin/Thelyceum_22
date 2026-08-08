@@ -121,7 +121,7 @@ function quickstartPages(licenseKey) {
         {
           heading: "Step 1: Install from any blank terminal",
           body: `<p style="margin-bottom:6px;">Run in a blank terminal (no repository clone or cd needed):</p>
-                 <pre><code>npm install -g https://github.com/Julie22-yaerin/Thelyceum_22.git</code></pre>
+                 <pre><code>npm install -g the-lyceum</code></pre>
                  <p style="margin-top:6px;">Verify installation: <code>brake --version</code>, <code>redteam --version</code>, <code>thrift --version</code>.</p>`,
         },
         {

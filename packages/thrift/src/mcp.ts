@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The thrift (Saver) MCP server.
+ * The thrift MCP server.
  *
  * Tools:
  *   read_lean      read a file, deduplicated against this session
@@ -55,7 +55,7 @@ toolCatalog.register({
   inputSchema: { command: "string", cwd: "string?", budget_tokens: "number?" },
 });
 
-const server = new McpServer({ name: "savier-thrift", version: "2.0.0" });
+const server = new McpServer({ name: "thrift", version: "2.0.0" });
 
 server.tool(
   "read_lean",

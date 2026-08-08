@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The thrift (Saver) MCP server.
+ * The thrift MCP server.
  *
  * Tools:
  *   read_lean      read a file, deduplicated against this session

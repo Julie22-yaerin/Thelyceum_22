@@ -83,7 +83,7 @@ export class ToolCatalog {
         return {
             toolId: id,
             rawOutput,
-            compressedText: `${compRes.text}\n\n[savier: ${compRes.note}]`,
+            compressedText: `${compRes.text}\n\n[thrift: ${compRes.note}]`,
             compressionResult: compRes,
         };
     }

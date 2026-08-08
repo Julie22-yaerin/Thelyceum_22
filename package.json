@@ -1,6 +1,6 @@
 {
   "name": "the-lyceum",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "The Lyceum — circuit breakers for AI. brake stops a dangerous action; redteam stops a one-sided conclusion; thrift stops the bill.",
   "type": "module",
@@ -13,8 +13,11 @@
   "files": [
     "scripts",
     "packages/brake/dist",
+    "packages/brake/package.json",
     "packages/redteam/dist",
-    "packages/thrift/dist"
+    "packages/redteam/package.json",
+    "packages/thrift/dist",
+    "packages/thrift/package.json"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

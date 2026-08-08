@@ -103,7 +103,7 @@ Welcome to the Lyceum Beta Trial Release.
 
 1. \`brake\` — Emergency Safety Brake, Threat Scanner, & Sandbox Guardrail (<1ms SLA)
 2. \`redteam\` — Automated Code Risk & Reasoning Auditor (Dual-tier WARN/BLOCK engine)
-3. \`thrift\` (Savier) — Dual-Sided Context Optimization Engine (BM25 Catalog + Lossless SeenLedger Deduplication)
+3. \`thrift\` — Dual-Sided Context Optimization Engine (BM25 Catalog + Lossless SeenLedger Deduplication)
 
 ## Installation & Setup
 

@@ -349,7 +349,7 @@ function renderVisualChart(before: number, after: number, lossless: number, loss
       console.log(`Simulating ${numTurns}-turn Agent Execution Loop:\n`);
       console.log(`1. BASELINE (Full Tool + Skill Bloat + Raw Output): ${totalBaselineTokens} tokens`);
       console.log(`2. RATEL (Progressive Disclosure Tool Catalog Only): ${totalRatelTokens} tokens (-${((100 * (totalBaselineTokens - totalRatelTokens)) / totalBaselineTokens).toFixed(1)}% vs Baseline)`);
-      console.log(`3. SAVIER (Dual-Sided Input Catalog + Output SeenLedger Dedupe): ${savierTotalTokens} tokens (-${((100 * (totalBaselineTokens - savierTotalTokens)) / totalBaselineTokens).toFixed(1)}% vs Baseline, -${((100 * (totalRatelTokens - savierTotalTokens)) / totalRatelTokens).toFixed(1)}% vs Ratel)\n`);
+      console.log(`3. THRIFT (Dual-Sided Input Catalog + Output SeenLedger Dedupe): ${savierTotalTokens} tokens (-${((100 * (totalBaselineTokens - savierTotalTokens)) / totalBaselineTokens).toFixed(1)}% vs Baseline, -${((100 * (totalRatelTokens - savierTotalTokens)) / totalRatelTokens).toFixed(1)}% vs Ratel)\n`);
 
       console.log("Verdict: SAVIER OUTPERFORMS RATEL BY 70%+ ON AGENT LOOPS BY DEDUPLICATING TOOL OUTPUTS IN ADDITION TO INPUT CATALOG RETRIEVAL!");
       break;
@@ -366,7 +366,7 @@ function renderVisualChart(before: number, after: number, lossless: number, loss
     }
 
     default:
-      console.log(`thrift (Saver) — Token economy & runaway loop interceptor
+      console.log(`thrift — Token economy & runaway loop interceptor
 
   thrift check-loop <action>     check if action repeated > 2 times (trips if > 2)
   thrift measure <path>          what thrift would save on YOUR files
