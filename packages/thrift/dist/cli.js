@@ -20,6 +20,10 @@ import { reportUsageBestEffort } from "./usage.js";
 import { globalLoopTracker } from "./loop.js";
 const args = process.argv.slice(2);
 const cmd = args[0];
+const ansi = {
+    reset: "\x1b[0m", dim: "\x1b[2m", bold: "\x1b[1m",
+    amber: "\x1b[38;5;221m", green: "\x1b[38;5;114m", gray: "\x1b[38;5;244m",
+};
 function getFlag(name, fallback) {
     const i = args.indexOf(`--${name}`);
     return i >= 0 && args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : fallback;
@@ -46,9 +50,6 @@ function walk(dir, out = []) {
         }
     }
     return out;
-}
-function pct(before, after) {
-    return before > 0 ? `${((100 * (before - after)) / before).toFixed(1)}%` : "n/a";
 }
 async function main() {
     switch (cmd) {
@@ -93,46 +94,33 @@ async function main() {
                         mechanisms[m] = (mechanisms[m] ?? 0) + 1;
                 }
             }
+            // A proportional bar in a fixed character width — no box-drawing borders to
+            // keep aligned against variable-width numbers (the old version padStart'd
+            // numbers into a bordered table, which drifted out of alignment the moment
+            // a count crossed a digit boundary).
+            function bar(fraction, width = 28, fillChar = "█", fillColor = ansi.green) {
+                const filled = Math.max(0, Math.min(width, Math.round(fraction * width)));
+                return `${fillColor}${fillChar.repeat(filled)}${ansi.gray}${"░".repeat(width - filled)}${ansi.reset}`;
+            }
             function renderVisualChart(before, after, lossless, lossy) {
                 if (before <= 0)
                     return "";
-                const width = 30;
                 const saved = Math.max(0, before - after);
-                const savedPctVal = (100 * saved) / before;
-                const afterFill = Math.min(width, Math.max(0, Math.round((after / before) * width)));
-                const savedFill = width - afterFill;
+                const savedFraction = saved / before;
                 const totalSaved = lossless + lossy;
-                const losslessRatio = totalSaved > 0 ? lossless / totalSaved : 1;
-                const losslessFill = Math.min(savedFill, Math.max(0, Math.round(savedFill * losslessRatio)));
-                const lossyFill = Math.max(0, savedFill - losslessFill);
-                const barAfter = "█".repeat(afterFill);
-                const barLossless = "░".repeat(losslessFill);
-                const barLossy = "▒".repeat(lossyFill);
-                const barEmpty = " ".repeat(Math.max(0, width - afterFill - losslessFill - lossyFill));
-                const estDollars = ((saved / 1_000_000) * 3.00).toFixed(4);
+                const estDollars = ((saved / 1_000_000) * 3.0).toFixed(4);
                 return `
-┌───────────────────────────────────────────────────────────┐
-│              TOKEN SAVINGS (BEFORE vs AFTER)               │
-├───────────────────────────────────────────────────────────┤
-│ BEFORE : [${"█".repeat(width)}] ${before.toLocaleString().padStart(8)} tokens (100.0%) │
-│ AFTER  : [${barAfter}${" ".repeat(width - afterFill)}] ${after.toLocaleString().padStart(8)} tokens (${(100 - savedPctVal).toFixed(1).padStart(5)}%) │
-│ SAVED  : [${barLossless}${barLossy}${barEmpty}] ${saved.toLocaleString().padStart(8)} tokens ( ${savedPctVal.toFixed(1).padStart(5)}%) │
-├───────────────────────────────────────────────────────────┤
-│ BREAKDOWN OF SAVINGS:                                     │
-│  ░ Lossless (Dedupe & Noise): ${lossless.toLocaleString().padStart(8)} tokens (${(totalSaved > 0 ? (lossless * 100 / totalSaved) : 0).toFixed(1)}%)  │
-│  ▒ Lossy (Budget Truncation): ${lossy.toLocaleString().padStart(8)} tokens (${(totalSaved > 0 ? (lossy * 100 / totalSaved) : 0).toFixed(1)}%)  │
-│ ESTIMATED SAVINGS           : ~$${estDollars} / pass (@ $3/1M)   │
-└───────────────────────────────────────────────────────────┘`;
+  ${ansi.bold}TOKEN SAVINGS${ansi.reset}  ${ansi.dim}before vs after${ansi.reset}
+  ${bar(savedFraction)}  ${(savedFraction * 100).toFixed(1)}% saved
+  ${ansi.dim}${before.toLocaleString()} → ${after.toLocaleString()} tokens (${saved.toLocaleString()} saved, ~$${estDollars} @ $3/1M)${ansi.reset}
+
+  ${ansi.dim}lossless (dedupe/noise)${ansi.reset}  ${totalSaved > 0 ? ((lossless * 100) / totalSaved).toFixed(1) : "0.0"}%  ${lossless.toLocaleString()} tokens
+  ${ansi.dim}lossy (truncation)     ${ansi.reset}  ${totalSaved > 0 ? ((lossy * 100) / totalSaved).toFixed(1) : "0.0"}%  ${lossy.toLocaleString()} tokens`;
             }
             const hardPct = hardT + softT > 0 ? Math.round((100 * hardT) / (hardT + softT)) : 0;
-            console.log(`Measured ${files.length} file(s)${passes > 1 ? ` over ${passes} passes` : ""}, budget ${budget} tokens\n`);
+            console.log(`Measured ${files.length} file(s)${passes > 1 ? ` over ${passes} passes` : ""}, budget ${budget} tokens`);
             console.log(renderVisualChart(before, after, lossless, lossy));
-            console.log(`  before        ${before.toLocaleString()} tokens`);
-            console.log(`  after         ${after.toLocaleString()} tokens`);
-            console.log(`  saved         ${(before - after).toLocaleString()} (${pct(before, after)})\n`);
-            console.log(`  lossless      ${lossless.toLocaleString()} tokens  (dedupe + noise removal — free)`);
-            console.log(`  lossy         ${lossy.toLocaleString()} tokens  (truncation — the model sees less)\n`);
-            console.log(`  hard data     ${hardT.toLocaleString()} tokens (${hardPct}%)  (code, config, limits — only dedupe may touch it)`);
+            console.log(`\n  hard data     ${hardT.toLocaleString()} tokens (${hardPct}%)  (code, config, limits — only dedupe may touch it)`);
             console.log(`  soft prose    ${softT.toLocaleString()} tokens  (the only thing compression may cut)\n`);
             console.log(`  mechanisms    ${Object.entries(mechanisms).map(([k, v]) => `${k}×${v}`).join(", ") || "none"}`);
             console.log(`\n  Estimated (±15%). Add --exact for Anthropic's own count on a sample.`);
@@ -251,7 +239,7 @@ async function main() {
         case "benchmark": {
             const { ToolCatalog, SkillCatalog } = await import("./catalog.js");
             const { estimateTokens } = await import("./tokens.js");
-            console.log("=== SAVIER VS RATEL CONTEXT OPTIMIZATION BENCHMARK ===\n");
+            console.log("=== THRIFT VS RATEL CONTEXT OPTIMIZATION BENCHMARK ===\n");
             const toolCat = new ToolCatalog();
             const skillCat = new SkillCatalog();
             // Register 20 representative tools
@@ -324,7 +312,7 @@ async function main() {
             console.log(`1. BASELINE (Full Tool + Skill Bloat + Raw Output): ${totalBaselineTokens} tokens`);
             console.log(`2. RATEL (Progressive Disclosure Tool Catalog Only): ${totalRatelTokens} tokens (-${((100 * (totalBaselineTokens - totalRatelTokens)) / totalBaselineTokens).toFixed(1)}% vs Baseline)`);
             console.log(`3. THRIFT (Dual-Sided Input Catalog + Output SeenLedger Dedupe): ${savierTotalTokens} tokens (-${((100 * (totalBaselineTokens - savierTotalTokens)) / totalBaselineTokens).toFixed(1)}% vs Baseline, -${((100 * (totalRatelTokens - savierTotalTokens)) / totalRatelTokens).toFixed(1)}% vs Ratel)\n`);
-            console.log("Verdict: SAVIER OUTPERFORMS RATEL BY 70%+ ON AGENT LOOPS BY DEDUPLICATING TOOL OUTPUTS IN ADDITION TO INPUT CATALOG RETRIEVAL!");
+            console.log("Verdict: THRIFT OUTPERFORMS RATEL BY 70%+ ON AGENT LOOPS BY DEDUPLICATING TOOL OUTPUTS IN ADDITION TO INPUT CATALOG RETRIEVAL!");
             break;
         }
         // ── check-loop ────────────────────────────────────────────────────────

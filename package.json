@@ -1,6 +1,6 @@
 {
   "name": "the-lyceum",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "description": "The Lyceum — circuit breakers for AI. brake stops a dangerous action; redteam stops a one-sided conclusion; thrift stops the bill.",
   "type": "module",
