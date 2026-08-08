@@ -4,6 +4,10 @@
 before it costs you — one stops a dangerous *action*, one stops a one-sided
 *conclusion*, one stops you paying for the same file twice.
 
+**[thelyceum.site](https://thelyceum.site)** · `npm install -g the-lyceum`
+
+![brake, redteam, and thrift running in a terminal — install, activate, a blocked action, a blocked one-sided claim, and the lyceum status dashboard](docs/demo.gif)
+
 ```
 packages/
   brake/     stops the action    — CLI + MCP server + skill
