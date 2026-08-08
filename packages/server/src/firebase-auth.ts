@@ -151,21 +151,44 @@ export async function completeSignup(
   if (!decoded.email) throw new FirebaseAuthError("invalid_input", "Token has no email.");
   if (!decoded.email_verified) return { verified: false };
 
+  const name = input.name.trim() || decoded.name || decoded.email.split("@")[0];
+  const provider = decoded.firebase?.sign_in_provider ?? "unknown";
+
+  function licenseFor(row: SignupRow | undefined): { license_key: string; expires_at: number } | undefined {
+    if (!row?.license_id) return undefined;
+    return db.raw
+      .prepare("SELECT license_key, expires_at FROM subscription_licenses WHERE id = ?")
+      .get(row.license_id) as { license_key: string; expires_at: number } | undefined;
+  }
+
   // Idempotent: an account that already has a license (e.g. calling
   // /complete again after a page refresh) gets the SAME one back, never a
   // second pool slot.
   const existing = db.raw.prepare("SELECT * FROM firebase_signups WHERE uid = ?").get(decoded.uid) as
     | SignupRow
     | undefined;
-  if (existing?.license_id) {
-    const license = db.raw
-      .prepare("SELECT license_key, expires_at FROM subscription_licenses WHERE id = ?")
-      .get(existing.license_id) as { license_key: string; expires_at: number } | undefined;
-    if (license) return { verified: true, licenseKey: license.license_key, expiresAt: license.expires_at };
-  }
+  const existingLicense = licenseFor(existing);
+  if (existingLicense) return { verified: true, licenseKey: existingLicense.license_key, expiresAt: existingLicense.expires_at };
 
-  const name = input.name.trim() || decoded.name || decoded.email.split("@")[0];
-  const provider = decoded.firebase?.sign_in_provider ?? "unknown";
+  // One trial per person, not per Firebase UID: someone who already
+  // received a key under a different account with the same email (deleted
+  // and recreated the account, linked a second provider, etc.) must not get
+  // a second pool slot just by presenting a fresh UID. Hand back their
+  // existing license instead of assigning a new one.
+  if (!existing) {
+    const byEmail = db.raw
+      .prepare("SELECT * FROM firebase_signups WHERE email = ? AND license_id IS NOT NULL ORDER BY created_at ASC LIMIT 1")
+      .get(decoded.email) as SignupRow | undefined;
+    const byEmailLicense = licenseFor(byEmail);
+    if (byEmailLicense) {
+      db.raw
+        .prepare(
+          "INSERT INTO firebase_signups (uid, email, name, provider, license_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        .run(decoded.uid, decoded.email, name, provider, byEmail!.license_id, Date.now());
+      return { verified: true, licenseKey: byEmailLicense.license_key, expiresAt: byEmailLicense.expires_at };
+    }
+  }
 
   let license;
   try {

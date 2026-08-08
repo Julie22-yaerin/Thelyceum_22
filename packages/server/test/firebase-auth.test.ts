@@ -92,6 +92,21 @@ describe("completeSignup", () => {
     expect(listFirebaseSignups(db)).toHaveLength(1);
   });
 
+  it("one trial per email, not per uid — a second account with the same email gets the same license back", async () => {
+    const first = await completeSignup(db, { idToken: "x", name: "Dev Person" }, fakeVerifier(GOOGLE_USER));
+
+    // Same email, brand-new uid (e.g. account deleted and recreated, or a
+    // second sign-in provider linked) — must not consume a second pool slot.
+    const secondAccountSameEmail = { ...GOOGLE_USER, uid: "uid-google-2" };
+    const second = await completeSignup(db, { idToken: "x", name: "Dev Person" }, fakeVerifier(secondAccountSameEmail));
+
+    expect(second.licenseKey).toBe(first.licenseKey);
+    // Both uids are recorded (for admin visibility), but only one pool slot was ever taken.
+    expect(listFirebaseSignups(db)).toHaveLength(2);
+    const pool = seedLicensePool(db, ADMIN); // idempotent — just reads back the existing pool
+    expect(pool.filter((l) => l.status === "taken")).toHaveLength(1);
+  });
+
   it("emails the license key once, on first issuance only — not on the idempotent repeat", async () => {
     const sender = fakeSender();
     await completeSignup(db, { idToken: "x", name: "Dev Person" }, fakeVerifier(GOOGLE_USER), sender);
