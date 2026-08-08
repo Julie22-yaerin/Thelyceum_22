@@ -38,7 +38,14 @@ function generateLicenseKey(): string {
 
 export class SubLicenseError extends Error {
   constructor(
-    public code: "invalid_input" | "not_found" | "invalid_status" | "invalid_key" | "not_taken" | "expired",
+    public code:
+      | "invalid_input"
+      | "not_found"
+      | "invalid_status"
+      | "invalid_key"
+      | "not_taken"
+      | "expired"
+      | "trial_upgrade_blocked",
     message: string
   ) {
     super(message);
@@ -55,6 +62,9 @@ export interface SubLicenseRow {
   taken_at: number | null;
   expires_at: number | null;
   first_checkin_at: number | null;
+  /** NULL while not_taken. 'trial' = auto-issued by signup, unpaid — cannot
+   *  self-extend. 'paid' = an admin marked it taken by hand. */
+  tier: "trial" | "paid" | null;
 }
 
 // ── Seed the pool (admin, idempotent) ───────────────────────────────────
@@ -131,13 +141,18 @@ export function setLicenseStatus(
   const now = Date.now();
   if (input.status === "taken") {
     const expiresAt = now + (input.durationMs ?? DEFAULT_SUBSCRIPTION_MS);
+    // An admin marking a slot "taken" by hand is, per this file's own model,
+    // the only action that implies a real payment happened — so it's always
+    // 'paid', unlike autoAssignLicense's 'trial'.
     db.raw
-      .prepare("UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ? WHERE id = ?")
+      .prepare(
+        "UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ?, tier = 'paid' WHERE id = ?"
+      )
       .run(input.label ?? row.label, now, expiresAt, id);
   } else {
     db.raw
       .prepare(
-        "UPDATE subscription_licenses SET status = 'not_taken', label = NULL, taken_at = NULL, expires_at = NULL, first_checkin_at = NULL WHERE id = ?"
+        "UPDATE subscription_licenses SET status = 'not_taken', label = NULL, taken_at = NULL, expires_at = NULL, first_checkin_at = NULL, tier = NULL WHERE id = ?"
       )
       .run(id);
   }
@@ -153,6 +168,7 @@ export interface ValidateResult {
   expiresAt: number;
   daysRemaining: number;
   firstCheckinAt: number | null;
+  tier: "trial" | "paid" | null;
 }
 
 function loadByKey(db: DbHandle, licenseKey: string): SubLicenseRow {
@@ -180,6 +196,7 @@ export function validateSubLicense(db: DbHandle, licenseKey: string): ValidateRe
     expiresAt: row.expires_at,
     daysRemaining: Math.max(0, (row.expires_at - now) / (24 * 60 * 60 * 1000)),
     firstCheckinAt: row.first_checkin_at,
+    tier: row.tier,
   };
 }
 
@@ -201,7 +218,7 @@ export function cancelSubLicense(db: DbHandle, licenseKey: string): void {
   const row = loadByKey(db, licenseKey);
   db.raw
     .prepare(
-      "UPDATE subscription_licenses SET status = 'not_taken', label = NULL, taken_at = NULL, expires_at = NULL, first_checkin_at = NULL WHERE id = ?"
+      "UPDATE subscription_licenses SET status = 'not_taken', label = NULL, taken_at = NULL, expires_at = NULL, first_checkin_at = NULL, tier = NULL WHERE id = ?"
     )
     .run(row.id);
 }
@@ -221,6 +238,16 @@ export function upgradeSubLicense(db: DbHandle, licenseKey: string, months: numb
   const row = loadByKey(db, licenseKey);
   if (row.status !== "taken" || !row.expires_at) {
     throw new SubLicenseError("not_taken", "This code hasn't been activated yet.");
+  }
+  // A trial key was never paid for — self-service extension is the exact
+  // bug this tier field exists to close (a free 30-day key could otherwise
+  // hit this endpoint on repeat and extend itself indefinitely). Upgrading
+  // out of a trial is a real purchase, handled outside this endpoint.
+  if (row.tier === "trial") {
+    throw new SubLicenseError(
+      "trial_upgrade_blocked",
+      "This is a free trial key — it can't be self-extended. See pricing to upgrade to a paid plan."
+    );
   }
   // Extend from expiry if still active (a renewal shouldn't shorten unused
   // time), from now if it already lapsed (extending from a past date would
@@ -259,7 +286,9 @@ export function autoAssignLicense(
   const now = Date.now();
   const expiresAt = now + durationMs;
   db.raw
-    .prepare("UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ? WHERE id = ?")
+    .prepare(
+      "UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ?, tier = 'trial' WHERE id = ?"
+    )
     .run(label, now, expiresAt, slot.id);
 
   db.raw

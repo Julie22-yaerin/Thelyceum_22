@@ -215,6 +215,7 @@ function fmtDate(ms) {
 
 function renderDashboard(status) {
   const daysLeft = Math.max(0, Math.ceil(status.daysRemaining));
+  const isTrial = status.tier === "trial";
   card.innerHTML = `
     <h2>Your license</h2>
     <div class="admin-counts" style="margin-bottom:20px;">
@@ -223,25 +224,34 @@ function renderDashboard(status) {
         <div class="l">days left</div>
       </div>
     </div>
-    <p class="sub">Active. Renews or expires ${esc(fmtDate(status.expiresAt))}.</p>
+    <p class="sub">
+      ${isTrial ? "Free trial. " : "Active. "}Renews or expires ${esc(fmtDate(status.expiresAt))}.
+    </p>
 
     <div style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
-      <div>
-        <label style="display:block; font-size:13px; color:var(--text-dim); font-weight:500; margin-bottom:6px;">
-          Extend by (months)
-        </label>
-        <div style="display:flex; gap:8px;">
-          <input type="number" id="upgradeMonths" min="1" value="1" style="width:80px; padding:10px 12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg); color:var(--text); font-family:inherit;" />
-          <button type="button" id="upgradeBtn" style="flex:1;">Upgrade</button>
-        </div>
-      </div>
-      <button type="button" id="yearlyBtn" class="mini">Switch to yearly (12 months)</button>
-      <button type="button" id="cancelBtn" class="mini reject">Cancel subscription</button>
+      ${
+        isTrial
+          ? `<a href="/web/pricing" style="display:block;"><button type="button" style="width:100%;">View pricing &amp; upgrade</button></a>
+             <p class="sub" style="font-size:12.5px; text-align:center; margin:0;">
+               Trial keys don't self-extend — upgrading to a paid plan is what unlocks that.
+             </p>`
+          : `<div>
+               <label style="display:block; font-size:13px; color:var(--text-dim); font-weight:500; margin-bottom:6px;">
+                 Extend by (months)
+               </label>
+               <div style="display:flex; gap:8px;">
+                 <input type="number" id="upgradeMonths" min="1" value="1" style="width:80px; padding:10px 12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg); color:var(--text); font-family:inherit;" />
+                 <button type="button" id="upgradeBtn" style="flex:1;">Upgrade</button>
+               </div>
+             </div>
+             <button type="button" id="yearlyBtn" class="mini">Switch to yearly (12 months)</button>`
+      }
+      <button type="button" id="cancelBtn" class="mini reject">Cancel ${isTrial ? "trial" : "subscription"}</button>
     </div>
     <p class="field-error" id="dashError" style="text-align:center;"></p>`;
 
-  $("#upgradeBtn").addEventListener("click", () => doUpgrade(Number($("#upgradeMonths").value)));
-  $("#yearlyBtn").addEventListener("click", () => doUpgrade(12));
+  $("#upgradeBtn")?.addEventListener("click", () => doUpgrade(Number($("#upgradeMonths").value)));
+  $("#yearlyBtn")?.addEventListener("click", () => doUpgrade(12));
   $("#cancelBtn").addEventListener("click", async () => {
     if (!confirm("Cancel your subscription? Your code stops working immediately.")) return;
     const licenseKey = localStorage.getItem(KEY_STORE);

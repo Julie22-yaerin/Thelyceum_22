@@ -220,6 +220,34 @@ function migrate(db: DatabaseSync): void {
   } catch (err) {
     if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
   }
+
+  // 'trial' (auto-issued by signup, unpaid, self-service upgrade blocked) vs
+  // 'paid' (an admin marked it taken by hand — the only path in this system
+  // that implies money actually changed hands, per the file-level comment in
+  // sub-license.ts). NULL while not_taken; set on every "taken" transition.
+  // Without this distinction, a free trial key could hit /upgrade and extend
+  // itself indefinitely — the same self-service endpoint a paying customer
+  // uses, with no way to tell them apart server-side.
+  try {
+    db.exec("ALTER TABLE subscription_licenses ADD COLUMN tier TEXT");
+  } catch (err) {
+    if (!(err instanceof Error) || !/duplicate column/i.test(err.message)) throw err;
+  }
+
+  // One-time backfill for rows that existed before the tier column did.
+  // firebase_signups.license_id names exactly the slots this system itself
+  // auto-issued (trials) — everything else already 'taken' was set by an
+  // admin's hand, the manual-sale/paid path. Guarded by "tier IS NULL" so
+  // this only ever touches untouched legacy rows, never overwrites a tier
+  // already assigned going forward.
+  db.exec(`
+    UPDATE subscription_licenses SET tier = 'trial'
+    WHERE tier IS NULL AND id IN (SELECT license_id FROM firebase_signups WHERE license_id IS NOT NULL)
+  `);
+  db.exec(`
+    UPDATE subscription_licenses SET tier = 'paid'
+    WHERE tier IS NULL AND status = 'taken'
+  `);
 }
 
 export interface UserRow {

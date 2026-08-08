@@ -21,6 +21,7 @@ import {
   markCheckedIn,
   cancelSubLicense,
   upgradeSubLicense,
+  autoAssignLicense,
   SubLicenseError,
 } from "../src/sub-license.js";
 
@@ -228,5 +229,31 @@ describe("upgradeSubLicense", () => {
     setLicenseStatus(db, ADMIN, slot.id, { status: "taken" });
     expect(() => upgradeSubLicense(db, slot.license_key, 0)).toThrow(SubLicenseError);
     expect(() => upgradeSubLicense(db, slot.license_key, -1)).toThrow(SubLicenseError);
+  });
+
+  it("marks an admin-taken slot 'paid', and blocks a trial slot from self-extending", () => {
+    const [paidSlot, trialSlot] = seedLicensePool(db, ADMIN, 2);
+    const paid = setLicenseStatus(db, ADMIN, paidSlot.id, { status: "taken" });
+    expect(paid.tier).toBe("paid");
+    expect(() => upgradeSubLicense(db, paidSlot.license_key, 1)).not.toThrow();
+
+    const trial = autoAssignLicense(db, "signup:test@example.com", 30 * 24 * 60 * 60 * 1000, "signup");
+    expect(trial.id).toBe(trialSlot.id);
+    expect(trial.tier).toBe("trial");
+    try {
+      upgradeSubLicense(db, trialSlot.license_key, 1);
+      expect.unreachable("a trial key must not be able to self-extend");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SubLicenseError);
+      expect((err as SubLicenseError).code).toBe("trial_upgrade_blocked");
+    }
+  });
+
+  it("clears tier when a slot is returned to the pool (cancel or manual not_taken)", () => {
+    const [slot] = seedLicensePool(db, ADMIN);
+    setLicenseStatus(db, ADMIN, slot.id, { status: "taken" });
+    cancelSubLicense(db, slot.license_key);
+    const row = listLicensePool(db).find((r) => r.id === slot.id)!;
+    expect(row.tier).toBeNull();
   });
 });

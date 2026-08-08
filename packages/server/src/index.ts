@@ -989,7 +989,8 @@ app.post("/api/license-pool/upgrade", async (c) => {
     return c.json(upgradeSubLicense(db, body.data.licenseKey, body.data.months));
   } catch (err) {
     if (err instanceof SubLicenseError) {
-      const status = err.code === "not_taken" ? 403 : err.code === "invalid_input" ? 400 : 401;
+      const status =
+        err.code === "not_taken" || err.code === "trial_upgrade_blocked" ? 403 : err.code === "invalid_input" ? 400 : 401;
       return c.json({ ok: false, error: err.code, message: err.message }, status);
     }
     throw err;
