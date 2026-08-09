@@ -27,7 +27,8 @@
     "packages/brake",
     "packages/redteam",
     "packages/thrift",
-    "packages/server"
+    "packages/server",
+    "packages/langchain-lyceum"
   ],
   "scripts": {
     "build": "node scripts/build-all.mjs",

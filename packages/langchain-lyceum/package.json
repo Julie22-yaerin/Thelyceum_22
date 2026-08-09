@@ -1,0 +1,51 @@
+{
+  "name": "langchain-lyceum",
+  "version": "0.1.0",
+  "description": "Drop-in token compression for LangChain.js agents — wrap your tools and The Lyceum dedupes repeated reads, caps runaway output, and strips machine noise before it burns your context window.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.5",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7",
+    "zod": "^3.23.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "langchain",
+    "langchainjs",
+    "llm-cost-optimization",
+    "token-optimization",
+    "context-window",
+    "agent-tools",
+    "ai-agent-infra"
+  ],
+  "license": "MIT",
+  "homepage": "https://thelyceum.site",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Julie22-yaerin/Thelyceum_22.git",
+    "directory": "packages/langchain-lyceum"
+  }
+}
