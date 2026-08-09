@@ -15,7 +15,7 @@ import { compress, SeenLedger, type CompressResult } from "./compress.js";
 import { checkLicenseGate } from "./gate.js";
 import { estimateTokens, countExact } from "./tokens.js";
 import { classify } from "./classify.js";
-import { summarise, isLossless, DEFAULT_LEDGER_PATH } from "./ledger.js";
+import { summarise, isLossless, DEFAULT_LEDGER_PATH, THRIFT_HOME } from "./ledger.js";
 import { installAll, installClaudeDesktop, installClaudeCode, installChatGPT, uninstallAll } from "./install.js";
 import { reportUsageBestEffort } from "./usage.js";
 import { globalLoopTracker } from "./loop.js";
@@ -27,6 +27,17 @@ const ansi = {
   reset: "\x1b[0m", dim: "\x1b[2m", bold: "\x1b[1m",
   amber: "\x1b[38;5;221m", green: "\x1b[38;5;114m", gray: "\x1b[38;5;244m",
 };
+
+// A badge dev can paste straight into their own README — built from THIS
+// run's real numbers, not a fixed claim shipped with the tool. Same file
+// `lyceum share` re-reads, so re-running it later shows the same badge
+// without re-measuring.
+const LAST_MEASURE_PATH = join(THRIFT_HOME, "last-measure.json");
+
+function badgeUrl(label: string, message: string, color: string): string {
+  const enc = (s: string) => encodeURIComponent(s).replace(/-/g, "--").replace(/_/g, "__");
+  return `https://img.shields.io/badge/${enc(label)}-${enc(message)}-${color}`;
+}
 
 function getFlag(name: string, fallback?: string): string | undefined {
   const i = args.indexOf(`--${name}`);
@@ -143,6 +154,26 @@ function renderVisualChart(before: number, after: number, lossless: number, loss
       // thrift is the one tool with REAL token numbers — report what passed
       // through this run. Best-effort, never blocks, never fails.
       await reportUsageBestEffort({ tool: "thrift", kind: "measure", tokens: before, calls: files.length });
+
+      if (before > 0) {
+        const savedFraction = Math.max(0, before - after) / before;
+        try {
+          await fs.mkdir(THRIFT_HOME, { recursive: true });
+          await fs.writeFile(
+            LAST_MEASURE_PATH,
+            JSON.stringify({ before, after, savedFraction, measuredAt: Date.now() }, null, 2),
+            "utf-8"
+          );
+        } catch {
+          // Best-effort — a badge that can't be written shouldn't fail the measurement.
+        }
+        const pct = (savedFraction * 100).toFixed(1);
+        const badge = `[![Lyceum tokens saved](${badgeUrl("tokens saved", `${pct}%`, "brightgreen")})](https://thelyceum.site)`;
+        console.log(`\n  ${ansi.bold}Paste into your README:${ansi.reset}  ${ansi.dim}${badge}${ansi.reset}`);
+      }
+      console.log(
+        `${ansi.dim}⚡ Powered by The Lyceum (thelyceum.site) — run \`lyceum share\` any time for this badge again${ansi.reset}`
+      );
       break;
     }
 

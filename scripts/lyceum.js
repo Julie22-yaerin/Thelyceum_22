@@ -39,6 +39,7 @@ function printHelp() {
 ${c.bold}Commands${c.reset}
   ${c.white}activate${c.reset} <code>   Unlock brake, redteam, and thrift with one license code
   ${c.white}status${c.reset}            Token savings and blocked-event dashboard, real numbers
+  ${c.white}share${c.reset}             A README badge built from your own measurements
   ${c.white}brake${c.reset} ...         ${c.red}●${c.reset} stops a dangerous action — scan, engage, install
   ${c.white}redteam${c.reset} ...       ${c.violet}●${c.reset} stops a one-sided conclusion — challenge, rebut, install
   ${c.white}thrift${c.reset} ...        ${c.amber}●${c.reset} stops the token bill — measure, compress, install
@@ -114,6 +115,70 @@ async function printStatus() {
   }
 }
 
+// ── share: a badge built from YOUR numbers, not a fixed claim ──────────
+// The shields.io badge text is generated from this machine's own ledger —
+// if nothing has run yet, this says so instead of printing a made-up
+// number. A badge nobody can reproduce isn't a badge worth pasting.
+
+function badgeUrl(label, message, color) {
+  const enc = (s) => encodeURIComponent(s).replace(/-/g, "--").replace(/_/g, "__");
+  return `https://img.shields.io/badge/${enc(label)}-${enc(message)}-${color}`;
+}
+
+async function printShareCard() {
+  printBanner();
+
+  let badge = null;
+
+  // Prefer the snapshot `thrift measure` writes — that's an actual benchmark
+  // run, which is what a badge is claiming. Fall back to the cumulative
+  // ledger (real usage, not a one-off measurement) if no snapshot exists yet.
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { homedir } = await import("node:os");
+    const snapPath = join(process.env.THRIFT_HOME ?? join(homedir(), ".thrift"), "last-measure.json");
+    const snap = JSON.parse(await readFile(snapPath, "utf-8"));
+    const pct = (snap.savedFraction * 100).toFixed(1);
+    badge = { alt: "Lyceum tokens saved", url: badgeUrl("tokens saved", `${pct}%`, "brightgreen") };
+  } catch {
+    // no snapshot — try the ledger next
+  }
+
+  if (!badge) {
+    try {
+      const { summarise } = await import(pkgPath("thrift", "dist/ledger.js"));
+      const s = await summarise();
+      if (s.calls > 0) {
+        const pct = (s.savedFraction * 100).toFixed(1);
+        badge = {
+          alt: "Lyceum tokens saved",
+          url: badgeUrl("tokens saved", `${pct}%`, "brightgreen"),
+        };
+      }
+    } catch {
+      // no ledger either — fall through to the generic badge below
+    }
+  }
+
+  if (!badge) {
+    badge = { alt: "Protected by The Lyceum", url: badgeUrl("protected by", "the lyceum", "e0342c") };
+    console.log(`  ${c.dim}No local measurements yet — showing the generic badge.${c.reset}`);
+    console.log(`  ${c.dim}Run \`thrift measure .\` first for a badge with YOUR real number.${c.reset}\n`);
+  }
+
+  const md = `[![${badge.alt}](${badge.url})](https://thelyceum.site)`;
+  console.log(`  ${c.bold}Paste this into your README:${c.reset}\n`);
+  console.log(`  ${c.dim}${md}${c.reset}\n`);
+  printWatermark();
+}
+
+function printWatermark() {
+  console.log(
+    `${c.dim}⚡ Powered by The Lyceum (thelyceum.site) — run \`lyceum share\` for a badge built from your own numbers${c.reset}`
+  );
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -125,6 +190,12 @@ async function main() {
 
   if (command === "status" || command === "metrics") {
     await printStatus();
+    printWatermark();
+    return;
+  }
+
+  if (command === "share") {
+    await printShareCard();
     return;
   }
 

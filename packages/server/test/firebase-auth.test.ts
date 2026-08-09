@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb, type DbHandle } from "../src/db.js";
 import { seedLicensePool } from "../src/sub-license.js";
-import { completeSignup, listFirebaseSignups, getPublicWebConfig, FirebaseAuthError, type TokenVerifier, type DecodedToken } from "../src/firebase-auth.js";
+import { completeSignup, listFirebaseSignups, signupsHistory, getPublicWebConfig, FirebaseAuthError, type TokenVerifier, type DecodedToken } from "../src/firebase-auth.js";
 import type { EmailSender } from "../src/email.js";
 
 const ADMIN = { fingerprint: "fp_firebase_admin" };
@@ -179,5 +179,21 @@ describe("getPublicWebConfig", () => {
     expect(config).not.toBeNull();
     expect(config?.apiKey).toBe("test-FIREBASE_API_KEY");
     for (const k of KEYS) delete process.env[k];
+  });
+});
+
+describe("signupsHistory", () => {
+  it("zero-fills every day in the window, today included, oldest first", () => {
+    const history = signupsHistory(db, 7);
+    expect(history).toHaveLength(7);
+    expect(history.every((d) => d.count === 0)).toBe(true);
+    expect(history[6].date).toBe(new Date().toISOString().slice(0, 10));
+  });
+
+  it("counts a real signup on the correct day", async () => {
+    await completeSignup(db, { idToken: "x", name: "Dev Person" }, fakeVerifier(GOOGLE_USER));
+    const history = signupsHistory(db, 7);
+    const today = history[history.length - 1];
+    expect(today.count).toBe(1);
   });
 });

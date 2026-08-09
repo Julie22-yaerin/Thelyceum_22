@@ -222,3 +222,30 @@ export function listFirebaseSignups(db: DbHandle): SignupRow[] {
     .prepare("SELECT * FROM firebase_signups ORDER BY created_at DESC")
     .all() as unknown as SignupRow[];
 }
+
+export interface SignupsHistoryDay {
+  date: string; // YYYY-MM-DD, UTC
+  count: number;
+}
+
+/** Daily signup counts for the last `days` days, oldest first, zero-filled —
+ *  a day with no signups is a real 0, not a gap, so a chart doesn't need to
+ *  guess what's missing. */
+export function signupsHistory(db: DbHandle, days = 30): SignupsHistoryDay[] {
+  const since = Date.now() - days * 24 * 60 * 60 * 1000;
+  const rows = db.raw
+    .prepare(
+      `SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') AS date, COUNT(*) AS n
+       FROM firebase_signups WHERE created_at >= ? GROUP BY date`
+    )
+    .all(since) as { date: string; n: number }[];
+  const byDate = new Map(rows.map((r) => [r.date, r.n]));
+
+  const out: SignupsHistoryDay[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const date = d.toISOString().slice(0, 10);
+    out.push({ date, count: byDate.get(date) ?? 0 });
+  }
+  return out;
+}

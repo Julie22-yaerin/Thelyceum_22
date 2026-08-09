@@ -80,6 +80,62 @@ async function refresh() {
   renderAudit(audit.entries);
   void refreshSubLicenses();
   void refreshFirebaseSignups();
+  void refreshSignupsHistory();
+  void refreshFeedback();
+}
+
+// ── Signups over time ────────────────────────────────────────────────────
+
+async function refreshSignupsHistory() {
+  const { days } = await api("/api/admin/signups-history?days=30");
+  renderSignupsHistory(days);
+}
+
+function renderSignupsHistory(days) {
+  const wrap = $("#signupsHistoryWrap");
+  const max = Math.max(1, ...days.map((d) => d.count));
+  wrap.innerHTML = `
+    <div style="display:flex; align-items:flex-end; gap:3px; height:80px; padding:8px 0;">
+      ${days
+        .map((d) => {
+          const h = Math.max(2, Math.round((d.count / max) * 72));
+          const hot = d.count > 0 ? "var(--accent)" : "var(--border-strong)";
+          return `<div title="${esc(d.date)}: ${d.count} signup(s)" style="flex:1; height:${h}px; background:${hot}; border-radius:2px 2px 0 0;"></div>`;
+        })
+        .join("")}
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim);">
+      <span>${esc(days[0]?.date ?? "")}</span>
+      <span>${days.reduce((s, d) => s + d.count, 0)} total</span>
+      <span>${esc(days[days.length - 1]?.date ?? "")}</span>
+    </div>`;
+}
+
+// ── Feedback ──────────────────────────────────────────────────────────────
+
+async function refreshFeedback() {
+  const { feedback } = await api("/api/admin/feedback");
+  renderFeedback(feedback);
+}
+
+function renderFeedback(entries) {
+  const wrap = $("#feedbackWrap");
+  if (entries.length === 0) {
+    wrap.innerHTML = `<p class="muted" style="padding:24px 0;">No feedback yet.</p>`;
+    return;
+  }
+  wrap.innerHTML = entries
+    .map(
+      (f) => `
+    <div class="stake-card" style="margin-bottom:10px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:8px;">
+        <span class="dim" style="font-size:12px;">${new Date(f.created_at).toLocaleString()}${f.context ? ` · ${esc(f.context)}` : ""}</span>
+        ${f.email ? `<a href="mailto:${esc(f.email)}" style="font-size:12px;">${esc(f.email)}</a>` : `<span class="dim" style="font-size:12px;">no reply address</span>`}
+      </div>
+      <p style="white-space:pre-wrap; font-size:14px;">${esc(f.message)}</p>
+    </div>`
+    )
+    .join("");
 }
 
 // ── Firebase signups ─────────────────────────────────────────────────────

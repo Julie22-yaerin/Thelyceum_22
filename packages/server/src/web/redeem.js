@@ -247,8 +247,41 @@ function renderDashboard(status) {
              <button type="button" id="yearlyBtn" class="mini">Switch to yearly (12 months)</button>`
       }
       <button type="button" id="cancelBtn" class="mini reject">Cancel ${isTrial ? "trial" : "subscription"}</button>
+      <button type="button" id="feedbackToggle" class="mini">Send feedback</button>
+      <div id="feedbackForm" class="hidden" style="display:flex; flex-direction:column; gap:8px;">
+        <textarea id="feedbackMessage" rows="3" placeholder="What's working, what isn't — anything." style="width:100%; padding:10px 12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg); color:var(--text); font-family:inherit; font-size:13.5px; resize:vertical;"></textarea>
+        <button type="button" id="feedbackSubmit">Send</button>
+        <p class="sub" id="feedbackNote" style="font-size:12.5px; text-align:center; margin:0;"></p>
+      </div>
     </div>
     <p class="field-error" id="dashError" style="text-align:center;"></p>`;
+
+  $("#feedbackToggle").addEventListener("click", () => {
+    $("#feedbackForm").classList.toggle("hidden");
+    $("#feedbackToggle").classList.add("hidden");
+  });
+  $("#feedbackSubmit").addEventListener("click", async () => {
+    const message = $("#feedbackMessage").value.trim();
+    const noteEl = $("#feedbackNote");
+    if (!message) {
+      noteEl.textContent = "Say something first.";
+      return;
+    }
+    const btn = $("#feedbackSubmit");
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message, context: "redeem_dashboard" }),
+      });
+      if (!res.ok) throw new Error();
+      $("#feedbackForm").innerHTML = `<p class="sub" style="text-align:center; margin:0;">Thanks — sent.</p>`;
+    } catch {
+      noteEl.textContent = "Couldn't send that. Try again in a moment.";
+      btn.disabled = false;
+    }
+  });
 
   $("#upgradeBtn")?.addEventListener("click", () => doUpgrade(Number($("#upgradeMonths").value)));
   $("#yearlyBtn")?.addEventListener("click", () => doUpgrade(12));

@@ -208,6 +208,21 @@ function migrate(db: DatabaseSync): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_firebase_signups_created ON firebase_signups(created_at DESC);
+
+    -- ── Feedback ─────────────────────────────────────────────────────────
+    -- Free-text feedback from anyone using the product. Public endpoint,
+    -- no auth — email is optional (a reply address, not an identity check).
+    -- context names where it was submitted from (e.g. "redeem_dashboard")
+    -- so a pattern in "which screen people complain from" is visible later.
+    CREATE TABLE IF NOT EXISTS feedback (
+      id          TEXT PRIMARY KEY,
+      message     TEXT NOT NULL,
+      email       TEXT,
+      context     TEXT,
+      created_at  INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
   `);
 
   // Added after subscription_licenses first shipped — ALTER TABLE ADD COLUMN,

@@ -71,7 +71,14 @@ import {
   autoAssignLicense,
   SubLicenseError,
 } from "./sub-license.js";
-import { getPublicWebConfig, completeSignup, listFirebaseSignups, FirebaseAuthError } from "./firebase-auth.js";
+import {
+  getPublicWebConfig,
+  completeSignup,
+  listFirebaseSignups,
+  signupsHistory,
+  FirebaseAuthError,
+} from "./firebase-auth.js";
+import { submitFeedback, listFeedback, FeedbackError } from "./feedback.js";
 import { getTelemetry } from "./telemetry.js";
 import { recordUsage, monthlyUsage, budgetStatus, monthKey } from "./usage.js";
 
@@ -237,6 +244,9 @@ app.use("/api/*", async (c, next) => {
     // else under /api/downloads* should inherit that bypass.
     c.req.path === "/api/downloads" ||
     c.req.path === "/api/health" ||
+    // Feedback has no session to check — it's meant to be reachable by
+    // someone frustrated enough to write in, logged in or not.
+    c.req.path === "/api/feedback" ||
     // The key Lemon Squeezy emailed is the credential — the customer may not
     // be signed in on this browser yet, so entry must be reachable anonymous.
     c.req.path === "/api/license/enter" ||
@@ -1033,6 +1043,35 @@ app.post("/api/auth/firebase/complete", async (c) => {
 
 app.get("/api/admin/firebase-signups", (c) => {
   return c.json({ signups: listFirebaseSignups(db) });
+});
+
+app.get("/api/admin/signups-history", (c) => {
+  const days = Math.min(90, Math.max(1, Number(c.req.query("days")) || 30));
+  return c.json({ days: signupsHistory(db, days) });
+});
+
+// ── Feedback ─────────────────────────────────────────────────────────────
+
+const FeedbackBody = z.object({
+  message: z.string().min(1),
+  email: z.string().optional(),
+  context: z.string().optional(),
+});
+
+app.post("/api/feedback", async (c) => {
+  const body = FeedbackBody.safeParse(await c.req.json().catch(() => ({})));
+  if (!body.success) return c.json({ ok: false, error: "invalid_input" }, 400);
+  try {
+    submitFeedback(db, body.data);
+    return c.json({ ok: true });
+  } catch (err) {
+    if (err instanceof FeedbackError) return c.json({ ok: false, error: err.code, message: err.message }, 400);
+    throw err;
+  }
+});
+
+app.get("/api/admin/feedback", (c) => {
+  return c.json({ feedback: listFeedback(db, Number(c.req.query("limit")) || 200) });
 });
 
 // ── Dev activation (BRAKE_DEV_MODE only) ────────────────────────────────────
