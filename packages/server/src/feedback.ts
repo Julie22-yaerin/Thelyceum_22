@@ -57,6 +57,6 @@ export function submitFeedback(db: DbHandle, input: SubmitFeedbackInput): Feedba
 
 export function listFeedback(db: DbHandle, limit = 200): FeedbackRow[] {
   return db.raw
-    .prepare("SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?")
+    .prepare("SELECT * FROM feedback ORDER BY created_at DESC, rowid DESC LIMIT ?")
     .all(limit) as unknown as FeedbackRow[];
 }
