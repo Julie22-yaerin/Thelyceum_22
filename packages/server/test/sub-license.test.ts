@@ -1,10 +1,10 @@
 /**
- * Subscription license pool — the manual-sale model.
+ * Free license pool.
  *
  * The properties worth protecting: seeding is idempotent (never doubles the
  * pool on a re-run), status only ever changes on an explicit admin call
- * (never inferred), taking a slot starts its own subscription clock, an
- * un-taken slot's code doesn't validate, and expiry is enforced.
+ * (never inferred), taking a slot starts its own 60-day clock, an un-taken
+ * slot's code doesn't validate, and expiry is enforced.
  */
 
 import { describe, expect, it, beforeEach } from "vitest";
@@ -20,7 +20,6 @@ import {
   validateSubLicense,
   markCheckedIn,
   cancelSubLicense,
-  upgradeSubLicense,
   autoAssignLicense,
   SubLicenseError,
 } from "../src/sub-license.js";
@@ -80,15 +79,15 @@ describe("addLicenses", () => {
 });
 
 describe("setLicenseStatus", () => {
-  it("marking taken sets a ~30-day expiry and a label", () => {
+  it("marking taken sets a ~60-day expiry and a label", () => {
     const [slot] = seedLicensePool(db, ADMIN);
     const before = Date.now();
     const updated = setLicenseStatus(db, ADMIN, slot.id, { status: "taken", label: "acme-corp" });
     expect(updated.status).toBe("taken");
     expect(updated.label).toBe("acme-corp");
     expect(updated.taken_at).toBeGreaterThanOrEqual(before);
-    expect(updated.expires_at! - before).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
-    expect(updated.expires_at! - before).toBeLessThan(31 * 24 * 60 * 60 * 1000);
+    expect(updated.expires_at! - before).toBeGreaterThan(59 * 24 * 60 * 60 * 1000);
+    expect(updated.expires_at! - before).toBeLessThan(61 * 24 * 60 * 60 * 1000);
   });
 
   it("honors a custom durationMs", () => {
@@ -199,54 +198,15 @@ describe("cancelSubLicense", () => {
   });
 });
 
-describe("upgradeSubLicense", () => {
-  it("extends an active license from its current expiry, not from now", () => {
-    const [slot] = seedLicensePool(db, ADMIN);
-    const taken = setLicenseStatus(db, ADMIN, slot.id, { status: "taken", durationMs: 5 * 24 * 60 * 60 * 1000 });
+describe("tier", () => {
+  it("every taken slot is 'free', however it was issued — admin or auto-assigned", () => {
+    const [adminSlot, signupSlot] = seedLicensePool(db, ADMIN, 2);
+    const admin = setLicenseStatus(db, ADMIN, adminSlot.id, { status: "taken" });
+    expect(admin.tier).toBe("free");
 
-    const result = upgradeSubLicense(db, slot.license_key, 1);
-    expect(result.expiresAt - taken.expires_at!).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
-    expect(result.expiresAt - taken.expires_at!).toBeLessThan(31 * 24 * 60 * 60 * 1000);
-  });
-
-  it("extends a lapsed license from now, not from its stale expiry", () => {
-    const [slot] = seedLicensePool(db, ADMIN);
-    setLicenseStatus(db, ADMIN, slot.id, { status: "taken" });
-    db.raw.prepare("UPDATE subscription_licenses SET expires_at = ? WHERE id = ?").run(Date.now() - 100_000_000, slot.id);
-
-    const before = Date.now();
-    const result = upgradeSubLicense(db, slot.license_key, 1);
-    expect(result.expiresAt - before).toBeGreaterThan(29 * 24 * 60 * 60 * 1000);
-  });
-
-  it("rejects a license that was never taken", () => {
-    const [slot] = seedLicensePool(db, ADMIN);
-    expect(() => upgradeSubLicense(db, slot.license_key, 1)).toThrow(SubLicenseError);
-  });
-
-  it("rejects zero or negative months", () => {
-    const [slot] = seedLicensePool(db, ADMIN);
-    setLicenseStatus(db, ADMIN, slot.id, { status: "taken" });
-    expect(() => upgradeSubLicense(db, slot.license_key, 0)).toThrow(SubLicenseError);
-    expect(() => upgradeSubLicense(db, slot.license_key, -1)).toThrow(SubLicenseError);
-  });
-
-  it("marks an admin-taken slot 'paid', and blocks a trial slot from self-extending", () => {
-    const [paidSlot, trialSlot] = seedLicensePool(db, ADMIN, 2);
-    const paid = setLicenseStatus(db, ADMIN, paidSlot.id, { status: "taken" });
-    expect(paid.tier).toBe("paid");
-    expect(() => upgradeSubLicense(db, paidSlot.license_key, 1)).not.toThrow();
-
-    const trial = autoAssignLicense(db, "signup:test@example.com", 30 * 24 * 60 * 60 * 1000, "signup");
-    expect(trial.id).toBe(trialSlot.id);
-    expect(trial.tier).toBe("trial");
-    try {
-      upgradeSubLicense(db, trialSlot.license_key, 1);
-      expect.unreachable("a trial key must not be able to self-extend");
-    } catch (err) {
-      expect(err).toBeInstanceOf(SubLicenseError);
-      expect((err as SubLicenseError).code).toBe("trial_upgrade_blocked");
-    }
+    const signup = autoAssignLicense(db, "signup:test@example.com", 60 * 24 * 60 * 60 * 1000, "signup");
+    expect(signup.id).toBe(signupSlot.id);
+    expect(signup.tier).toBe("free");
   });
 
   it("clears tier when a slot is returned to the pool (cancel or manual not_taken)", () => {

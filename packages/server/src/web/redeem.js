@@ -209,52 +209,48 @@ function renderQuickstart() {
 
 // ── View 3: dashboard ────────────────────────────────────────────────────
 
-function fmtDate(ms) {
-  return new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
-}
+const SOLANA_DONATE_ADDRESS = "9fAqcZScuYV9qosZtttNyqKbKdzVKRpv11LMU1eUUW7E";
 
 function renderDashboard(status) {
-  const daysLeft = Math.max(0, Math.ceil(status.daysRemaining));
-  const isTrial = status.tier === "trial";
   card.innerHTML = `
     <h2>Your license</h2>
-    <div class="admin-counts" style="margin-bottom:20px;">
-      <div class="admin-count highlight">
-        <div class="n">${daysLeft}</div>
-        <div class="l">days left</div>
-      </div>
-    </div>
-    <p class="sub">
-      ${isTrial ? "Free trial. " : "Active. "}Renews or expires ${esc(fmtDate(status.expiresAt))}.
-    </p>
+    <p class="sub">Active — free, no payment on file.</p>
 
     <div style="display:flex; flex-direction:column; gap:12px; margin-top:16px;">
-      ${
-        isTrial
-          ? `<a href="/web/pricing" style="display:block;"><button type="button" style="width:100%;">View pricing &amp; upgrade</button></a>
-             <p class="sub" style="font-size:12.5px; text-align:center; margin:0;">
-               Trial keys don't self-extend — upgrading to a paid plan is what unlocks that.
-             </p>`
-          : `<div>
-               <label style="display:block; font-size:13px; color:var(--text-dim); font-weight:500; margin-bottom:6px;">
-                 Extend by (months)
-               </label>
-               <div style="display:flex; gap:8px;">
-                 <input type="number" id="upgradeMonths" min="1" value="1" style="width:80px; padding:10px 12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg); color:var(--text); font-family:inherit;" />
-                 <button type="button" id="upgradeBtn" style="flex:1;">Upgrade</button>
-               </div>
-             </div>
-             <button type="button" id="yearlyBtn" class="mini">Switch to yearly (12 months)</button>`
-      }
-      <button type="button" id="cancelBtn" class="mini reject">Cancel ${isTrial ? "trial" : "subscription"}</button>
+      <button type="button" id="cancelBtn" class="mini reject">Release this code</button>
       <button type="button" id="feedbackToggle" class="mini">Send feedback</button>
       <div id="feedbackForm" class="hidden" style="display:flex; flex-direction:column; gap:8px;">
         <textarea id="feedbackMessage" rows="3" placeholder="What's working, what isn't — anything." style="width:100%; padding:10px 12px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg); color:var(--text); font-family:inherit; font-size:13.5px; resize:vertical;"></textarea>
         <button type="button" id="feedbackSubmit">Send</button>
         <p class="sub" id="feedbackNote" style="font-size:12.5px; text-align:center; margin:0;"></p>
       </div>
+
+      <div class="stake-card money" style="margin-top:8px;">
+        <h3 style="margin-bottom:6px;">Support the devs</h3>
+        <p class="sub" style="font-size:12.5px; margin-bottom:8px;">
+          The Lyceum is free and open source — no strings attached. If it's saved you real
+          tokens or a real incident, a Solana donation is welcome but never expected.
+        </p>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <code id="solanaAddr" style="flex:1; overflow-wrap:anywhere; font-size:12px; padding:8px 10px; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg);">${esc(SOLANA_DONATE_ADDRESS)}</code>
+          <button type="button" id="solanaCopy" class="mini">Copy</button>
+        </div>
+      </div>
     </div>
     <p class="field-error" id="dashError" style="text-align:center;"></p>`;
+
+  $("#solanaCopy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(SOLANA_DONATE_ADDRESS);
+      $("#solanaCopy").textContent = "Copied";
+      setTimeout(() => {
+        $("#solanaCopy").textContent = "Copy";
+      }, 1500);
+    } catch {
+      // Clipboard API can be unavailable (permissions, non-HTTPS) — the
+      // address is already selectable text right next to the button.
+    }
+  });
 
   $("#feedbackToggle").addEventListener("click", () => {
     $("#feedbackForm").classList.toggle("hidden");
@@ -283,10 +279,8 @@ function renderDashboard(status) {
     }
   });
 
-  $("#upgradeBtn")?.addEventListener("click", () => doUpgrade(Number($("#upgradeMonths").value)));
-  $("#yearlyBtn")?.addEventListener("click", () => doUpgrade(12));
   $("#cancelBtn").addEventListener("click", async () => {
-    if (!confirm("Cancel your subscription? Your code stops working immediately.")) return;
+    if (!confirm("Release this code back to the pool? It stops working immediately.")) return;
     const licenseKey = localStorage.getItem(KEY_STORE);
     try {
       await fetch("/api/license-pool/cancel", {
@@ -298,34 +292,8 @@ function renderDashboard(status) {
       // Fall through regardless — the code is treated as done with locally either way.
     }
     localStorage.removeItem(KEY_STORE);
-    renderEntryForm("Subscription cancelled. Enter a new code any time.");
+    renderEntryForm("Code released. Enter a new one any time.");
   });
-}
-
-async function doUpgrade(months) {
-  const errorEl = $("#dashError");
-  errorEl.textContent = "";
-  if (!(months > 0)) {
-    errorEl.textContent = "Enter a positive number of months.";
-    return;
-  }
-  const licenseKey = localStorage.getItem(KEY_STORE);
-  try {
-    const res = await fetch("/api/license-pool/upgrade", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ licenseKey, months }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.ok) {
-      errorEl.textContent = json.message || "Could not upgrade.";
-      return;
-    }
-    const status = await fetchStatus();
-    renderDashboard(status);
-  } catch {
-    errorEl.textContent = "Couldn't reach the server. Try again.";
-  }
 }
 
 // ── Boot: decide which view ──────────────────────────────────────────────
@@ -361,9 +329,10 @@ function renderExpired(message) {
   card.innerHTML = `
     <h2>Your license expired</h2>
     <p class="sub">${esc(message ?? "This code is no longer active.")}</p>
-    <a href="/web/pricing" style="display:block;">
-      <button type="button" style="width:100%;">View pricing &amp; upgrade</button>
-    </a>
+    <p class="sub" style="font-size:12.5px;">
+      Free licenses run 60 days. Email <strong>yris22@thelyceum.site</strong> for a new code —
+      no charge, same as the first one.
+    </p>
     <button type="button" id="expiredNewCode" class="mini" style="width:100%; margin-top:10px;">
       Use a different code instead
     </button>`;

@@ -213,11 +213,7 @@ function renderSubLicenses(licenses) {
           <tr data-id="${esc(l.id)}">
             <td class="mono">${esc(l.license_key)}</td>
             <td><span class="pill ${l.status === "taken" ? "approved" : "pending"}">${l.status === "taken" ? "Taken" : "Not taken"}</span></td>
-            <td>${
-              l.tier
-                ? `<span class="pill ${l.tier === "paid" ? "approved" : "pending"}">${l.tier === "paid" ? "Paid" : "Trial"}</span>`
-                : `<span class="dim">—</span>`
-            }</td>
+            <td>${l.tier ? `<span class="pill approved">Free</span>` : `<span class="dim">—</span>`}</td>
             <td>${esc(l.label ?? "—")}</td>
             <td class="dim">${daysLeft(l.expires_at)}</td>
             <td class="actions-cell">

@@ -1,12 +1,12 @@
 /**
- * Subscription license pool — the manual-sale model.
+ * Free license pool.
  *
- * A fixed pool of pre-generated unlock codes, seeded once by an admin. A
- * customer pays through a channel this system never sees (a call, a bank
- * transfer), and the admin hands them one code and flips its status to
- * "taken" by hand, setting a subscription period from that moment. There is
- * no payment webhook here on purpose — status only ever changes because an
- * admin changed it, recorded in the same audit log as every other admin act.
+ * A fixed pool of pre-generated unlock codes, seeded once by an admin. Every
+ * code is free — there is no payment path anywhere in this file. An admin
+ * (or the Firebase signup flow) hands out a code and flips its status to
+ * "taken", starting a 60-day clock from that moment. There is no self-service
+ * renewal: once a code expires, whoever held it asks for a new one from the
+ * pool, same as the first time.
  *
  * A code unlocks brake/redteam/thrift's core tools until expires_at, then
  * the CLI points back to the site to get a new one from whoever holds a
@@ -17,7 +17,7 @@ import { randomUUID, randomInt } from "node:crypto";
 import type { DbHandle } from "./db.js";
 import { recordAdminAction, type AdminIdentity } from "./admin.js";
 
-const DEFAULT_SUBSCRIPTION_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_SUBSCRIPTION_MS = 60 * 24 * 60 * 60 * 1000;
 
 // Short, human-typeable codes: 8 characters, no ambiguous glyphs (0/O, 1/I/L
 // all excluded) so a code read off a screen or dictated over a call doesn't
@@ -38,14 +38,7 @@ function generateLicenseKey(): string {
 
 export class SubLicenseError extends Error {
   constructor(
-    public code:
-      | "invalid_input"
-      | "not_found"
-      | "invalid_status"
-      | "invalid_key"
-      | "not_taken"
-      | "expired"
-      | "trial_upgrade_blocked",
+    public code: "invalid_input" | "not_found" | "invalid_status" | "invalid_key" | "not_taken" | "expired",
     message: string
   ) {
     super(message);
@@ -62,9 +55,9 @@ export interface SubLicenseRow {
   taken_at: number | null;
   expires_at: number | null;
   first_checkin_at: number | null;
-  /** NULL while not_taken. 'trial' = auto-issued by signup, unpaid — cannot
-   *  self-extend. 'paid' = an admin marked it taken by hand. */
-  tier: "trial" | "paid" | null;
+  /** NULL while not_taken. 'free' once taken — every code is the same free
+   *  60-day license, whether an admin handed it out or signup auto-issued it. */
+  tier: "free" | null;
 }
 
 // ── Seed the pool (admin, idempotent) ───────────────────────────────────
@@ -125,7 +118,7 @@ export function listLicensePool(db: DbHandle): SubLicenseRow[] {
 export interface SetStatusInput {
   status: "taken" | "not_taken";
   label?: string;
-  /** Subscription length from the moment it's marked taken. Defaults to 30 days. */
+  /** License length from the moment it's marked taken. Defaults to 60 days. */
   durationMs?: number;
 }
 
@@ -141,12 +134,9 @@ export function setLicenseStatus(
   const now = Date.now();
   if (input.status === "taken") {
     const expiresAt = now + (input.durationMs ?? DEFAULT_SUBSCRIPTION_MS);
-    // An admin marking a slot "taken" by hand is, per this file's own model,
-    // the only action that implies a real payment happened — so it's always
-    // 'paid', unlike autoAssignLicense's 'trial'.
     db.raw
       .prepare(
-        "UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ?, tier = 'paid' WHERE id = ?"
+        "UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ?, tier = 'free' WHERE id = ?"
       )
       .run(input.label ?? row.label, now, expiresAt, id);
   } else {
@@ -168,7 +158,7 @@ export interface ValidateResult {
   expiresAt: number;
   daysRemaining: number;
   firstCheckinAt: number | null;
-  tier: "trial" | "paid" | null;
+  tier: "free" | null;
 }
 
 function loadByKey(db: DbHandle, licenseKey: string): SubLicenseRow {
@@ -223,45 +213,6 @@ export function cancelSubLicense(db: DbHandle, licenseKey: string): void {
     .run(row.id);
 }
 
-// ── Upgrade / extend (self-service, public) ─────────────────────────────────
-
-export interface UpgradeResult {
-  ok: true;
-  expiresAt: number;
-  daysRemaining: number;
-}
-
-export function upgradeSubLicense(db: DbHandle, licenseKey: string, months: number): UpgradeResult {
-  if (!(months > 0) || !Number.isFinite(months)) {
-    throw new SubLicenseError("invalid_input", "months must be a positive number.");
-  }
-  const row = loadByKey(db, licenseKey);
-  if (row.status !== "taken" || !row.expires_at) {
-    throw new SubLicenseError("not_taken", "This code hasn't been activated yet.");
-  }
-  // A trial key was never paid for — self-service extension is the exact
-  // bug this tier field exists to close (a free 30-day key could otherwise
-  // hit this endpoint on repeat and extend itself indefinitely). Upgrading
-  // out of a trial is a real purchase, handled outside this endpoint.
-  if (row.tier === "trial") {
-    throw new SubLicenseError(
-      "trial_upgrade_blocked",
-      "This is a free trial key — it can't be self-extended. See pricing to upgrade to a paid plan."
-    );
-  }
-  // Extend from expiry if still active (a renewal shouldn't shorten unused
-  // time), from now if it already lapsed (extending from a past date would
-  // under-credit the purchase).
-  const base = Math.max(row.expires_at, Date.now());
-  const expiresAt = base + months * 30 * 24 * 60 * 60 * 1000;
-  db.raw.prepare("UPDATE subscription_licenses SET expires_at = ? WHERE id = ?").run(expiresAt, row.id);
-  return {
-    ok: true,
-    expiresAt,
-    daysRemaining: (expiresAt - Date.now()) / (24 * 60 * 60 * 1000),
-  };
-}
-
 // ── Auto-assign (system actor — no human admin clicked anything) ───────────
 // Same effect as setLicenseStatus(taken), but for a caller that isn't a
 // human admin: no AdminIdentity to attribute the action to, so it logs to
@@ -287,7 +238,7 @@ export function autoAssignLicense(
   const expiresAt = now + durationMs;
   db.raw
     .prepare(
-      "UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ?, tier = 'trial' WHERE id = ?"
+      "UPDATE subscription_licenses SET status = 'taken', label = ?, taken_at = ?, expires_at = ?, tier = 'free' WHERE id = ?"
     )
     .run(label, now, expiresAt, slot.id);
 

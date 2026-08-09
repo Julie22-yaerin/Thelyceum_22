@@ -34,7 +34,7 @@ import type { DbHandle } from "./db.js";
 import { autoAssignLicense, SubLicenseError } from "./sub-license.js";
 import { resendEmailSender, type EmailSender } from "./email.js";
 
-const SUBSCRIPTION_MS = 30 * 24 * 60 * 60 * 1000;
+const SUBSCRIPTION_MS = 60 * 24 * 60 * 60 * 1000;
 
 export class FirebaseAuthError extends Error {
   constructor(

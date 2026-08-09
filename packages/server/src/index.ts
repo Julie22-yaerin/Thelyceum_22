@@ -67,7 +67,6 @@ import {
   validateSubLicense,
   markCheckedIn,
   cancelSubLicense,
-  upgradeSubLicense,
   autoAssignLicense,
   SubLicenseError,
 } from "./sub-license.js";
@@ -258,7 +257,6 @@ app.use("/api/*", async (c, next) => {
     c.req.path === "/api/license-pool/validate" ||
     c.req.path === "/api/license-pool/enter" ||
     c.req.path === "/api/license-pool/cancel" ||
-    c.req.path === "/api/license-pool/upgrade" ||
     // No Lyceum session exists yet at signup — the client has a Firebase ID
     // token instead, verified server-side inside the handler itself.
     c.req.path === "/api/firebase-config" ||
@@ -990,22 +988,6 @@ app.post("/api/license-pool/cancel", async (c) => {
   }
 });
 
-const LicensePoolUpgradeBody = z.object({ licenseKey: z.string().min(1), months: z.number().int().positive() });
-
-app.post("/api/license-pool/upgrade", async (c) => {
-  const body = LicensePoolUpgradeBody.safeParse(await c.req.json().catch(() => ({})));
-  if (!body.success) return c.json({ error: "invalid_input" }, 400);
-  try {
-    return c.json(upgradeSubLicense(db, body.data.licenseKey, body.data.months));
-  } catch (err) {
-    if (err instanceof SubLicenseError) {
-      const status =
-        err.code === "not_taken" || err.code === "trial_upgrade_blocked" ? 403 : err.code === "invalid_input" ? 400 : 401;
-      return c.json({ ok: false, error: err.code, message: err.message }, status);
-    }
-    throw err;
-  }
-});
 
 // ── Firebase signup (email/password or Google, verified email required) ────
 // Public: the client hasn't got a session with this server yet — it has a

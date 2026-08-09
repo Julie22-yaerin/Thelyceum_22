@@ -151,14 +151,6 @@ async function cancel(licenseKey: string): Promise<Response> {
   });
 }
 
-async function upgrade(licenseKey: string, months: number): Promise<Response> {
-  return await app.request("/api/license-pool/upgrade", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ licenseKey, months }),
-  });
-}
-
 describe("POST /api/license-pool/cancel", () => {
   it("is reachable with no auth and returns the slot to the pool", async () => {
     const { licenses } = await (await seed()).json();
@@ -175,38 +167,15 @@ describe("POST /api/license-pool/cancel", () => {
 });
 
 describe("POST /api/license-pool/upgrade", () => {
-  it("extends expiry by the given number of months from the current expiry", async () => {
-    const { licenses } = await (await seed()).json();
-    const setRes = await setStatus(licenses[6].id, { status: "taken" });
-    const before = (await setRes.json()).license.expires_at;
-
-    const res = await upgrade(licenses[6].license_key, 3);
-    expect(res.status).not.toBe(401);
-    const json = await res.json();
-    expect(json.ok).toBe(true);
-    expect(json.expiresAt - before).toBeGreaterThan(89 * 24 * 60 * 60 * 1000);
-    expect(json.expiresAt - before).toBeLessThan(91 * 24 * 60 * 60 * 1000);
-  });
-
-  it("supports a 12-month (yearly) upgrade", async () => {
-    const { licenses } = await (await seed()).json();
-    const setRes = await setStatus(licenses[7].id, { status: "taken" });
-    const before = (await setRes.json()).license.expires_at;
-
-    const json = await (await upgrade(licenses[7].license_key, 12)).json();
-    expect(json.expiresAt - before).toBeGreaterThan(359 * 24 * 60 * 60 * 1000);
-  });
-
-  it("rejects upgrading a code that was never taken", async () => {
-    const { licenses } = await (await seed()).json();
-    const res = await upgrade(licenses[8].license_key, 1);
-    expect(res.status).toBe(403);
-  });
-
-  it("rejects a non-positive months value", async () => {
-    const { licenses } = await (await seed()).json();
-    await setStatus(licenses[9].id, { status: "taken" });
-    const res = await upgrade(licenses[9].license_key, 0);
-    expect(res.status).toBe(400);
+  it("no longer exists — every license is free, so there's nothing to upgrade to", async () => {
+    const res = await app.request("/api/license-pool/upgrade", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ licenseKey: "whatever", months: 1 }),
+    });
+    // Not a registered route anymore, so it falls through to the general
+    // session-auth middleware (401) rather than reaching a handler — either
+    // way, the point is it does nothing.
+    expect(res.status).not.toBe(200);
   });
 });
