@@ -43,7 +43,7 @@ toolCatalog.register({
     tags: ["shell", "terminal", "exec", "lean"],
     inputSchema: { command: "string", cwd: "string?", budget_tokens: "number?" },
 });
-const server = new McpServer({ name: "thrift", version: "2.0.0" });
+const server = new McpServer({ name: "thrift", version: "1.0.0" });
 server.tool("read_lean", "Read a file, but skip content this session has already seen. Prefer this over the host's own file read whenever working through a codebase.", {
     path: z.string().describe("Absolute or relative path to the file."),
     query: z.string().optional().describe("What you are looking for. Enables slicing large files."),

@@ -55,7 +55,7 @@ toolCatalog.register({
   inputSchema: { command: "string", cwd: "string?", budget_tokens: "number?" },
 });
 
-const server = new McpServer({ name: "thrift", version: "2.0.0" });
+const server = new McpServer({ name: "thrift", version: "1.0.0" });
 
 server.tool(
   "read_lean",
